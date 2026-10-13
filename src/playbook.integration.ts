@@ -1844,6 +1844,10 @@ describe('the playbook schema', () => {
           code = (error as { code?: string }).code
         }
         expect(code).toBe('55P03')
+        // The claim's transaction is aborted and the holder's still holds the row: end both before
+        // the connections go back to the pool, or the next user of one inherits them.
+        await claiming.client.query('rollback')
+        await holder.client.query('rollback')
       } finally {
         releaseAll(holder, claiming)
       }
