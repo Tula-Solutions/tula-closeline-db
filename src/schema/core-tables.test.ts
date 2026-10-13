@@ -18,13 +18,11 @@ const migration = readFileSync(
 )
 
 const TENANT = ['invitations', 'memberships', 'organizations', 'team_members', 'teams']
-const DIRECTORIES = ['invitation_directory', 'membership_directory']
+const NO_ACCESS = ['invitation_directory', 'membership_directory', 'organization_state']
 
 describe('the core schema', () => {
-  test('has the five tenant tables and the two directories, and nothing else', () => {
-    expect(coreTables.map((config) => config.name).sort()).toEqual(
-      [...DIRECTORIES, ...TENANT].sort()
-    )
+  test('has the five tenant tables, the two directories and the status table, and nothing else', () => {
+    expect(coreTables.map((config) => config.name).sort()).toEqual([...NO_ACCESS, ...TENANT].sort())
   })
 
   test.each(TENANT)('%s has an organization_id column', (name) => {
@@ -46,7 +44,7 @@ describe('the core schema', () => {
     }
   )
 
-  test.each(DIRECTORIES)('%s is on the allowlist and has no policy', (name) => {
+  test.each(NO_ACCESS)('%s is on the allowlist and has no policy', (name) => {
     expect(NON_TENANT_TABLES).toContain(`core.${name}`)
     for (const statement of tenantRlsStatements('core', name)) {
       expect(migration).not.toContain(statement)
@@ -80,8 +78,9 @@ describe('the hand-written SQL of the migration', () => {
       text: statement,
     }))
 
-  test('creates the thirteen functions the integration suite classifies', () => {
+  test('creates the fourteen functions the integration suite classifies', () => {
     expect(functions.map((fn) => fn.name).sort()).toEqual([
+      'has_expired',
       'invitation_for_token',
       'organization_of_user',
       'refuse_region_change',
@@ -93,7 +92,7 @@ describe('the hand-written SQL of the migration', () => {
       'start_organization',
       'sync_invitation_directory',
       'sync_membership_directory',
-      'sync_organization_status',
+      'sync_organization_state',
       'track_owner_count',
     ])
   })
@@ -105,7 +104,7 @@ describe('the hand-written SQL of the migration', () => {
     }
   )
 
-  test('revokes EXECUTE on every function from PUBLIC, and grants only the lookups to closeline_core', () => {
+  test('revokes EXECUTE on every function from PUBLIC, and grants only the lookups and the expiry rule to closeline_core', () => {
     const revoke = /REVOKE ALL ON FUNCTION ([^;]+) FROM PUBLIC;/.exec(migration)?.[1] ?? ''
     for (const fn of functions) {
       expect(revoke).toContain(`"core"."${fn.name}"(`)
@@ -113,24 +112,25 @@ describe('the hand-written SQL of the migration', () => {
     const grants = [...migration.matchAll(/GRANT EXECUTE ON FUNCTION ([^;]+) TO ([^;]+);/g)]
     expect(grants.map((grant) => grant[2])).toEqual(['closeline_core'])
     expect(grants[0]?.[1]).toBe(
-      '"core"."organization_of_user"(text), "core"."invitation_for_token"(text)'
+      '"core"."organization_of_user"(text), "core"."invitation_for_token"(text), "core"."has_expired"(timestamp with time zone, timestamp with time zone)'
     )
   })
 
-  test('takes every privilege on the directories, and the right to remove invitations, from closeline_core', () => {
+  test('takes every privilege on the directories and the status table, and the right to remove invitations, from closeline_core', () => {
     expect(migration).toContain(
-      'REVOKE ALL ON "core"."membership_directory", "core"."invitation_directory" FROM closeline_core;'
+      'REVOKE ALL ON "core"."membership_directory", "core"."invitation_directory", "core"."organization_state" FROM closeline_core;'
     )
     expect(migration).toContain('REVOKE DELETE ON "core"."invitations" FROM closeline_core;')
   })
 
-  test('guards bulk emptying of the five tables whose triggers keep the directories and Owner count', () => {
+  test('guards bulk emptying of the six tables whose triggers keep the directories, the status and the Owner count', () => {
     for (const table of [
       'organizations',
       'memberships',
       'invitations',
       'membership_directory',
       'invitation_directory',
+      'organization_state',
     ]) {
       expect(migration).toContain(
         `CREATE TRIGGER "${table}_no_truncate" BEFORE TRUNCATE ON "core"."${table}"`

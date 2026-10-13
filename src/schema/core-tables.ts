@@ -174,12 +174,15 @@ export const teamMembers = coreSchema.table(
  * An invitation to join an Organization. Only a hash of the token is stored (64 lowercase hex
  * characters, a SHA-256). One pending invitation per email per Organization; a re-invite revokes
  * the old one first (an expired invitation stays `pending` until then). `accepted` and `revoked`
- * are final: no statement that sets the state or its timestamps on such a row is accepted, so an
- * invitation cannot be accepted twice. The database refuses to accept an invitation after
- * `expires_at` or while its Organization is not `active`. The role is never `owner`
- * (ownership passes by promotion). The email is stored folded with the ASCII-only rule below, has
- * exactly one `@` and no whitespace or control characters; the service folds with the same rule
- * and validates the whole address at the edge. `invited_by_user_id` is an opaque `usr_` id, so it
+ * are final: no statement that sets the state, its timestamps, the `id` or the `token_hash` on such
+ * a row is accepted, so an invitation cannot be accepted twice and a used hash cannot be moved off
+ * its row and issued again. The database refuses to accept an invitation after `expires_at` (the
+ * instant itself is expired) or while its Organization is not `active`. The role is never `owner`
+ * (ownership passes by promotion). The email is stored folded with the ASCII-only rule below and
+ * is printable ASCII only (no space, control or non-ASCII character) with exactly one `@`; an
+ * internationalised domain is stored in its ASCII (A-label) form, converted by the service before
+ * it writes. The service folds with the same rule and validates the whole address at the edge.
+ * `invited_by_user_id` is an opaque `usr_` id, so it
  * outlives the inviter's membership. Deleting the Team clears `team_id` (the migration replaces
  * the generated foreign key with `ON DELETE SET NULL (team_id)`, which Drizzle cannot express).
  * The service role cannot `DELETE` an invitation: it is revoked, and only deleting its
@@ -218,15 +221,18 @@ export const invitations = coreSchema.table(
       sql`${t.teamId} is null or "team_id" ~ '^team_[0-9a-f]{32}$'`
     ),
     // ASCII-only folding in the explicit "C" collation, so the stored form does not depend on the
-    // cluster's locale. Exactly one "@", neither first nor last, and no ASCII whitespace or control
-    // character (the regex classes, too, are ASCII-only under "C").
+    // cluster's locale. Exactly one "@", neither first nor last, and printable ASCII throughout
+    // (`[!-~]`: no space, control or non-ASCII character, so no zero-width, no-break or
+    // direction-override character and no fullwidth "@"). The "C" collation makes the range a
+    // range of code points. This is a backstop, not an address parser.
     check(
       'invitations_email_shape',
       sql`${t.email} = lower(${t.email} collate "C")
         and char_length(${t.email}) between 3 and 320
         and char_length(${t.email}) - char_length(replace(${t.email}, '@', '')) = 1
         and position('@' in ${t.email}) between 2 and char_length(${t.email}) - 1
-        and ${t.email} collate "C" !~ '[[:space:][:cntrl:]]'`
+        and ${t.email} collate "C" !~ '[[:space:][:cntrl:]]'
+        and ${t.email} collate "C" ~ '^[!-~]+$'`
     ),
     check('invitations_role_known', sql`${t.role} in (${list(MEMBERSHIP_ROLES)})`),
     check('invitations_role_not_owner', sql`${t.role} <> 'owner'`),
@@ -259,31 +265,25 @@ export const invitations = coreSchema.table(
 )
 
 /**
- * Which Organization a user belongs to, with that Organization's status: the one fact sign-in asks
- * before any Organization is known. It is not under row-level security and no service role can
- * select from it, or write it: `closeline_core` reaches it only through the `SECURITY DEFINER`
- * function `core.organization_of_user(user_id)` (`organizationOfUser`), one row for one exact key.
- * The `SECURITY DEFINER` triggers on `memberships` write it, and the one on `organizations` keeps
- * `organization_status` equal to the Organization's status (a status change updates one row per
- * member, found by `membership_directory_organization_idx`). A user belongs to exactly one
- * Organization, enforced by the unique constraint on `user_id`. To allow several, one migration
- * drops `membership_directory_one_organization_per_user` and replaces the function.
+ * Which Organization a user belongs to: the one fact sign-in asks before any Organization is
+ * known. It is not under row-level security and no service role holds any privilege on it:
+ * `closeline_core` reaches it only through the `SECURITY DEFINER` function
+ * `core.organization_of_user(user_id)` (`organizationOfUser`), one row for one exact key, which
+ * joins {@link organizationState} for the status. The `SECURITY DEFINER` triggers on `memberships`
+ * write it, and it holds no status of its own, so a status change never touches it. A user belongs
+ * to exactly one Organization, enforced by the unique constraint on `user_id`. To allow several,
+ * one migration drops `membership_directory_one_organization_per_user` and replaces the function.
  */
 export const membershipDirectory = coreSchema.table(
   'membership_directory',
   {
     userId: text('user_id').notNull(),
     organizationId: text('organization_id').notNull(),
-    organizationStatus: text('organization_status', { enum: ORGANIZATION_STATUSES }).notNull(),
   },
   (t) => [
     primaryKey({ name: 'membership_directory_pkey', columns: [t.userId, t.organizationId] }),
     check('membership_directory_user_id_shape', idShape('user_id', 'usr')),
     check('membership_directory_organization_id_shape', idShape('organization_id', 'org')),
-    check(
-      'membership_directory_organization_status_known',
-      sql`${t.organizationStatus} in (${list(ORGANIZATION_STATUSES)})`
-    ),
     unique('membership_directory_one_organization_per_user').on(t.userId),
     index('membership_directory_organization_idx').on(t.organizationId),
   ]
@@ -291,12 +291,12 @@ export const membershipDirectory = coreSchema.table(
 
 /**
  * Which Organization and invitation a token hash opens, for the pending invitations only: a row
- * leaves when its invitation is accepted or revoked. It carries `expires_at` and the
- * Organization's status so that `core.invitation_for_token(token_hash)` (`invitationForToken`)
- * can answer, for one exact key, only when the invitation is pending, unexpired and in an
- * `active` Organization, without reading a tenant table. Not under row-level security; no
- * service role can select from it or write it. The `SECURITY DEFINER` triggers on `invitations`
- * and `organizations` keep it.
+ * leaves when its invitation is accepted or revoked. It carries `expires_at` so that
+ * `core.invitation_for_token(token_hash)` (`invitationForToken`) can answer, for one exact key,
+ * only when the invitation is pending and unexpired (and, by joining {@link organizationState},
+ * in an `active` Organization), without reading a tenant table. Not under row-level security; no
+ * service role holds any privilege on it. The `SECURITY DEFINER` triggers on `invitations` keep
+ * it, and a status change never touches it.
  */
 export const invitationDirectory = coreSchema.table(
   'invitation_directory',
@@ -305,16 +305,35 @@ export const invitationDirectory = coreSchema.table(
     organizationId: text('organization_id').notNull(),
     invitationId: text('invitation_id').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    organizationStatus: text('organization_status', { enum: ORGANIZATION_STATUSES }).notNull(),
   },
   (t) => [
     check('invitation_directory_token_hash_shape', sql`"token_hash" ~ '^[0-9a-f]{64}$'`),
     check('invitation_directory_organization_id_shape', idShape('organization_id', 'org')),
     check('invitation_directory_invitation_id_shape', idShape('invitation_id', 'inv')),
-    check(
-      'invitation_directory_organization_status_known',
-      sql`${t.organizationStatus} in (${list(ORGANIZATION_STATUSES)})`
-    ),
     index('invitation_directory_organization_idx').on(t.organizationId),
+  ]
+)
+
+/**
+ * An Organization's status, one row per Organization, so a status change writes one row however
+ * many members and invitations the Organization has. Sign-in and accepting an invitation ask the
+ * status before any Organization is known, so it cannot sit behind row-level security: it is a
+ * second no-access table (see {@link membershipDirectory}), joined by `core.organization_of_user`
+ * and `core.invitation_for_token`, and no service role holds any privilege on it. A trigger on
+ * `organizations` writes it in the same transaction as the Organization's own row (an insert
+ * creates it, a change of `status` updates it, and deleting the Organization cascades). It is
+ * written nowhere else and holds nothing a lookup can use without an exact key from another table.
+ */
+export const organizationState = coreSchema.table(
+  'organization_state',
+  {
+    organizationId: text('organization_id')
+      .primaryKey()
+      .references(() => organizations.organizationId, { onDelete: 'cascade' }),
+    status: text('status', { enum: ORGANIZATION_STATUSES }).notNull(),
+  },
+  (t) => [
+    check('organization_state_organization_id_shape', idShape('organization_id', 'org')),
+    check('organization_state_status_known', sql`${t.status} in (${list(ORGANIZATION_STATUSES)})`),
   ]
 )

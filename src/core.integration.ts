@@ -14,6 +14,8 @@ const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`
 const SETTING = 'app.organization_id'
 const TENANT_TABLES = ['organizations', 'memberships', 'teams', 'team_members', 'invitations']
 const DIRECTORIES = ['membership_directory', 'invitation_directory']
+/** The tables outside row-level security that no service role holds any privilege on. */
+const NO_ACCESS_TABLES = [...DIRECTORIES, 'organization_state']
 const ONE_PER_USER = 'membership_directory_one_organization_per_user'
 const SERVICE_ROLES = ['closeline_auth', 'closeline_core', 'closeline_playbook']
 
@@ -213,6 +215,16 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       ).rows.map((r) => `${r.user_id}>${orgId}`)
     )
 
+  const membersOfUser = (orgId: string) =>
+    scoped(owner, orgId, async (c) =>
+      (
+        await c.query<{ user_id: string }>(
+          'select user_id from core.memberships where organization_id = $1 order by 1',
+          [orgId]
+        )
+      ).rows.map((r) => r.user_id)
+    )
+
   const invitationDirectoryOf = async (orgIds: string[]) =>
     (
       await owner.query<{ token_hash: string; invitation_id: string; organization_id: string }>(
@@ -241,13 +253,13 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     await owner.query(`drop table if exists core.it_naive_${suffix}`)
     await owner.query(`drop function if exists core.it_naive_guard_${suffix}()`)
     await Promise.all([owner.end(), core.end(), auth.end(), playbook.end(), handle.close()])
-  })
+  }, 120_000)
 
   describe('tenant isolation', () => {
-    test('the migrated database passes the check, and only the two directories need the allowlist', async () => {
+    test('the migrated database passes the check, and only the two directories and the status table need the allowlist', async () => {
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
       expect([...NON_TENANT_TABLES].sort()).toEqual(
-        DIRECTORIES.map((name) => `core.${name}`).sort()
+        NO_ACCESS_TABLES.map((name) => `core.${name}`).sort()
       )
       const without = await findTenantIsolationGaps(handle.db, [])
       expect(
@@ -255,7 +267,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           .filter((gap) => gap.schema === 'core' && !gap.table.startsWith('it_'))
           .map((g) => g.table)
           .sort()
-      ).toEqual([...DIRECTORIES].sort())
+      ).toEqual([...NO_ACCESS_TABLES].sort())
     })
 
     describe('a second Organization cannot read or write any tenant table', () => {
@@ -363,7 +375,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         ['closeline_auth', () => auth],
         ['closeline_playbook', () => playbook],
       ])('%s is refused on every core table', async (_role, pool) => {
-        for (const table of [...TENANT_TABLES, ...DIRECTORIES]) {
+        for (const table of [...TENANT_TABLES, ...NO_ACCESS_TABLES]) {
           const refused = await failure(
             scoped(pool(), a.orgId, (c) => c.query(`select * from core.${table}`))
           )
@@ -624,13 +636,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
 
     test('names and emails fold ASCII letters only, the same way in every locale', async () => {
       const a = await createOrg()
-      // Non-ASCII letters are kept as typed: "É" and "é" are different, so both Teams and both
-      // pending invitations exist. A cluster whose locale lower-cases "É" would refuse the first
-      // email (it is not its own lower-case form) and merge the Team names.
+      // Non-ASCII letters in a Team name are kept as typed: "É" and "é" are different, so both
+      // Teams exist. A cluster whose locale lower-cases "É" would merge the names. (An email may
+      // not hold a non-ASCII character at all; see the refusals below.)
       await addTeam(a.orgId, 'Équipe')
       await addTeam(a.orgId, 'équipe')
-      await invite(a.orgId, { email: 'É@example.com' })
-      await invite(a.orgId, { email: 'é@example.com' })
       const keys = await inOrg(a.orgId, (c) =>
         c.query<{ name_key: string }>(
           'select name_key from core.teams where organization_id = $1 order by 1',
@@ -707,6 +717,16 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         { email: 'ann\u007f@example.com' },
         'invitations_email_shape',
       ],
+      ['a zero-width space', { email: 'ann\u200b@example.com' }, 'invitations_email_shape'],
+      ['a no-break space', { email: 'ann\u00a0@example.com' }, 'invitations_email_shape'],
+      ['a right-to-left override', { email: 'ann@example\u202e.com' }, 'invitations_email_shape'],
+      ['a fullwidth @ as the only @', { email: 'ann\uff20example.com' }, 'invitations_email_shape'],
+      [
+        'a fullwidth @ beside the real one',
+        { email: 'ann\uff20b@example.com' },
+        'invitations_email_shape',
+      ],
+      ['a non-ASCII letter', { email: 'é@example.com' }, 'invitations_email_shape'],
       ['an unknown role', { role: 'boss' }, 'invitations_role_known'],
       [
         'an Owner role (ownership passes by promotion)',
@@ -716,6 +736,12 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     ])('an invitation with %s is refused', async (_name, options, constraint) => {
       const { orgId } = await createOrg()
       expect((await failure(invite(orgId, options))).constraint).toBe(constraint)
+    })
+
+    test('an internationalised domain is stored in its ASCII (A-label) form', async () => {
+      const { orgId } = await createOrg()
+      await invite(orgId, { email: 'ann@xn--bcher-kva.example' })
+      await invite(orgId, { email: "o'brien+tag@example.com" })
     })
 
     test('a token hash is unique across Organizations', async () => {
@@ -819,6 +845,140 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         )
         expect(refused.constraint).toBe('invitations_state_final')
       }
+    })
+
+    test.each(['accepted', 'revoked'])(
+      'the token hash and id of a %s invitation cannot change, and its hash cannot be issued again',
+      async (state) => {
+        const { orgId } = await createOrg()
+        const { id, hash } = await invite(orgId)
+        if (state === 'accepted') {
+          await accept(orgId, id)
+        } else {
+          await inOrg(orgId, (c) =>
+            c.query(
+              "update core.invitations set state = 'revoked', revoked_at = now() where id = $1",
+              [id]
+            )
+          )
+        }
+        for (const change of ['token_hash = $2', 'id = $2']) {
+          const value = change.startsWith('id') ? newId('inv') : newHash()
+          const refused = await failure(
+            inOrg(orgId, (c) =>
+              c.query(`update core.invitations set ${change} where id = $1`, [id, value])
+            )
+          )
+          expect(refused.constraint).toBe('invitations_state_final')
+        }
+        // The used hash stays on its row, so it cannot be reinserted as a new pending invitation.
+        const reused = await failure(invite(orgId, { hash }))
+        expect(reused.constraint).toBe('invitations_token_hash_key')
+        expect(await invitationDirectoryOf([orgId])).toEqual([])
+      }
+    )
+
+    test('a pending invitation can still rotate its token hash', async () => {
+      const { orgId } = await createOrg()
+      const { id } = await invite(orgId)
+      const rotated = newHash()
+      await inOrg(orgId, (c) =>
+        c.query('update core.invitations set token_hash = $1 where id = $2', [rotated, id])
+      )
+      expect((await invitationDirectoryOf([orgId])).map((r) => r.token_hash)).toEqual([rotated])
+    })
+
+    describe('the moment an invitation expires', () => {
+      /** An invitation that expires `seconds` after it is created, by the database clock. */
+      const inviteExpiringIn = (orgId: string, seconds: number) =>
+        inOrg(orgId, async (c) => {
+          const id = newId('inv')
+          await c.query(
+            `insert into core.invitations
+               (id, organization_id, email, role, invited_by_user_id, token_hash, created_at, expires_at)
+             values ($1, $2, $3, 'rep', $4, $5, now(), now() + make_interval(secs => $6))`,
+            [id, orgId, `${id.slice(-8)}@example.com`, newId('usr'), newHash(), seconds]
+          )
+          return id
+        })
+
+      test('an invitation is expired at the instant it expires, not only after it', async () => {
+        const probe = async (expiresAt: string, at: string) =>
+          (
+            await owner.query<{ expired: boolean }>(
+              'select core.has_expired($1::timestamptz, $2::timestamptz) as expired',
+              [expiresAt, at]
+            )
+          ).rows[0]?.expired
+        expect(await probe('2026-06-01T12:00:00.000000Z', '2026-06-01T11:59:59.999999Z')).toBe(
+          false
+        )
+        expect(await probe('2026-06-01T12:00:00.000000Z', '2026-06-01T12:00:00.000000Z')).toBe(true)
+        expect(await probe('2026-06-01T12:00:00.000000Z', '2026-06-01T12:00:00.000001Z')).toBe(true)
+      })
+
+      test('the lookup and the accept guard both decide through core.has_expired, so they share the boundary', async () => {
+        const defs = await owner.query<{ name: string; def: string }>(
+          `select p.proname as name, pg_get_functiondef(p.oid) as def
+             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'core'
+              and p.proname in ('invitation_for_token', 'refuse_unacceptable_invitation')
+            order by 1`
+        )
+        expect(defs.rows.map((r) => r.name)).toEqual([
+          'invitation_for_token',
+          'refuse_unacceptable_invitation',
+        ])
+        for (const { def } of defs.rows) {
+          expect(def).toMatch(/"?core"?\."?has_expired"?\(/)
+        }
+        const [lookup, guard] = defs.rows.map((r) => r.def)
+        expect(lookup).toContain('statement_timestamp()')
+        expect(guard).toContain('clock_timestamp()')
+        expect(guard).not.toContain('statement_timestamp()')
+      })
+
+      test('an accept that waits for a lock past the expiry is refused: the guard reads the clock when it runs', async () => {
+        const { orgId } = await createOrg()
+        const id = await inviteExpiringIn(orgId, 1.5)
+        const holder = await track(await core.connect())
+        const waiter = await track(await core.connect())
+        try {
+          for (const c of [holder, waiter]) {
+            await c.query('begin')
+            await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+          }
+          await holder.query('select 1 from core.invitations where id = $1 for update', [id])
+          // The statement starts while the invitation is still valid, then waits for the lock.
+          const pending = waiter
+            .query(
+              "update core.invitations set state = 'accepted', accepted_at = now() where id = $1 and state = 'pending'",
+              [id]
+            )
+            .then(
+              () => 'accepted',
+              (e: Error) => e.message
+            )
+          await waitUntilBlocked(waiter)
+          // Let the database clock pass the expiry while the accept is still waiting.
+          for (let i = 0; i < 200; i++) {
+            const gone = await owner.query<{ gone: boolean }>(
+              'select clock_timestamp() > expires_at as gone from core.invitation_directory where invitation_id = $1',
+              [id]
+            )
+            if (gone.rows[0]?.gone) {
+              break
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20))
+          }
+          await holder.query('rollback')
+          expect(await pending).toContain('core.invitation_expired')
+          await waiter.query('rollback')
+        } finally {
+          holder.release()
+          waiter.release()
+        }
+      })
     })
 
     test('the service cannot delete an invitation, so a used token cannot be re-issued', async () => {
@@ -1071,6 +1231,96 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         }
       })
 
+      describe('the Organization row is locked first, so none of these can deadlock', () => {
+        /** Run `statement` and commit, answering 'ok' or the SQLSTATE of the error. */
+        const finish = (c: PoolClient, statement: () => Promise<unknown>) => async () => {
+          try {
+            await statement()
+            await c.query('commit')
+            return 'ok'
+          } catch (error) {
+            await c.query('rollback').catch(() => undefined)
+            return (error as { code?: string }).code ?? 'error'
+          }
+        }
+
+        /** A transaction of the owner role that holds `mode` on the Organization's row. */
+        async function hold(orgId: string, mode: string): Promise<PoolClient> {
+          const c = await owner.connect()
+          await c.query('begin')
+          await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+          await c.query(`select 1 from core.organizations where organization_id = $1 ${mode}`, [
+            orgId,
+          ])
+          return c
+        }
+
+        test('two concurrent Owner inserts into one Organization both succeed', async () => {
+          const { orgId } = await createOrg()
+          const holder = await hold(orgId, 'for share')
+          const c1 = await open(orgId)
+          const c2 = await open(orgId)
+          try {
+            // Both statements start while the Organization row is share-locked, so each reaches
+            // the Owner counter and waits there; neither may already hold a share lock of its own.
+            const first = finish(c1, () => insertMember(c1, orgId, newId('usr'), 'owner'))()
+            await waitUntilBlocked(c1)
+            const second = finish(c2, () => insertMember(c2, orgId, newId('usr'), 'owner'))()
+            await waitUntilBlocked(c2)
+            await holder.query('commit')
+            expect(await Promise.all([first, second])).toEqual(['ok', 'ok'])
+          } finally {
+            holder.release()
+            c1.release()
+            c2.release()
+          }
+          expect(await ownersOf(orgId)).toEqual({ actual: 3, counter: 3 })
+        })
+
+        test('removing an Owner while another transaction suspends the Organization completes both', async () => {
+          const { orgId, ids } = await ownersOrg(2)
+          const holder = await hold(orgId, 'for no key update')
+          const suspender = await open(orgId)
+          const remover = await open(orgId)
+          try {
+            // The suspension asks for the Organization row first; the removal then asks for it
+            // too. If the removal had already written the directory row, the suspension's
+            // statement would wait for that row and the two would wait for each other.
+            const suspension = finish(suspender, () =>
+              suspender.query(
+                "update core.organizations set status = 'suspended' where organization_id = $1",
+                [orgId]
+              )
+            )()
+            await waitUntilBlocked(suspender)
+            const removal = finish(remover, () => remove(remover, ids[1] as string))()
+            await waitUntilBlocked(remover)
+            await holder.query('commit')
+            expect(await Promise.all([suspension, removal])).toEqual(['ok', 'ok'])
+          } finally {
+            holder.release()
+            suspender.release()
+            remover.release()
+          }
+          expect(await ownersOf(orgId)).toEqual({ actual: 1, counter: 1 })
+          expect(
+            (await organizationOfUser(handle.db, (await membersOfUser(orgId))[0] ?? ''))?.status
+          ).toBe('suspended')
+        })
+
+        test('the Owner counter trigger sorts before the directory trigger', async () => {
+          const triggers = await owner.query<{ name: string }>(
+            `select tgname as name from pg_trigger
+              where tgrelid = 'core.memberships'::regclass and not tgisinternal
+                and (tgtype & 1) = 1 order by tgname`
+          )
+          expect(triggers.rows.map((r) => r.name)).toEqual([
+            'memberships_a_track_owner_count',
+            'memberships_b_sync_directory',
+          ])
+        })
+      })
+
       test('control: a plain count-based trigger lets the same race through, so the harness can see it', async () => {
         const table = `core.it_naive_${suffix}`
         await owner.query(`create table ${table} (id int primary key, role text not null)`)
@@ -1226,41 +1476,163 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect(await invitationDirectoryOf([orgId])).toEqual([])
     })
 
-    test('both directories carry the Organization status and follow every change of it', async () => {
-      const { orgId, userId } = await createOrg()
-      const { id } = await invite(orgId)
-      const statuses = async () => ({
-        member: (
-          await owner.query<{ s: string }>(
-            'select organization_status as s from core.membership_directory where organization_id = $1',
+    describe("an Organization's status is one row, in organization_state", () => {
+      const stateOf = async (orgId: string) =>
+        (
+          await owner.query<{ status: string; xmin: string }>(
+            'select status, xmin::text as xmin from core.organization_state where organization_id = $1',
             [orgId]
           )
-        ).rows.map((r) => r.s),
-        invitation: (
-          await owner.query<{ s: string }>(
-            'select organization_status as s from core.invitation_directory where organization_id = $1',
+        ).rows
+
+      test('there is one row per Organization, created with it, following every change of its status, and gone with it', async () => {
+        const { orgId, userId } = await createOrg()
+        const { id, hash } = await invite(orgId)
+        expect((await stateOf(orgId)).map((r) => r.status)).toEqual(['active'])
+        for (const status of ['suspended', 'active', 'deleted', 'active']) {
+          await setStatus(orgId, status)
+          expect((await stateOf(orgId)).map((r) => r.status)).toEqual([status])
+          const found = await organizationOfUser(handle.db, userId)
+          expect<string | undefined>(found?.status).toBe(status)
+          expect(await invitationForToken(handle.db, hash)).toEqual(
+            status === 'active' ? { organizationId: orgId, invitationId: id } : null
+          )
+        }
+        // A member written while the Organization is suspended needs no status of its own.
+        await setStatus(orgId, 'suspended')
+        const late = await addMember(orgId, 'rep')
+        expect((await organizationOfUser(handle.db, late.userId))?.status).toBe('suspended')
+        await inOrg(orgId, (c) =>
+          c.query('delete from core.organizations where organization_id = $1', [orgId])
+        )
+        expect(await stateOf(orgId)).toEqual([])
+      })
+
+      test('every Organization has a state row, equal to its status', async () => {
+        await createOrg()
+        const orphans = await owner.query<{ n: string }>(
+          `select count(*) as n from core.organizations o
+            where not exists (select 1 from core.organization_state s
+                               where s.organization_id = o.organization_id)`
+        )
+        expect(Number(orphans.rows[0]?.n)).toBe(0)
+        const mismatched = await owner.query<{ n: string }>(
+          `select count(*) as n from core.organizations o join core.organization_state s
+             on s.organization_id = o.organization_id where s.status <> o.status`
+        )
+        expect(Number(mismatched.rows[0]?.n)).toBe(0)
+      })
+
+      test('a statement that leaves the status as it was writes nothing; one that changes it writes the row once', async () => {
+        const { orgId } = await createOrg()
+        const before = await stateOf(orgId)
+        await inOrg(orgId, (c) =>
+          c.query('update core.organizations set status = status where organization_id = $1', [
+            orgId,
+          ])
+        )
+        await inOrg(orgId, (c) =>
+          c.query("update core.organizations set name = 'Renamed' where organization_id = $1", [
+            orgId,
+          ])
+        )
+        expect(await stateOf(orgId)).toEqual(before)
+        await setStatus(orgId, 'suspended')
+        const after = await stateOf(orgId)
+        expect(after).toHaveLength(1)
+        expect(after[0]?.status).toBe('suspended')
+        expect(after[0]?.xmin).not.toBe(before[0]?.xmin)
+      })
+
+      test.each(['repeatable read', 'serializable'])(
+        'a member added by a transaction that committed after a %s snapshot is suspended with the rest',
+        async (isolation) => {
+          const { orgId } = await createOrg()
+          const late = newId('usr')
+          const suspender = await track(await core.connect())
+          try {
+            await suspender.query(`begin isolation level ${isolation}`)
+            await suspender.query('select set_config($1, $2, true)', [SETTING, orgId])
+            await suspender.query('select count(*) from core.memberships') // takes the snapshot
+            await addMember(orgId, 'rep', late) // commits after that snapshot
+            await suspender.query(
+              "update core.organizations set status = 'suspended' where organization_id = $1",
+              [orgId]
+            )
+            await suspender.query('commit')
+          } finally {
+            suspender.release()
+          }
+          expect((await organizationOfUser(handle.db, late))?.status).toBe('suspended')
+        }
+      )
+
+      test('suspending an Organization of 100,000 members and 200 pending invitations writes one row, inside a budget', async () => {
+        const { orgId, userId } = await createOrg()
+        await scoped(owner, orgId, async (c) => {
+          await c.query(
+            `insert into core.memberships (id, organization_id, user_id, role)
+               select 'mem_' || md5('m' || $1::text || n), $1::text, 'usr_' || md5('u' || $1::text || n), 'rep'
+                 from generate_series(1, 100000) n`,
             [orgId]
           )
-        ).rows.map((r) => r.s),
-      })
-      expect(await statuses()).toEqual({ member: ['active'], invitation: ['active'] })
-      await setStatus(orgId, 'suspended')
-      expect(await statuses()).toEqual({ member: ['suspended'], invitation: ['suspended'] })
-      // Rows written while the Organization is suspended start from its current status.
-      await addMember(orgId, 'rep')
-      await invite(orgId)
-      expect((await statuses()).member).toEqual(['suspended', 'suspended'])
-      expect((await statuses()).invitation).toEqual(['suspended', 'suspended'])
-      await setStatus(orgId, 'active')
-      expect(await statuses()).toEqual({
-        member: ['active', 'active'],
-        invitation: ['active', 'active'],
-      })
-      expect((await organizationOfUser(handle.db, userId))?.status).toBe('active')
-      expect(id).toBeTruthy()
+          await c.query(
+            `insert into core.invitations
+                 (id, organization_id, email, role, invited_by_user_id, token_hash, expires_at)
+               select 'inv_' || md5('i' || $1::text || n), $1::text, 'u' || n || '@example.com', 'rep',
+                      'usr_' || md5('b' || $1::text), md5('h' || $1::text || n) || md5('k' || $1::text || n),
+                      now() + interval '7 days'
+                 from generate_series(1, 200) n`,
+            [orgId]
+          )
+        })
+        expect(await count(owner, orgId, 'select count(*) as n from core.memberships')).toBe(100001)
+        // The per-transaction counters keep what this connection wrote earlier until they are
+        // flushed, so the change is measured as the difference around the one statement.
+        const counters = (c: PoolClient) =>
+          c.query<{ relname: string; written: string }>(
+            `select relname, (n_tup_ins + n_tup_upd + n_tup_del)::text as written
+               from pg_stat_xact_all_tables where schemaname = 'core'`
+          )
+        const change = async (status: string) => {
+          const c = await core.connect()
+          try {
+            await c.query('begin')
+            await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+            const before = new Map((await counters(c)).rows.map((r) => [r.relname, +r.written]))
+            const started = performance.now()
+            await c.query('update core.organizations set status = $2 where organization_id = $1', [
+              orgId,
+              status,
+            ])
+            const elapsed = performance.now() - started
+            const after = (await counters(c)).rows
+            await c.query('commit')
+            const rows = Object.fromEntries(
+              after
+                .map((r) => [r.relname, +r.written - (before.get(r.relname) ?? 0)] as const)
+                .filter(([, written]) => written > 0)
+            )
+            return { elapsed, rows }
+          } catch (error) {
+            await c.query('rollback').catch(() => undefined)
+            throw error
+          } finally {
+            c.release()
+          }
+        }
+        for (const status of ['suspended', 'active']) {
+          const { elapsed, rows } = await change(status)
+          // One row of the Organization and one of its state; no directory row is touched.
+          expect(rows).toEqual({ organization_state: 1, organizations: 1 })
+          expect(elapsed).toBeLessThan(500)
+        }
+        await setStatus(orgId, 'suspended')
+        expect((await organizationOfUser(handle.db, userId))?.status).toBe('suspended')
+      }, 180_000)
     })
 
-    test('a member added while another transaction suspends the Organization is not left active', async () => {
+    test('a member added while another transaction suspends the Organization is not left active, and neither waits', async () => {
       const { orgId } = await createOrg()
       const c1 = await track(await core.connect())
       const c2 = await track(await core.connect())
@@ -1271,16 +1643,14 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           await c.query('select set_config($1, $2, true)', [SETTING, orgId])
         }
         await insertMember(c1, orgId, userId, 'rep')
-        const suspend = c2.query(
+        // The suspension does not wait for the uncommitted insert: it writes the status row, not
+        // one row per member, so there is no member row for it to miss.
+        await c2.query(
           "update core.organizations set status = 'suspended' where organization_id = $1",
           [orgId]
         )
-        // The suspension must wait for the insert, or its update of the directory would miss the
-        // new row and leave it saying "active".
-        await waitUntilBlocked(c2)
-        await c1.query('commit')
-        await suspend
         await c2.query('commit')
+        await c1.query('commit')
       } finally {
         c1.release()
         c2.release()
@@ -1288,18 +1658,26 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect((await organizationOfUser(handle.db, userId))?.status).toBe('suspended')
     })
 
-    describe('closeline_core cannot read a directory, only look a key up', () => {
+    describe('closeline_core cannot read a directory or the status table, only look a key up', () => {
+      const zeros = (prefix: string) => `${prefix}_${'0'.repeat(32)}`
       const forged = (table: string) =>
-        table === 'membership_directory'
-          ? `insert into core.membership_directory values ('usr_${'0'.repeat(32)}', 'org_${'0'.repeat(32)}', 'active')`
-          : `insert into core.invitation_directory values ('${'0'.repeat(64)}', 'org_${'0'.repeat(32)}', 'inv_${'0'.repeat(32)}', now() + interval '1 day', 'active')`
+        ({
+          membership_directory: `insert into core.membership_directory values ('${zeros('usr')}', '${zeros('org')}')`,
+          invitation_directory: `insert into core.invitation_directory values ('${'0'.repeat(64)}', '${zeros('org')}', '${zeros('inv')}', now() + interval '1 day')`,
+          organization_state: `insert into core.organization_state values ('${zeros('org')}', 'active')`,
+        })[table] as string
 
-      test.each(DIRECTORIES)(
+      test.each(NO_ACCESS_TABLES)(
         '%s: every statement is refused, whatever the Organization set',
         async (table) => {
           const { orgId } = await createOrg()
           await invite(orgId)
-          const key = table === 'membership_directory' ? 'user_id' : 'token_hash'
+          const key =
+            table === 'membership_directory'
+              ? 'user_id'
+              : table === 'invitation_directory'
+                ? 'token_hash'
+                : 'status'
           const statements = [
             `select * from core.${table}`,
             `select count(*) from core.${table}`,
@@ -1321,7 +1699,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         }
       )
 
-      test.each(DIRECTORIES)(
+      test.each(NO_ACCESS_TABLES)(
         '%s: no service role holds any privilege on it, column level included',
         async (table) => {
           const held = await owner.query<{ role: string; privilege: string }>(
@@ -1487,21 +1865,21 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       })
     })
 
-    test('a directory holds the mapping and the facts the lookups need, and nothing else', async () => {
+    test('a directory holds the mapping and the expiry, the status table holds the status, and nothing else', async () => {
       const columns = await owner.query<{ table_name: string; column_name: string }>(
         `select table_name, column_name from information_schema.columns
           where table_schema = 'core' and table_name = any($1) order by table_name, ordinal_position`,
-        [DIRECTORIES]
+        [NO_ACCESS_TABLES]
       )
       expect(columns.rows.map((r) => `${r.table_name}.${r.column_name}`)).toEqual([
         'invitation_directory.token_hash',
         'invitation_directory.organization_id',
         'invitation_directory.invitation_id',
         'invitation_directory.expires_at',
-        'invitation_directory.organization_status',
         'membership_directory.user_id',
         'membership_directory.organization_id',
-        'membership_directory.organization_status',
+        'organization_state.organization_id',
+        'organization_state.status',
       ])
     })
 
@@ -1527,6 +1905,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   describe('every function in core is owned, pinned and callable by exactly the roles meant to', () => {
     /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
+      has_expired: [false, false, true],
       invitation_for_token: [true, false, true],
       organization_of_user: [true, false, true],
       refuse_region_change: [false, true, false],
@@ -1538,7 +1917,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       start_organization: [false, true, false],
       sync_invitation_directory: [true, true, false],
       sync_membership_directory: [true, true, false],
-      sync_organization_status: [true, true, false],
+      sync_organization_state: [true, true, false],
       track_owner_count: [true, true, false],
     }
 
@@ -1586,16 +1965,18 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       }
     })
 
-    test('the lookups are STABLE and the trigger functions are volatile', async () => {
+    test('the lookups are STABLE, the expiry rule is IMMUTABLE and the trigger functions are volatile', async () => {
+      const expected: Record<string, string> = {
+        organization_of_user: 's',
+        invitation_for_token: 's',
+        has_expired: 'i',
+      }
       for (const fn of await catalog()) {
-        expect([fn.name, fn.volatility]).toEqual([
-          fn.name,
-          fn.name === 'organization_of_user' || fn.name === 'invitation_for_token' ? 's' : 'v',
-        ])
+        expect([fn.name, fn.volatility]).toEqual([fn.name, expected[fn.name] ?? 'v'])
       }
     })
 
-    test('EXECUTE is revoked from PUBLIC on all of them, and only the lookups are granted to closeline_core', async () => {
+    test('EXECUTE is revoked from PUBLIC on all of them, and only the lookups and the expiry rule are granted to closeline_core', async () => {
       for (const fn of await catalog()) {
         const coreMayRun = FUNCTIONS[fn.name]?.[2] ?? false
         expect([fn.name, fn.has_acl, fn.public_execute]).toEqual([fn.name, true, false])

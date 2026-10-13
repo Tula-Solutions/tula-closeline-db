@@ -101,11 +101,24 @@ describe('the tenant isolation catalog check', () => {
   })
 
   test.each([
-    ['a table grant', (t: string) => `grant select on ${t} to closeline_core`],
-    ['a single-column grant', (t: string) => `grant select (id) on ${t} to closeline_core`],
-    ['a grant to PUBLIC', (t: string) => `grant select on ${t} to public`],
+    ['a table SELECT', (t: string) => `grant select on ${t} to closeline_core`],
+    ['a single-column SELECT', (t: string) => `grant select (id) on ${t} to closeline_core`],
+    ['a SELECT to PUBLIC', (t: string) => `grant select on ${t} to public`],
+    ['a table INSERT', (t: string) => `grant insert on ${t} to closeline_core`],
+    ['a single-column INSERT', (t: string) => `grant insert (id) on ${t} to closeline_core`],
+    ['an INSERT to PUBLIC', (t: string) => `grant insert on ${t} to public`],
+    ['a table UPDATE', (t: string) => `grant update on ${t} to closeline_core`],
+    ['a single-column UPDATE', (t: string) => `grant update (id) on ${t} to closeline_core`],
+    ['a table DELETE', (t: string) => `grant delete on ${t} to closeline_core`],
+    ['a TRUNCATE', (t: string) => `grant truncate on ${t} to closeline_core`],
+    ['a table REFERENCES', (t: string) => `grant references on ${t} to closeline_core`],
+    [
+      'a single-column REFERENCES',
+      (t: string) => `grant references (id) on ${t} to closeline_core`,
+    ],
+    ['a TRIGGER', (t: string) => `grant trigger on ${t} to closeline_core`],
   ])(
-    'an allowlisted table that a service role can select from is reported: %s',
+    'an allowlisted table a service role holds a privilege on is reported: %s',
     async (_name, grant) => {
       await reset('id text primary key')
       await owner.query(`revoke all on "core"."${table}" from closeline_core`)
@@ -114,16 +127,15 @@ describe('the tenant isolation catalog check', () => {
       const gaps = await gapsFor([qualified])
       expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual([qualified])
       expect(gaps[0]?.reason).toContain('closeline_core')
-      expect(gaps[0]?.reason).toContain('SELECT')
+      expect(gaps[0]?.reason).toContain('SECURITY DEFINER')
       const failure = await assertTenantIsolation(handle.db, [qualified]).catch((e: Error) => e)
       expect((failure as Error).message).toContain(qualified)
     }
   )
 
-  test('the owner reading an allowlisted table is not a gap, and an insert-only grant is not a read', async () => {
+  test('the owner holding every privilege on an allowlisted table is not a gap', async () => {
     await reset('id text primary key')
     await owner.query(`revoke all on "core"."${table}" from closeline_core`)
-    await owner.query(`grant insert on "core"."${table}" to closeline_core`)
     expect(await gapsFor([qualified])).toEqual([])
   })
 

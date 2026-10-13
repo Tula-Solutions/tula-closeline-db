@@ -73,17 +73,21 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
  * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
  * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
- * only entries are the two `core` directories, which are asked before an Organization is known.
- * An entry here needs a decision record in the hub. An exempt table is under no row-level
- * security, so {@link findTenantIsolationGaps} also reports it as a gap when any `closeline_*`
- * service role (or PUBLIC) holds a `SELECT` privilege on it, at table or column level: it may be
+ * only entries are the two `core` directories and the Organization status table, which are asked
+ * before an Organization is known. An entry here needs a decision record in the hub. An exempt
+ * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
+ * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
+ * UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER), at table or column level: a read leaks every
+ * Organization, and a write could forge a user-to-Organization mapping or free a user. It may be
  * reached only through a `SECURITY DEFINER` function.
  */
 export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
   'core.invitation_directory':
-    'asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id, expiry and Organization status for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in',
+    'asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in',
   'core.membership_directory':
-    'asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id, Organization id and Organization status, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in',
+    'asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in',
+  'core.organization_state':
+    "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
 }
 
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
@@ -118,7 +122,7 @@ interface CatalogRow extends Record<string, unknown> {
   permissive: number
   weak_permissive: number
   weak_environment_permissive: number
-  readable_by: string[]
+  reachable_by: string[]
 }
 
 interface RoleRow extends Record<string, unknown> {
@@ -154,9 +158,11 @@ export interface AuthTableCategories {
  *   USING and WITH CHECK expression `tenantRlsStatements` writes (any weaker or wider one could
  *   open the table across Organizations).
  *
- * Tables on `allowlist` are skipped, except that one which any `closeline_*` role other than the
- * owner can `SELECT` from (the privilege check counts column grants and grants to PUBLIC) is a
- * gap: with no row-level security it would show every Organization's rows. A `closeline_*` role
+ * Tables on `allowlist` are skipped, except that one on which any `closeline_*` role other than
+ * the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` or `TRIGGER`
+ * privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
+ * security a read would show every Organization's rows, and a write could forge or erase the
+ * mapping the lookups rest on. A `closeline_*` role
  * that is a superuser or has `BYPASSRLS` is a gap too, because it ignores every policy.
  *
  * @param db - A database handle connected as any role; the catalogs are readable by all.
@@ -204,8 +210,10 @@ export async function findTenantIsolationGaps(
            (select coalesce(array_agg(r.rolname::text order by r.rolname), '{}'::text[])
               from pg_roles r
              where r.rolname like 'closeline\\_%' and r.rolname <> ${OWNER_ROLE}
-               and has_any_column_privilege(r.oid, c.oid, 'SELECT')
-           ) as readable_by
+               and (has_table_privilege(r.oid, c.oid,
+                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                    or has_any_column_privilege(r.oid, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+           ) as reachable_by
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname not in ('drizzle', 'information_schema')
@@ -219,11 +227,11 @@ export async function findTenantIsolationGaps(
       continue
     }
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
-      if (row.readable_by.length > 0) {
+      if (row.reachable_by.length > 0) {
         gaps.push({
           schema: row.schema,
           table: row.table,
-          reason: `is exempt from row-level security but ${row.readable_by.join(', ')} can SELECT from it (directly or as PUBLIC); only a SECURITY DEFINER function may read it`,
+          reason: `is exempt from row-level security but ${row.reachable_by.join(', ')} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`,
         })
       }
       continue

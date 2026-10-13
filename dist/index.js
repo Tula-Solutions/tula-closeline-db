@@ -1,7 +1,7 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-d0a5g9kp.js";
+} from "./shared/chunk-sechzy3d.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -200,8 +200,9 @@ var CONTROL_PLANE_TABLE_REASONS = {
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
-  "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id, expiry and Organization status for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
-  "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id, Organization id and Organization status, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in"
+  "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
+  "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in",
+  "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in"
 };
 var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
 var EXTENSION_SCHEMAS = [];
@@ -238,8 +239,10 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
            (select coalesce(array_agg(r.rolname::text order by r.rolname), '{}'::text[])
               from pg_roles r
              where r.rolname like 'closeline\\_%' and r.rolname <> ${OWNER_ROLE}
-               and has_any_column_privilege(r.oid, c.oid, 'SELECT')
-           ) as readable_by
+               and (has_table_privilege(r.oid, c.oid,
+                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                    or has_any_column_privilege(r.oid, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+           ) as reachable_by
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname not in ('drizzle', 'information_schema')
@@ -252,11 +255,11 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       continue;
     }
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
-      if (row.readable_by.length > 0) {
+      if (row.reachable_by.length > 0) {
         gaps.push({
           schema: row.schema,
           table: row.table,
-          reason: `is exempt from row-level security but ${row.readable_by.join(", ")} can SELECT from it (directly or as PUBLIC); only a SECURITY DEFINER function may read it`
+          reason: `is exempt from row-level security but ${row.reachable_by.join(", ")} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`
         });
       }
       continue;

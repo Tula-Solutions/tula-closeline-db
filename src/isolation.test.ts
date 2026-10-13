@@ -23,7 +23,7 @@ interface Row {
   permissive: number
   weak_permissive: number
   weak_environment_permissive: number
-  readable_by: string[]
+  reachable_by: string[]
 }
 
 const GOOD: Row = {
@@ -36,7 +36,7 @@ const GOOD: Row = {
   permissive: 1,
   weak_permissive: 0,
   weak_environment_permissive: 1,
-  readable_by: [],
+  reachable_by: [],
 }
 
 /** An environment-scoped auth table that is fail-closed on environment_id. */
@@ -116,12 +116,12 @@ describe('findTenantIsolationGaps', () => {
     expect(await findTenantIsolationGaps(dbWith([row]), ['core.prospects'])).toEqual([])
   })
 
-  test('an allowlisted table a service role can select from is a gap, naming the roles', async () => {
+  test('an allowlisted table a service role holds a privilege on is a gap, naming the roles', async () => {
     const row = {
       ...GOOD,
       has_org: false,
       enabled: false,
-      readable_by: ['closeline_core', 'closeline_auth'],
+      reachable_by: ['closeline_core', 'closeline_auth'],
     }
     const gaps = await findTenantIsolationGaps(dbWith([row]), ['core.prospects'])
     expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['core.prospects'])
@@ -129,8 +129,8 @@ describe('findTenantIsolationGaps', () => {
     expect(gaps[0]?.reason).toContain('SECURITY DEFINER')
   })
 
-  test('a protected table that a service role can select from is not a gap: row-level security governs it', async () => {
-    const row = { ...GOOD, readable_by: ['closeline_core'] }
+  test('a protected table that a service role can reach is not a gap: row-level security governs it', async () => {
+    const row = { ...GOOD, reachable_by: ['closeline_core'] }
     expect(await findTenantIsolationGaps(dbWith([row]))).toEqual([])
   })
 })
@@ -212,10 +212,11 @@ describe('the auth table categories', () => {
     }
   })
 
-  test('exempt only the two core directories, each with a precise reason, and no auth table', () => {
+  test('exempt only the two core directories and the status table, each with a precise reason, and no auth table', () => {
     expect([...NON_TENANT_TABLES].sort()).toEqual([
       'core.invitation_directory',
       'core.membership_directory',
+      'core.organization_state',
     ])
     expect(Object.keys(NON_TENANT_TABLE_REASONS).sort()).toEqual([...NON_TENANT_TABLES].sort())
     for (const reason of Object.values(NON_TENANT_TABLE_REASONS)) {

@@ -1,5 +1,5 @@
 {
-  "id": "d699bb55-e99e-4a3d-9ca1-0cb23291bce8",
+  "id": "87b8ad5a-d982-4ff0-b08a-2b7607c31667",
   "prevId": "9749dc7c-279c-41ed-9448-4c4ab6751bfd",
   "version": "7",
   "dialect": "postgresql",
@@ -5563,12 +5563,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
-        },
-        "organization_status": {
-          "name": "organization_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         }
       },
       "indexes": {
@@ -5604,10 +5598,6 @@
         "invitation_directory_invitation_id_shape": {
           "name": "invitation_directory_invitation_id_shape",
           "value": "\"invitation_id\" ~ '^inv_[0-9a-f]{32}$'"
-        },
-        "invitation_directory_organization_status_known": {
-          "name": "invitation_directory_organization_status_known",
-          "value": "\"core\".\"invitation_directory\".\"organization_status\" in ('active', 'suspended', 'deleted')"
         }
       },
       "isRLSEnabled": false
@@ -5842,7 +5832,7 @@
         },
         "invitations_email_shape": {
           "name": "invitations_email_shape",
-          "value": "\"core\".\"invitations\".\"email\" = lower(\"core\".\"invitations\".\"email\" collate \"C\")\n        and char_length(\"core\".\"invitations\".\"email\") between 3 and 320\n        and char_length(\"core\".\"invitations\".\"email\") - char_length(replace(\"core\".\"invitations\".\"email\", '@', '')) = 1\n        and position('@' in \"core\".\"invitations\".\"email\") between 2 and char_length(\"core\".\"invitations\".\"email\") - 1\n        and \"core\".\"invitations\".\"email\" collate \"C\" !~ '[[:space:][:cntrl:]]'"
+          "value": "\"core\".\"invitations\".\"email\" = lower(\"core\".\"invitations\".\"email\" collate \"C\")\n        and char_length(\"core\".\"invitations\".\"email\") between 3 and 320\n        and char_length(\"core\".\"invitations\".\"email\") - char_length(replace(\"core\".\"invitations\".\"email\", '@', '')) = 1\n        and position('@' in \"core\".\"invitations\".\"email\") between 2 and char_length(\"core\".\"invitations\".\"email\") - 1\n        and \"core\".\"invitations\".\"email\" collate \"C\" !~ '[[:space:][:cntrl:]]'\n        and \"core\".\"invitations\".\"email\" collate \"C\" ~ '^[!-~]+$'"
         },
         "invitations_role_known": {
           "name": "invitations_role_known",
@@ -5883,12 +5873,6 @@
         },
         "organization_id": {
           "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "organization_status": {
-          "name": "organization_status",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -5939,10 +5923,6 @@
         "membership_directory_organization_id_shape": {
           "name": "membership_directory_organization_id_shape",
           "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "membership_directory_organization_status_known": {
-          "name": "membership_directory_organization_status_known",
-          "value": "\"core\".\"membership_directory\".\"organization_status\" in ('active', 'suspended', 'deleted')"
         }
       },
       "isRLSEnabled": false
@@ -6043,6 +6023,55 @@
         "memberships_role_known": {
           "name": "memberships_role_known",
           "value": "\"core\".\"memberships\".\"role\" in ('owner', 'admin', 'manager', 'rep')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "core.organization_state": {
+      "name": "organization_state",
+      "schema": "core",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "organization_state_organization_id_organizations_organization_id_fk": {
+          "name": "organization_state_organization_id_organizations_organization_id_fk",
+          "tableFrom": "organization_state",
+          "tableTo": "organizations",
+          "schemaTo": "core",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "organization_state_organization_id_shape": {
+          "name": "organization_state_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "organization_state_status_known": {
+          "name": "organization_state_status_known",
+          "value": "\"core\".\"organization_state\".\"status\" in ('active', 'suspended', 'deleted')"
         }
       },
       "isRLSEnabled": false
