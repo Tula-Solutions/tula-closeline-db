@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { isPgSchema } from 'drizzle-orm/pg-core'
-import { assertTenantIsolation, findTenantIsolationGaps, TENANT_SCHEMAS } from './isolation'
+import {
+  assertTenantIsolation,
+  EXTENSION_SCHEMAS,
+  findTenantIsolationGaps,
+  TENANT_SCHEMAS,
+} from './isolation'
 import * as schemas from './schema'
 
 interface Row {
@@ -55,6 +60,20 @@ describe('findTenantIsolationGaps', () => {
     expect(gaps[0]?.reason).toContain(reason)
   })
 
+  test.each(['r', 'p', 'v', 'm', 'f'])('relkind %s in public is a gap', async (kind) => {
+    const gaps = await findTenantIsolationGaps(
+      dbWith([{ ...GOOD, schema: 'public', table: 'leftover', kind }])
+    )
+    expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['public.leftover'])
+    expect(gaps[0]?.reason).toContain('public')
+  })
+
+  test('a relation in an extension-owned schema is skipped', async () => {
+    const row = { ...GOOD, schema: 'ext_owned', kind: 'v' }
+    expect(await findTenantIsolationGaps(dbWith([row]))).toHaveLength(1)
+    expect(await findTenantIsolationGaps(dbWith([row]), [], ['ext_owned'])).toEqual([])
+  })
+
   test('a role that bypasses row-level security is a gap', async () => {
     const gaps = await findTenantIsolationGaps(dbWith([GOOD], [{ role: 'closeline_core' }]))
     expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['pg_roles.closeline_core'])
@@ -77,6 +96,12 @@ describe('assertTenantIsolation', () => {
     const error = await assertTenantIsolation(dbWith(bad)).catch((e: Error) => e)
     expect((error as Error).message).toContain('core.a')
     expect((error as Error).message).toContain('core.b')
+  })
+})
+
+describe('EXTENSION_SCHEMAS', () => {
+  test('is empty until a decision record allows an extension schema', () => {
+    expect(EXTENSION_SCHEMAS).toEqual([])
   })
 })
 

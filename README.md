@@ -40,8 +40,10 @@ this is the whole of what CI runs:
 docker compose up -d --wait && bun run test:integration
 ```
 
-Set all four variables (and `DATABASE_URL_ADMIN`, a superuser) to test against another Postgres;
-explicit values win. The suites cover
+Set all four variables and `DATABASE_URL_ADMIN`, a superuser, together to test against another
+Postgres (`DATABASE_URL_ADMIN` alone, or a partial set, is refused). The suites drop stale test
+objects and alter roles, so they refuse any host that is not loopback unless
+`ALLOW_NON_LOCAL_TEST_DATABASE=1` is set; use that only for a disposable database. The suites cover
 role confinement, tenant isolation, the client's handling of lost connections, the migration
 runner and the catalog check below.
 

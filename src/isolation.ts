@@ -17,6 +17,12 @@ export const TENANT_SCHEMAS = ['auth', 'core', 'playbook'] as const
 export const NON_TENANT_TABLES: readonly string[] = []
 
 /**
+ * Schemas that an installed Postgres extension owns, whose relations are skipped by the check.
+ * Empty today: an entry needs a decision record in the hub saying which extension owns the schema.
+ */
+export const EXTENSION_SCHEMAS: readonly string[] = []
+
+/**
  * One thing that does not fail closed on `organization_id`, and why. A login role that bypasses
  * row-level security is reported with `schema` set to `pg_roles` and `table` set to the role name.
  */
@@ -47,7 +53,8 @@ interface RoleRow extends Record<string, unknown> {
 /**
  * Find everything that stops the database failing closed on `organization_id`.
  *
- * Every relation in every schema except `public`, drizzle's own and Postgres's is checked. A
+ * Every relation in every schema except drizzle's own, Postgres's and any {@link EXTENSION_SCHEMAS} is
+ * checked, `public` included: nothing belongs there, so any table, view or foreign table in it is a gap. A
  * table passes when it is in a {@link TENANT_SCHEMAS} schema, has an `organization_id` column,
  * row-level security enabled and forced, and at least one permissive policy, where every
  * permissive policy covers all commands and has exactly the USING and WITH CHECK expression
@@ -59,12 +66,14 @@ interface RoleRow extends Record<string, unknown> {
  *
  * @param db - A database handle connected as any role; the catalogs are readable by all.
  * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
+ * @param extensionSchemas - Schemas owned by extensions, skipped; defaults to {@link EXTENSION_SCHEMAS}.
  * @returns The offending relations, ordered by schema and name, then the offending roles; empty
  *   when all are protected.
  */
 export async function findTenantIsolationGaps(
   db: Pick<Database, 'execute'>,
-  allowlist: readonly string[] = NON_TENANT_TABLES
+  allowlist: readonly string[] = NON_TENANT_TABLES,
+  extensionSchemas: readonly string[] = EXTENSION_SCHEMAS
 ): Promise<TenantIsolationGap[]> {
   const result = await db.execute<CatalogRow>(sql`
     select n.nspname as schema,
@@ -87,13 +96,16 @@ export async function findTenantIsolationGaps(
            ) as weak_permissive
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-     where n.nspname not in ('public', 'drizzle', 'information_schema')
+     where n.nspname not in ('drizzle', 'information_schema')
        and n.nspname not like 'pg\\_%'
        and c.relkind in ('r', 'p', 'v', 'm', 'f')
      order by n.nspname, c.relname`)
 
   const gaps: TenantIsolationGap[] = []
   for (const row of result.rows) {
+    if (extensionSchemas.includes(row.schema)) {
+      continue
+    }
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
       continue
     }
@@ -118,6 +130,9 @@ export async function findTenantIsolationGaps(
 }
 
 function gapReason(row: CatalogRow): string | undefined {
+  if (row.schema === 'public') {
+    return 'is in public, where nothing belongs (migration 0000 locks the schema down)'
+  }
   if (!(TENANT_SCHEMAS as readonly string[]).includes(row.schema)) {
     return 'is in a schema that is not a service schema (add it to TENANT_SCHEMAS and src/schema)'
   }

@@ -42,7 +42,7 @@ describe('service roles are confined to their own schema', () => {
   beforeAll(async () => {
     await migrateUp(env.owner)
     owner = new Pool({ connectionString: env.owner, max: 1 })
-    await dropStaleTestObjects(owner)
+    await dropStaleTestObjects(owner, env.owner)
     for (const { schema, url } of SERVICES) {
       // Created by the owner, as a later migration would: default privileges decide who can use it.
       await owner.query(`create table "${schema}"."${probe}" (id int primary key, note text)`)

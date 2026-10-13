@@ -124,7 +124,8 @@ function tenantRlsStatements(schemaName, tableName) {
 // src/isolation.ts
 var TENANT_SCHEMAS = ["auth", "core", "playbook"];
 var NON_TENANT_TABLES = [];
-async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES) {
+var EXTENSION_SCHEMAS = [];
+async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extensionSchemas = EXTENSION_SCHEMAS) {
   const result = await db.execute(sql2`
     select n.nspname as schema,
            c.relname as "table",
@@ -146,12 +147,15 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES) {
            ) as weak_permissive
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-     where n.nspname not in ('public', 'drizzle', 'information_schema')
+     where n.nspname not in ('drizzle', 'information_schema')
        and n.nspname not like 'pg\\_%'
        and c.relkind in ('r', 'p', 'v', 'm', 'f')
      order by n.nspname, c.relname`);
   const gaps = [];
   for (const row of result.rows) {
+    if (extensionSchemas.includes(row.schema)) {
+      continue;
+    }
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
       continue;
     }
@@ -174,6 +178,9 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES) {
   return gaps;
 }
 function gapReason(row) {
+  if (row.schema === "public") {
+    return "is in public, where nothing belongs (migration 0000 locks the schema down)";
+  }
   if (!TENANT_SCHEMAS.includes(row.schema)) {
     return "is in a schema that is not a service schema (add it to TENANT_SCHEMAS and src/schema)";
   }

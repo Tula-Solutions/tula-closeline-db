@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { Pool } from 'pg'
 import { createDb, type DbHandle } from './client'
-import { adminUrl, dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
+import {
+  adminUrl,
+  dropStaleTestObjects,
+  integrationEnv,
+  migrateUp,
+  resetTestRoles,
+} from './integration-support'
 import { assertTenantIsolation, findTenantIsolationGaps } from './isolation'
 import { TENANT_POLICY_EXPRESSION, tenantRlsStatements } from './tenant'
 
@@ -26,7 +32,7 @@ describe('the tenant isolation catalog check', () => {
   beforeAll(async () => {
     await migrateUp(env.owner)
     owner = new Pool({ connectionString: env.owner, max: 1 })
-    await dropStaleTestObjects(owner)
+    await dropStaleTestObjects(owner, env.owner)
     handle = createDb(env.owner, { max: 1 })
   })
 
@@ -137,8 +143,53 @@ describe('the tenant isolation catalog check', () => {
   test('a leftover test table from a killed run is dropped before the suite starts', async () => {
     await owner.query(`create table "core"."it_gap_stale_${suffix}" (id text)`)
     expect((await findTenantIsolationGaps(handle.db)).length).toBeGreaterThan(0)
-    await dropStaleTestObjects(owner)
+    await dropStaleTestObjects(owner, env.owner)
     expect(await findTenantIsolationGaps(handle.db)).toEqual([])
+  })
+
+  test('cleanup leaves a schema the suites did not create alone', async () => {
+    const keep = `it_keep_${suffix}`
+    await owner.query(`create schema "${keep}"`)
+    try {
+      await dropStaleTestObjects(owner, env.owner)
+      const found = await owner.query('select 1 from pg_namespace where nspname = $1', [keep])
+      expect(found.rowCount).toBe(1)
+    } finally {
+      await owner.query(`drop schema if exists "${keep}" cascade`)
+    }
+  })
+
+  test('cleanup drops a leftover schema the suites create', async () => {
+    const stale = `it_schema_stale_${suffix}`
+    await owner.query(`create schema "${stale}"`)
+    await dropStaleTestObjects(owner, env.owner)
+    const found = await owner.query('select 1 from pg_namespace where nspname = $1', [stale])
+    expect(found.rowCount).toBe(0)
+  })
+
+  test.each([
+    ['a table', 'create table public.IT_NAME (id int)', 'drop table if exists public.IT_NAME'],
+    [
+      'a view',
+      'create view public.IT_NAME as select 1 as id',
+      'drop view if exists public.IT_NAME',
+    ],
+    [
+      'a materialized view',
+      'create materialized view public.IT_NAME as select 1 as id',
+      'drop materialized view if exists public.IT_NAME',
+    ],
+  ])('%s in public is reported, and cleanup removes it', async (_name, create, remove) => {
+    const name = `it_public_${suffix}`
+    await owner.query(create.replace('IT_NAME', name))
+    try {
+      const gaps = (await findTenantIsolationGaps(handle.db)).filter((gap) => gap.table === name)
+      expect(gaps.map((gap) => gap.schema)).toEqual(['public'])
+      await dropStaleTestObjects(owner, env.owner)
+      expect(await findTenantIsolationGaps(handle.db)).toEqual([])
+    } finally {
+      await owner.query(remove.replace('IT_NAME', name))
+    }
   })
 
   test('a view in a service schema is reported', async () => {
@@ -165,6 +216,7 @@ describe('the role check', () => {
   beforeAll(async () => {
     await migrateUp(env.owner)
     admin = new Pool({ connectionString: adminUrl(), max: 1 })
+    await resetTestRoles(admin, adminUrl())
     handle = createDb(env.owner, { max: 1 })
   })
 
@@ -177,6 +229,15 @@ describe('the role check', () => {
     (await findTenantIsolationGaps(handle.db)).filter((gap) => gap.schema === 'pg_roles')
 
   test('the service roles are not superusers and do not bypass row-level security', async () => {
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a role left behind by a killed run is reset before the suite starts', async () => {
+    const leftover = `closeline_it_super_left_${suffix}`
+    await admin.query(`create role "${leftover}" superuser`)
+    await admin.query('alter role closeline_core bypassrls')
+    expect((await roleGaps()).length).toBe(2)
+    await resetTestRoles(admin, adminUrl())
     expect(await roleGaps()).toEqual([])
   })
 

@@ -95,7 +95,8 @@ interface TenantIsolationGap {
 /**
 * Find everything that stops the database failing closed on `organization_id`.
 *
-* Every relation in every schema except `public`, drizzle's own and Postgres's is checked. A
+* Every relation in every schema except drizzle's own, Postgres's and any {@link EXTENSION_SCHEMAS} is
+* checked, `public` included: nothing belongs there, so any table, view or foreign table in it is a gap. A
 * table passes when it is in a {@link TENANT_SCHEMAS} schema, has an `organization_id` column,
 * row-level security enabled and forced, and at least one permissive policy, where every
 * permissive policy covers all commands and has exactly the USING and WITH CHECK expression
@@ -107,10 +108,11 @@ interface TenantIsolationGap {
 *
 * @param db - A database handle connected as any role; the catalogs are readable by all.
 * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
+* @param extensionSchemas - Schemas owned by extensions, skipped; defaults to {@link EXTENSION_SCHEMAS}.
 * @returns The offending relations, ordered by schema and name, then the offending roles; empty
 *   when all are protected.
 */
-declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<TenantIsolationGap[]>;
+declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlist?: readonly string[], extensionSchemas?: readonly string[]): Promise<TenantIsolationGap[]>;
 /**
 * Throw unless {@link findTenantIsolationGaps} finds nothing: every table fail-closed, no role bypassing it.
 *

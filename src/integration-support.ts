@@ -83,35 +83,83 @@ export async function rejectionOf(promise: PromiseLike<unknown>): Promise<string
   throw new Error('expected the statement to be refused, but it succeeded')
 }
 
+const SERVICE_URL_NAMES = Object.values(ENV_NAMES)
+
+/** Whether `host` is a loopback address, with the brackets of an IPv6 literal removed. */
+function isLoopback(host: string): boolean {
+  const bare = host.replace(/^\[|\]$/g, '')
+  return bare === '127.0.0.1' || bare === 'localhost' || bare === '::1'
+}
+
+/**
+ * Refuse to let test support change or drop anything unless the database is on this machine.
+ * Set `ALLOW_NON_LOCAL_TEST_DATABASE=1` to test against a disposable remote Postgres.
+ *
+ * @param url - The connection string the destructive action is about to use.
+ * @throws An error naming the host and the opt-in variable; the password is never included.
+ */
+export function assertLocalTestDatabase(url: string): void {
+  if (process.env.ALLOW_NON_LOCAL_TEST_DATABASE === '1') {
+    return
+  }
+  let host: string
+  try {
+    host = new URL(url).hostname
+  } catch {
+    throw new Error(
+      'Refusing to change a test database whose connection string cannot be parsed; ' +
+        'set ALLOW_NON_LOCAL_TEST_DATABASE=1 only for a disposable database'
+    )
+  }
+  if (!isLoopback(host)) {
+    throw new Error(
+      `Refusing to drop or alter objects on host "${host}": it is not loopback. ` +
+        'Set ALLOW_NON_LOCAL_TEST_DATABASE=1 only if this is a disposable test database'
+    )
+  }
+}
+
 /**
  * The bootstrap superuser's connection string, for the few tests that must change a role's
- * attributes. Reads `DATABASE_URL_ADMIN`; with none of the four service variables set, falls back
- * to the compose superuser. Fails loudly otherwise, so no suite is silently skipped.
+ * attributes. With none of the four service variables set, it is the compose superuser. An
+ * explicit `DATABASE_URL_ADMIN` is returned only together with all four service variables, so the
+ * superuser and the database under test cannot name different clusters. Any other combination
+ * throws, so no suite is silently skipped. The host must be loopback (see
+ * {@link assertLocalTestDatabase}).
  */
 export function adminUrl(): string {
   const explicit = process.env.DATABASE_URL_ADMIN
-  if (explicit) {
-    return explicit
+  const setCount = SERVICE_URL_NAMES.filter((name) => process.env[name]).length
+  let url: string
+  if (explicit && setCount === SERVICE_URL_NAMES.length) {
+    url = explicit
+  } else if (!explicit && setCount === 0) {
+    url = `postgres://postgres:postgres_local@127.0.0.1:${composePort()}/closeline`
+  } else {
+    throw new Error(
+      'Integration tests need DATABASE_URL_ADMIN (a superuser) together with all of ' +
+        `${SERVICE_URL_NAMES.join(', ')}, or none of the five to use the compose database (see the README)`
+    )
   }
-  const names = ['DATABASE_URL', 'DATABASE_URL_AUTH', 'DATABASE_URL_CORE', 'DATABASE_URL_PLAYBOOK']
-  if (names.every((name) => !process.env[name])) {
-    return `postgres://postgres:postgres_local@127.0.0.1:${composePort()}/closeline`
-  }
-  throw new Error('Integration tests need DATABASE_URL_ADMIN, a superuser (see the README)')
+  assertLocalTestDatabase(url)
+  return url
 }
 
 /**
  * Drop what a test run killed before its cleanup left behind: relations named `it_*` in the
- * service schemas, and schemas named `it_*`. The tenant isolation check scans whole schemas, so a
- * single stale table would fail every later run until someone dropped it by hand.
+ * service schemas and `public`, and schemas named `it_schema_*`. The tenant isolation check scans
+ * whole schemas, so a single stale table would fail every later run until someone dropped it by
+ * hand. Refuses to run unless the host is loopback ({@link assertLocalTestDatabase}).
  *
  * @param owner - A pool connected as the owner role, which owns everything the tests create.
+ * @param ownerUrl - The connection string `owner` uses, checked before anything is dropped.
  */
-export async function dropStaleTestObjects(owner: Pool): Promise<void> {
+export async function dropStaleTestObjects(owner: Pool, ownerUrl: string): Promise<void> {
+  assertLocalTestDatabase(ownerUrl)
   const stale = await owner.query<{ schema: string; name: string; kind: string }>(
     `select n.nspname as schema, c.relname as name, c.relkind as kind
        from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('auth', 'core', 'playbook') and c.relname like 'it\\_%'
+      where n.nspname in ('auth', 'core', 'playbook', 'public') and c.relname like 'it\\_%'
         and c.relkind in ('r', 'p', 'v', 'm', 'f')
       order by (c.relkind in ('v', 'm')) desc`
   )
@@ -120,9 +168,28 @@ export async function dropStaleTestObjects(owner: Pool): Promise<void> {
     await owner.query(`drop ${what} if exists "${schema}"."${name}" cascade`)
   }
   const schemas = await owner.query<{ name: string }>(
-    `select nspname as name from pg_namespace where nspname like 'it\\_%'`
+    `select nspname as name from pg_namespace where nspname like 'it\\_schema\\_%'`
   )
   for (const { name } of schemas.rows) {
     await owner.query(`drop schema if exists "${name}" cascade`)
+  }
+}
+
+/**
+ * Undo the cluster-wide role changes the role tests make, in case a run was killed inside one:
+ * `closeline_core` goes back to `NOBYPASSRLS` and any `closeline_it_super_*` role is dropped.
+ * Refuses to run unless the host is loopback ({@link assertLocalTestDatabase}).
+ *
+ * @param admin - A pool connected as the bootstrap superuser.
+ * @param adminConnectionUrl - The connection string `admin` uses, checked before anything changes.
+ */
+export async function resetTestRoles(admin: Pool, adminConnectionUrl: string): Promise<void> {
+  assertLocalTestDatabase(adminConnectionUrl)
+  await admin.query('alter role closeline_core nobypassrls')
+  const leftover = await admin.query<{ name: string }>(
+    `select rolname as name from pg_roles where rolname like 'closeline\\_it\\_super\\_%'`
+  )
+  for (const { name } of leftover.rows) {
+    await admin.query(`drop role if exists "${name}"`)
   }
 }

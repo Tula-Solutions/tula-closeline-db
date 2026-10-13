@@ -31,7 +31,7 @@ describe('the lock timeout of a migration session', () => {
 
   beforeAll(async () => {
     owner = new Pool({ connectionString: env.owner, max: 2 })
-    await dropStaleTestObjects(owner)
+    await dropStaleTestObjects(owner, env.owner)
     await owner.query(`create table "core"."${lockTable}" (id int)`)
     // A migration newer than any applied one, so drizzle treats it as pending. It fails on the
     // lock below, which rolls it back and records nothing.
