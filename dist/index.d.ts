@@ -1,6 +1,6 @@
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -6498,6 +6498,12 @@ declare const ORGANIZATION_REGIONS: readonly ["us", "eu"];
 declare const ORGANIZATION_STATUSES: readonly ["active", "suspended", "deleted"];
 /** The states an invitation is in; "expired" is not stored, it is read from `expires_at`. */
 declare const INVITATION_STATES: readonly ["pending", "accepted", "revoked"];
+/**
+* The longest member name, in characters after trimming spaces. Mirrors the contract's
+* `MAX_PERSON_NAME_LENGTH`: auth's optional first and last names joined by one space, one more
+* than the 200 of an Organization or Team name.
+*/
+declare const MEMBER_NAME_MAX = 201;
 /** The longest route name of an idempotency key, in characters. */
 declare const IDEMPOTENCY_ROUTE_MAX = 64;
 /** The longest client-supplied idempotency key, in characters (printable ASCII only). */
@@ -6651,10 +6657,26 @@ declare const organizations: PgTableWithColumns_a5zn0g31<{
 * is enforced by `membership_directory_one_organization_per_user`, because a unique index on this
 * table cannot see rows hidden by row-level security.
 *
+* `email` and `name` are core's copy of the member's profile (ADR 0015); auth stays the source of
+* truth and sends both at sign-up and when they change. `email` follows the invitations rule
+* (folded ASCII, one `@`, printable ASCII, 3 to 320 characters) and is required, so a membership
+* without one cannot exist. `name` is null for a person with no name, else 1 to
+* {@link MEMBER_NAME_MAX} characters after trimming surrounding spaces (auth sends the optional
+* first and last names joined by one space). Both are covered by the existing row-level security
+* policy and table-wide grants; there is no per-column grant on this table.
+*
 * Lists served (keyset, `LIMIT` a page):
 * - Members of an Organization: `WHERE organization_id = $1 AND id > $cursor ORDER BY id`, on
 *   `memberships_organization_id_id_key`.
 * - One user's membership, for a role check: `memberships_organization_user_key`.
+*
+* - Is this address already a member, for an invitation: `WHERE organization_id = $1 AND email =
+*   $2`, on `memberships_organization_email_idx`.
+*
+* Index decision: `memberships_organization_email_idx` is plain, not unique: auth owns the address,
+* and a stale copy must not make a later change fail. There is none on `name`: nothing searches or
+* sorts by it. The database's name rule is the looser bound (it trims spaces only and does not
+* reject control characters); core stores only the contract's trimmed output.
 */
 declare const memberships: PgTableWithColumns_a5zn0g31<{
 	name: "memberships";
@@ -6724,6 +6746,40 @@ declare const memberships: PgTableWithColumns_a5zn0g31<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: ["owner", "admin", "manager", "rep"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		email: PgColumn_ffrhhp31<{
+			name: "email";
+			tableName: "memberships";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		name: PgColumn_ffrhhp31<{
+			name: "name";
+			tableName: "memberships";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

@@ -87,12 +87,12 @@ describe('deleting a large Organization does a bounded amount of work per member
         [orgId, 'us']
       )
       await c.query(
-        "insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, 'owner', 'member@example.test')",
         [newId('mem'), orgId, newId('usr')]
       )
       await c.query(
-        `insert into core.memberships (id, organization_id, user_id, role)
-         select 'mem_' || md5('m' || n || $1::text), $1::text, 'usr_' || md5('u' || n || $1::text), 'rep'
+        `insert into core.memberships (id, organization_id, user_id, role, email)
+         select 'mem_' || md5('m' || n || $1::text), $1::text, 'usr_' || md5('u' || n || $1::text), 'rep', 'member@example.test'
            from generate_series(1, $2::int) n`,
         [orgId, reps]
       )
@@ -190,7 +190,7 @@ describe('listing and counting invitations by state reads the state index', () =
         [orgId, 'us']
       )
       await c.query(
-        "insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, 'owner', 'member@example.test')",
         [newId('mem'), orgId, newId('usr')]
       )
       // Set-based: one third pending, accepted and revoked each, a distinct email per row (so one
@@ -354,7 +354,7 @@ describe('looking up and purging idempotency keys read one index each, in a boun
           [id, 'us']
         )
         await c.query(
-          "insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
+          "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, 'owner', 'member@example.test')",
           [newId('mem'), id, newId('usr')]
         )
         // Four users, three routes, a distinct key per row. Creation times run one minute apart

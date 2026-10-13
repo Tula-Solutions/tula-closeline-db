@@ -26,6 +26,13 @@ export const ORGANIZATION_STATUSES = ['active', 'suspended', 'deleted'] as const
 /** The states an invitation is in; "expired" is not stored, it is read from `expires_at`. */
 export const INVITATION_STATES = ['pending', 'accepted', 'revoked'] as const
 
+/**
+ * The longest member name, in characters after trimming spaces. Mirrors the contract's
+ * `MAX_PERSON_NAME_LENGTH`: auth's optional first and last names joined by one space, one more
+ * than the 200 of an Organization or Team name.
+ */
+export const MEMBER_NAME_MAX = 201
+
 /** The longest route name of an idempotency key, in characters. */
 export const IDEMPOTENCY_ROUTE_MAX = 64
 /** The longest client-supplied idempotency key, in characters (printable ASCII only). */
@@ -88,10 +95,26 @@ export const organizations = coreSchema.table(
  * is enforced by `membership_directory_one_organization_per_user`, because a unique index on this
  * table cannot see rows hidden by row-level security.
  *
+ * `email` and `name` are core's copy of the member's profile (ADR 0015); auth stays the source of
+ * truth and sends both at sign-up and when they change. `email` follows the invitations rule
+ * (folded ASCII, one `@`, printable ASCII, 3 to 320 characters) and is required, so a membership
+ * without one cannot exist. `name` is null for a person with no name, else 1 to
+ * {@link MEMBER_NAME_MAX} characters after trimming surrounding spaces (auth sends the optional
+ * first and last names joined by one space). Both are covered by the existing row-level security
+ * policy and table-wide grants; there is no per-column grant on this table.
+ *
  * Lists served (keyset, `LIMIT` a page):
  * - Members of an Organization: `WHERE organization_id = $1 AND id > $cursor ORDER BY id`, on
  *   `memberships_organization_id_id_key`.
  * - One user's membership, for a role check: `memberships_organization_user_key`.
+ *
+ * - Is this address already a member, for an invitation: `WHERE organization_id = $1 AND email =
+ *   $2`, on `memberships_organization_email_idx`.
+ *
+ * Index decision: `memberships_organization_email_idx` is plain, not unique: auth owns the address,
+ * and a stale copy must not make a later change fail. There is none on `name`: nothing searches or
+ * sorts by it. The database's name rule is the looser bound (it trims spaces only and does not
+ * reject control characters); core stores only the contract's trimmed output.
  */
 export const memberships = coreSchema.table(
   'memberships',
@@ -102,6 +125,8 @@ export const memberships = coreSchema.table(
       .references(() => organizations.organizationId, { onDelete: 'cascade' }),
     userId: text('user_id').notNull(),
     role: text('role', { enum: MEMBERSHIP_ROLES }).notNull(),
+    email: text('email').notNull(),
+    name: text('name'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -110,8 +135,23 @@ export const memberships = coreSchema.table(
     check('memberships_organization_id_shape', idShape('organization_id', 'org')),
     check('memberships_user_id_shape', idShape('user_id', 'usr')),
     check('memberships_role_known', sql`${t.role} in (${list(MEMBERSHIP_ROLES)})`),
+    // The same rule as `invitations_email_shape`, written out again; a test keeps the two equal.
+    check(
+      'memberships_email_shape',
+      sql`${t.email} = lower(${t.email} collate "C")
+        and char_length(${t.email}) between 3 and 320
+        and char_length(${t.email}) - char_length(replace(${t.email}, '@', '')) = 1
+        and position('@' in ${t.email}) between 2 and char_length(${t.email}) - 1
+        and ${t.email} collate "C" !~ '[[:space:][:cntrl:]]'
+        and ${t.email} collate "C" ~ '^[!-~]+$'`
+    ),
+    check(
+      'memberships_name_shape',
+      sql`${t.name} is null or char_length(btrim(${t.name})) between 1 and ${sql.raw(String(MEMBER_NAME_MAX))}`
+    ),
     unique('memberships_organization_user_key').on(t.organizationId, t.userId),
     unique('memberships_organization_id_id_key').on(t.organizationId, t.id),
+    index('memberships_organization_email_idx').on(t.organizationId, t.email),
   ]
 )
 

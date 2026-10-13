@@ -36,6 +36,13 @@
       "when": 1791878446238,
       "tag": "0004_core_idempotency_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791895415460,
+      "tag": "0005_core_membership_profile",
+      "breakpoints": true
     }
   ]
 }

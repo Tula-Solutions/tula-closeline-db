@@ -87,7 +87,7 @@ describe('core.idempotency_keys', () => {
         [orgId, `Org ${orgId.slice(-6)}`, 'us']
       )
       await c.query(
-        "insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, 'owner', 'member@example.test')",
         [newId('mem'), orgId, newId('usr')]
       )
     })
