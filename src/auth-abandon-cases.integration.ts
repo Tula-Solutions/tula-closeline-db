@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -48,8 +48,9 @@ describe('auth.abandon_cases', () => {
   let bulk: AuthRegion
   /** Holds the spent-case and grace tests, whose claims must see no other case. */
   let extra: AuthRegion
-  /** Holds the settle tests, whose claims and locks must not touch another test's cases. */
+  /** A region of its own for each settle test (see `beforeEach` there), so no claim sees another's case. */
   let settling: AuthRegion
+  const settlingWorkspaces: string[] = []
 
   /**
    * Insert a case in an environment. By default it is due, its attempt long over: the attempt
@@ -98,12 +99,11 @@ describe('auth.abandon_cases', () => {
     region = await seedAuthRegion(authPool)
     bulk = await seedAuthRegion(authPool)
     extra = await seedAuthRegion(authPool)
-    settling = await seedAuthRegion(authPool)
   })
 
   afterAll(async () => {
     await owner.query('delete from auth.workspaces where id = any($1)', [
-      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId, settling?.workspaceId],
+      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId, ...settlingWorkspaces],
     ])
     await Promise.all([owner.end(), authPool.end(), corePool.end()])
   })
@@ -617,6 +617,11 @@ describe('auth.abandon_cases', () => {
   })
 
   describe('settling a case from the account transaction', () => {
+    beforeEach(async () => {
+      settling = await seedAuthRegion(authPool)
+      settlingWorkspaces.push(settling.workspaceId)
+    })
+
     const environmentId = () => settling.a.environmentId
     const add = async (columns: Record<string, unknown> = {}): Promise<string> =>
       (await addCase(environmentId(), columns, uuid(), settling.projectId)).rows[0]?.id as string
@@ -773,11 +778,15 @@ describe('auth.abandon_cases', () => {
       })
       const fresh = await add()
       expect((await settle(fresh)).rowCount).toBe(1)
+      // The purge statement returns no rows, only a count: read what is left to see which went.
       const purged = await inAuthEnvironment(authPool, environmentId(), (client) =>
         client.query(ABANDON_PURGE_BATCH, [environmentId(), 100])
       )
-      expect(purged.rows.map((row) => row.id)).toContain(old)
-      expect(purged.rows.map((row) => row.id)).not.toContain(fresh)
+      expect(purged.rowCount).toBe(1)
+      const left = await inAuthEnvironment(authPool, environmentId(), (client) =>
+        client.query('select id from auth.abandon_cases where id = any($1)', [[old, fresh]])
+      )
+      expect(left.rows).toEqual([{ id: fresh }])
       expect(await stored(fresh)).toMatchObject({ outcome: 'not_needed' })
     })
 

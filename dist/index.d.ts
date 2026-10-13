@@ -75,7 +75,11 @@ declare const ABANDON_RECORD = "insert into auth.abandon_cases\n  (id, project_i
 * used all {@link ABANDON_CASE_MAX_ATTEMPTS} attempts is never claimed (the count would pass the
 * table's bound and abort the statement, wedging the batch); {@link ABANDON_GIVE_UP_SPENT}
 * resolves it. The service gives up on its own earlier, at its own attempt limit below the
-* bound, with {@link ABANDON_RESOLVE} and `gave_up`. Run it inside `withEnvironment`.
+* bound, with {@link ABANDON_RESOLVE} and `gave_up`. {@link ABANDON_SETTLE} excludes it by the
+* row lock; the interleaving where this claim's snapshot predates a settle's commit relies on
+* READ COMMITTED re-checking `resolved_at is null` after the lock and is not covered by a test, so
+* both statements must run at READ COMMITTED (or the caller handles 40001 by rolling back). Run
+* it inside `withEnvironment`.
 */
 declare const ABANDON_CLAIM = "with due as (\n  select id from auth.abandon_cases\n  where environment_id = $1 and resolved_at is null and attempts < 100\n    and next_attempt_at <= clock_timestamp()\n  order by next_attempt_at\n  limit $2\n  for update skip locked)\nupdate auth.abandon_cases c\nset attempts = c.attempts + 1,\n    next_attempt_at = clock_timestamp() + make_interval(secs => $3::float8 / 1000),\n    updated_at = clock_timestamp()\nfrom due\nwhere c.id = due.id\nreturning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts";
 /**
@@ -102,6 +106,12 @@ declare const ABANDON_RESOLVE = "update auth.abandon_cases\nset resolved_at = cl
 *   the claim's lock if it is still held, then re-evaluates its `where` against the new row
 *   version and returns **no row**. The caller must roll back the account and tell the person to
 *   sign up again: the sweep owns the case and will abandon the Organization.
+*
+* One interleaving has no test, because the real statement cannot be paused mid-scan: a claim
+* whose snapshot predates this statement's commit and which reaches the row after it. Its
+* safety rests on READ COMMITTED re-running the claim's `resolved_at is null` on the newest row
+* version once the lock is granted. **Both statements must run at READ COMMITTED**, or the
+* caller must handle SQLSTATE 40001 by rolling back.
 *
 * Under the default READ COMMITTED level (`withEnvironment` and the pool open plain
 * transactions) that re-evaluation is what Postgres does for an updated row. Under REPEATABLE
