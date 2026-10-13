@@ -359,7 +359,9 @@ describe('review round 1 of the work discovery', () => {
 
   test('the purge ages are constants the migration and the statements share', () => {
     expect(CONSUMED_PURGE_AGE_MS).toBe(15 * 86_400_000)
-    expect(IDEMPOTENCY_PURGE_AGE_MS).toBe(24 * 3_600_000)
+    // 26 hours: one more than the orphan age, so an attempt's key outlives its sweep's due time.
+    expect(IDEMPOTENCY_PURGE_AGE_MS).toBe(ORPHAN_SWEEP_AGE_MS + 3_600_000)
+    expect(IDEMPOTENCY_PURGE_AGE_MS).toBe(26 * 3_600_000)
     expect(migration.split("interval '15 days'").length - 1).toBe(3)
     expect(migration.split("interval '24 hours'").length - 1).toBe(3)
     expect(migration).not.toContain("interval '1 hour'")
@@ -443,6 +445,41 @@ describe('pending cleanups and the orphan sweep', () => {
     expect(migration).toContain("'purge_spent', 'orphan_sweep') THEN")
   })
 
+  test('the hour counts in 0014 are the constants: 25 hours cut and due, 26 hours purge hint, erase age', () => {
+    const hours = (ms: number) => `interval '${ms / 3_600_000} hours'`
+    expect(hours(ORPHAN_SWEEP_AGE_MS)).toBe("interval '25 hours'")
+    expect(hours(IDEMPOTENCY_PURGE_AGE_MS)).toBe("interval '26 hours'")
+    const trigger = migration.slice(
+      migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."note_idempotency_work"'),
+      migration.indexOf('CREATE FUNCTION "playbook"."orphan_sweep_done"')
+    )
+    expect(trigger).toContain(`NEW."created_at" + ${hours(IDEMPOTENCY_PURGE_AGE_MS)}`)
+    expect(trigger).toContain(`NEW."created_at" + ${hours(ORPHAN_SWEEP_AGE_MS)}`)
+    // The swept-through time is cut to the orphan age, not 24 hours.
+    expect(migration).toContain(`clock_timestamp() - ${hours(ORPHAN_SWEEP_AGE_MS)})`)
+    expect(migration).not.toContain("clock_timestamp() - interval '24 hours')")
+    // The idempotency_purge verification uses the purge age.
+    expect(migration).toContain(
+      `min(k."created_at") + ${hours(IDEMPOTENCY_PURGE_AGE_MS)} INTO v_next`
+    )
+    // Erasure deletes only keys at least the orphan age old.
+    expect(migration).toContain(
+      `k."created_at" <= clock_timestamp() - ${hours(ORPHAN_SWEEP_AGE_MS)}`
+    )
+  })
+
+  test('done removes the row only with the hint, and only when no key and no document remain', () => {
+    const done = migration.slice(
+      migration.indexOf('CREATE FUNCTION "playbook"."orphan_sweep_done"')
+    )
+    const del = done.indexOf('DELETE FROM "playbook"."orphan_sweeps"')
+    expect(del).toBeGreaterThan(done.indexOf('DELETE FROM "playbook"."work_hints"'))
+    expect(done.slice(done.indexOf('IF NOT EXISTS'), del)).toContain('"playbook"."documents"')
+    expect(done.slice(done.indexOf('IF NOT EXISTS'), del)).toContain(
+      '"playbook"."idempotency_keys"'
+    )
+  })
+
   test('the function keeps its signature, scope refusal, visit bound and grants', () => {
     expect(migration).toContain(
       'CREATE OR REPLACE FUNCTION "playbook"."organizations_with_work"(p_kind text, p_after_id text, p_batch integer)'
@@ -462,10 +499,8 @@ describe('pending cleanups and the orphan sweep', () => {
     )
     // The key-insert trigger notes hints only; it must not write orphan_sweeps (that would take a
     // row lock per attempt and queue an Organization's concurrent uploads behind each other).
-    const trigger = migration.slice(
-      migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."note_idempotency_work"'),
-      migration.indexOf('CREATE FUNCTION "playbook"."orphan_sweep_done"')
-    )
+    const start = migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."note_idempotency_work"')
+    const trigger = migration.slice(start, migration.indexOf('$$;', start))
     expect(trigger).not.toContain('orphan_sweeps')
     expect(trigger).toContain(`note_work"('orphan_sweep'`)
     // The done function locks the hint before it reads the attempts again.

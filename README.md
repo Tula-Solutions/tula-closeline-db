@@ -791,7 +791,7 @@ Organization ids and nothing else, in id order after `after_id`, each row with `
 (deleted, vector cleanup not recorded, five minutes after the delete), `consumed_purge` (done
 messages `CONSUMED_PURGE_AGE_MS` old, 15 days, above the queue's retention, and lapsed claims at their
 lease end; the only kind that returns the all-zero global scope), `idempotency_purge` (keys
-`IDEMPOTENCY_PURGE_AGE_MS` old, 24 hours, since core documents no age of its own), `purge_spent` and `orphan_sweep` (below). The hints are written by `SECURITY DEFINER`
+`IDEMPOTENCY_PURGE_AGE_MS` old, 26 hours, since core documents no age of its own), `purge_spent` and `orphan_sweep` (below). The hints are written by `SECURITY DEFINER`
 triggers on the tenant tables and only ever move a time earlier; the function moves a verified hint
 to the next due time, or removes it when no work is left, so a hint is never later than real work and
 a stale one is cleaned by the sweep that meets it. Hints another transaction is changing are skipped
@@ -868,19 +868,30 @@ and the service deletes such an orphan only once it is older than 24 hours. Ever
 an idempotency key, and the key insert trigger notes an `orphan_sweep` hint due `ORPHAN_SWEEP_AGE_MS`
 (25 hours) later, so an idle Organization with one failed upload is still named. **An upload attempt
 writes nothing else:** it takes the hint's key-share lock like every other kind, so concurrent attempts
-of one Organization never wait for each other. The discovery function reports the Organization while an
+of one Organization never wait for each other, except that the attempt which creates the hint, or
+lowers it to an earlier time, waits for a writer of the hint that is still open (two first attempts of
+an Organization with no hint queue briefly, and the hint ends at the earlier time). The discovery function reports the Organization while an
 upload attempt is newer than the time the service swept through (`orphan_sweeps.swept_through`), due 25
-hours after the oldest such attempt. The keys are purged after 24 hours, before an attempt is due, so the
-hint's own time counts as evidence too (a hint due at `d` stands for an attempt at `d` minus 25 hours).
+hours after the oldest such attempt. The keys are purged after 26 hours, an hour after an attempt is due,
+so a sweep that runs within that hour still finds them; for a later one the hint's own time counts as
+evidence too (a hint due at `d` stands for an attempt at `d` minus 25 hours).
 **What the service does:** sweep the Organization's stored objects older than 24 hours that have no
 document row, then run `ORPHAN_SWEEP_DONE` in that Organization's scope (`$2` the time through which
-objects were examined; the database cuts it to 24 hours before now and never moves the recorded time
-back). The function waits for any open upload attempt of the Organization, reads the attempts again,
+objects were examined; the database cuts it to 25 hours before now, `ORPHAN_SWEEP_AGE_MS`, because an
+attempt's key is made when its transaction starts and its object after, so a younger attempt is never
+counted as swept; it never moves the recorded time back). The function waits for any open upload
+attempt of the Organization, so call it under a short `lock_timeout` and retry; it reads the attempts again,
 and either moves the hint to 25 hours after the oldest attempt newer than the sweep (`more` true) or
-removes it (`more` false), so a newer attempt, or one racing the sweep, keeps its hint. A repeat is
-idempotent. The row and the hint stay when an Organization is removed (`remove_organization_rest` keeps
-them), since an attempt may have left an object only the sweep removes. Keep the idempotency purge at
-`IDEMPOTENCY_PURGE_AGE_MS` or older: a shorter age loses the evidence of an attempt before the sweep.
+removes it (`more` false), so a newer attempt, or one racing the sweep, keeps its hint. When it removes
+the hint and the Organization has no idempotency key and no document left, it removes the
+`orphan_sweeps` row as well; a later attempt starts again from nothing. A repeat is idempotent. The row
+and the hint stay when an Organization is removed (`remove_organization_rest` keeps them, and
+`ORGANIZATION_REMOVAL_STATUS` does not look at them), since an attempt may have left an object only the
+sweep removes. Erasure deletes the idempotency keys older than 25 hours and keeps the younger ones: they
+are the only evidence of attempts whose objects are not yet old enough to sweep, and the normal purge ages
+them out at 26 hours. Keep the idempotency purge at `IDEMPOTENCY_PURGE_AGE_MS` or older: a shorter age
+loses the evidence of an attempt before the sweep. A server clock stepped forward by 24 hours or more is
+outside what this protects.
 
 **Spent purges.** A document whose purge reached 20 attempts stays `deleted`, counts toward the quota
 and is never claimed again. `DOCUMENT_LIST_SPENT_PURGES` lists them per Organization by id
@@ -897,7 +908,7 @@ transaction; a completed row is never rewritten (trigger `idempotency_keys_final
 `IDEMPOTENCY_LOOKUP` and compares the request hash. An internal call (remove-all) has no user and
 uses `INTERNAL_CALL_USER_ID`. `IDEMPOTENCY_PURGE` is per Organization and bounded, and removes keys
 at least `IDEMPOTENCY_MIN_PURGE_AGE_MS` (an hour) old; the discovery hints keys at
-`IDEMPOTENCY_PURGE_AGE_MS` (24 hours), so pass that age.
+`IDEMPOTENCY_PURGE_AGE_MS` (26 hours, an hour more than the orphan sweep's age), so pass that age.
 
 **Statements.** Exported from the library, exactly as the integration tests run them (the strings
 are plain text, not type-checked against the schema). Every time is the database clock; callers pass

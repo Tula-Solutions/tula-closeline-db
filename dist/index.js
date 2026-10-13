@@ -874,8 +874,8 @@ delete from playbook.idempotency_keys k
 using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`;
 var CONSUMED_PURGE_AGE_MS = 15 * 24 * 60 * 60 * 1000;
-var IDEMPOTENCY_PURGE_AGE_MS = 24 * 60 * 60 * 1000;
 var ORPHAN_SWEEP_AGE_MS = 25 * 60 * 60 * 1000;
+var IDEMPOTENCY_PURGE_AGE_MS = ORPHAN_SWEEP_AGE_MS + 60 * 60 * 1000;
 var REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
 var DOCUMENT_ERASE_BATCH = `with t as (select clock_timestamp() as now),
 cand as (

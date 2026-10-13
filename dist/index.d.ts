@@ -10440,19 +10440,24 @@ declare const IDEMPOTENCY_PURGE: string;
 */
 declare const CONSUMED_PURGE_AGE_MS: number;
 /**
-* How old an idempotency key is when it becomes purgeable, in milliseconds: 24 hours. Core documents
-* no age for its own keys, so this is the playbook's. `organizations_with_work` hints
-* `idempotency_purge` at this age; {@link IDEMPOTENCY_PURGE} still accepts any age above
-* {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}.
-*/
-declare const IDEMPOTENCY_PURGE_AGE_MS: number;
-/**
 * How old an upload attempt is when its stored object may be an orphan worth sweeping, in
-* milliseconds: 25 hours. The service deletes an orphan object only when it is older than 24 hours,
-* so an attempt made at `t` is swept no earlier than `t` plus this. `organizations_with_work`
-* reports `orphan_sweep` at this age after the oldest attempt not yet marked swept.
+* milliseconds: 25 hours. The service deletes an orphan object only when it is older than 24 hours;
+* the extra hour covers the time between an attempt's start (its key's `created_at`) and the object
+* being written. `organizations_with_work` reports `orphan_sweep` at this age after the oldest
+* attempt not yet marked swept, and {@link ORPHAN_SWEEP_DONE} cuts the swept-through time to this
+* long before now, so an attempt counts as swept only when its object was surely old enough to be
+* deleted.
 */
 declare const ORPHAN_SWEEP_AGE_MS: number;
+/**
+* How old an idempotency key is when it becomes purgeable, in milliseconds: 26 hours, one hour more
+* than {@link ORPHAN_SWEEP_AGE_MS}, so the key of an upload attempt is still there when its orphan
+* sweep is due. Core documents no age for its own keys, so this is the playbook's.
+* `organizations_with_work` hints `idempotency_purge` at this age; {@link IDEMPOTENCY_PURGE} still
+* accepts any age above {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}, but a service that purges younger keys
+* loses the evidence of attempts not yet swept: pass this.
+*/
+declare const IDEMPOTENCY_PURGE_AGE_MS: number;
 /**
 * The route the remove-all call stores its idempotency key under. Pass it to
 * {@link ORGANIZATION_REMOVE_REST} so the call's own key survives the removal it belongs to.
@@ -10561,8 +10566,8 @@ declare const ORGANIZATIONS_WITH_WORK: string;
 * Mark an Organization's orphan sweep done through a time: `$1` Organization, `$2` the time through
 * which stored objects were examined (every object that an upload attempt at or before `$2` could
 * have stored was looked at). Run it in that Organization's scope (any other scope is refused),
-* after the sweep. The database cuts `$2` to 24 hours before now (an object younger than that is
-* never swept) and never moves the recorded time back, so a repeat or an older time is harmless.
+* after the sweep. The database cuts `$2` to {@link ORPHAN_SWEEP_AGE_MS} (25 hours) before now (an
+* object younger than that is never counted as swept) and never moves the recorded time back, so a repeat or an older time is harmless.
 * Returns `swept_through` (what is recorded) and `more`: true while an upload attempt newer than
 * that exists, in which case the work hint stays, due {@link ORPHAN_SWEEP_AGE_MS} after the oldest
 * such attempt; false when none does and the hint is removed. It waits for any open upload attempt

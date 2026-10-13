@@ -373,7 +373,7 @@ describe('work discovery, erasure and spent purges', () => {
           await inOrg(org, (c) =>
             c.query(
               `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
-               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '25 hours')`,
+               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '27 hours')`,
               [org, newUser(), `key-${hex()}`, hashOf('x')]
             )
           )
@@ -969,8 +969,9 @@ describe('work discovery, erasure and spent purges', () => {
       await inOrg(org, (c) => c.query(CONSUMED_COMPLETE, ['c', org, 'm1', token]))
       await inOrg(org, (c) =>
         c.query(
-          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
-           values ($1, $2, 'documents.upload', 'k1', $3), ($1, $4, $5, 'k2', $3)`,
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+           values ($1, $2, 'documents.upload', 'k1', $3, clock_timestamp() - interval '30 hours'),
+                  ($1, $4, $5, 'k2', $3, clock_timestamp())`,
           [org, newUser(), hashOf('x'), ZERO_USER, REMOVE_ALL_IDEMPOTENCY_ROUTE]
         )
       )
@@ -1077,7 +1078,8 @@ describe('work discovery, erasure and spent purges', () => {
         no_messages: true,
         removed: true,
       })
-      // Idempotent by end state; the remove-all call's own key survives, the upload key does not.
+      // Idempotent by end state; the remove-all call's own key survives, and so does no upload key
+      // older than 25 hours (a younger one would stay for the sweep; the next test covers it).
       expect(
         (
           await inOrg(org, (c) =>
@@ -1680,7 +1682,7 @@ describe('work discovery, erasure and spent purges', () => {
       expect(await named(org)).toBe(true)
       await attempt(org)
       const marked = await done(org)
-      // The attempt made just now is not covered by a sweep through 24 hours ago.
+      // The attempt made just now is not covered by a sweep through 25 hours ago.
       expect(marked.rows[0]).toMatchObject({ more: true })
       const hint = await hintOf('orphan_sweep', org)
       expect(hint).toBeDefined()
@@ -1693,11 +1695,127 @@ describe('work discovery, erasure and spent purges', () => {
       const older = await done(org, new Date(Date.now() - 72 * 3_600_000))
       expect(older.rows[0]).toMatchObject({ more: true })
       expect((await sweptOf(org))?.getTime()).toBeGreaterThanOrEqual(before.getTime())
-      // A time in the future is cut to 24 hours before now.
+      // A time in the future is cut to 25 hours before now.
       const future = await done(org, new Date(Date.now() + 10 * 86_400_000))
-      expect((future.rows[0].swept_through as Date).getTime()).toBeLessThan(
-        Date.now() - 23 * 3_600_000
+      const cut = (future.rows[0].swept_through as Date).getTime()
+      expect(cut).toBeLessThan(Date.now() - 24.9 * 3_600_000)
+      expect(cut).toBeGreaterThan(Date.now() - 25.1 * 3_600_000)
+    })
+
+    test('K1: an attempt less than 25 hours old is not covered by a sweep at the ceiling: two attempts 59 minutes apart', async () => {
+      // Now is the first attempt's due time (it was made a moment more than 25 hours ago); the
+      // second was made 59 minutes after it, so it is 24h01m old and its due time is 59 minutes on.
+      const org = newOrg()
+      await insertKey(org, 25.01)
+      await insertKey(org, 25.01 - 59 / 60)
+      expect(await named(org)).toBe(true)
+      // The ceiling: the cut is now - 25 hours, which covers the first and not the second (a cut of
+      // 24 hours would have counted the second as swept although its object may be too young).
+      const marked = await done(org, new Date())
+      expect(marked.rows[0]).toMatchObject({ more: true })
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      const wait = new Date(hint.due_at).getTime() - Date.now()
+      expect(wait).toBeGreaterThan(50 * 60_000)
+      expect(wait).toBeLessThan(60 * 60_000)
+      expect(await named(org)).toBe(false)
+      // A second Organization, an hour later in the same story: the second attempt is due and
+      // covered by the ceiling, and only then is the Organization finished.
+      const later = newOrg()
+      await insertKey(later, 26.01)
+      await insertKey(later, 26.01 - 59 / 60)
+      expect(await named(later)).toBe(true)
+      expect((await done(later, new Date())).rows[0]).toMatchObject({ more: false })
+      expect(await named(later)).toBe(false)
+      expect(await hintOf('orphan_sweep', later)).toBeUndefined()
+    })
+
+    test('K2: erasure keeps the keys younger than 25 hours, so a later attempt is still swept', async () => {
+      const org = newOrg()
+      // Now is the first attempt's due time; the second was 30 minutes after it.
+      await insertKey(org, 25.01)
+      await insertKey(org, 25.01 - 0.5)
+      const rest = await inOrg(org, (c) =>
+        c.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
       )
+      expect(rest.rows[0]).toEqual({ removed: true })
+      // The old key is gone with the erasure; the younger one is the evidence that stays.
+      expect(
+        (await inOrg(org, (c) => c.query('select 1 from playbook.idempotency_keys'))).rowCount
+      ).toBe(1)
+      expect(await named(org)).toBe(true)
+      // The sweep covers the first; the second stays pending and keeps the hint.
+      expect((await done(org, new Date())).rows[0]).toMatchObject({ more: true })
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      const wait = new Date(hint.due_at).getTime() - Date.now()
+      expect(wait).toBeGreaterThan(20 * 60_000)
+      expect(wait).toBeLessThan(40 * 60_000)
+      expect(await named(org)).toBe(false)
+    })
+
+    test('K3: after erasure, a sweep and done leave neither the hint nor the row; a document keeps the row', async () => {
+      const org = newOrg()
+      await insertKey(org, 30)
+      await inOrg(org, (c) =>
+        c.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
+      )
+      expect(await named(org)).toBe(true)
+      expect((await done(org)).rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', org)).toBeUndefined()
+      expect(
+        (await asOwner(org, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(0)
+      // A later attempt starts again from nothing: the hint is back, the row is not needed yet.
+      await attempt(org)
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+      // With a document in the Organization the row stays when the hint goes.
+      const kept = newOrg()
+      await mustAdd(kept)
+      await insertKey(kept, 30)
+      expect(await named(kept)).toBe(true)
+      expect((await done(kept)).rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', kept)).toBeUndefined()
+      expect(
+        (await asOwner(kept, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(1)
+    })
+
+    test('K4: two open transactions each inserting a key for an Organization with no hint: the second waits for the first, and the hint resolves to the earlier time', async () => {
+      const org = newOrg()
+      // The earlier-starting transaction inserts second, so it lowers the hint the first wrote.
+      const early = await open(org)
+      const lateStarter = await open(org)
+      try {
+        await lateStarter.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        const writing = early.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        await untilBlocked(early.pid)
+        await lateStarter.client.query('commit')
+        await writing
+        await early.client.query('commit')
+      } finally {
+        await finish(early, lateStarter)
+      }
+      const earliest = (
+        await asOwner(org, (c) =>
+          c.query(
+            `select min(created_at) + interval '25 hours' as d from playbook.idempotency_keys`
+          )
+        )
+      ).rows[0].d as Date
+      expect(new Date((await hintOf('orphan_sweep', org)).due_at)).toEqual(new Date(earliest))
     })
 
     test('an Organization that never attempted an upload has nothing to mark, and done creates no hint', async () => {
