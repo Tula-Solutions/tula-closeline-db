@@ -3092,7 +3092,7 @@ describe('the playbook schema', () => {
       rmSync(folder, { recursive: true, force: true })
     })
 
-    test('0009 and 0010 apply on a database at 0008 holding auth rows, and change nothing there', async () => {
+    test('0009 through 0013 apply on a database at 0008 holding auth rows, and change nothing there', async () => {
       const name = `it_migrate_playbook_${suffix}`
       await admin.query(`create database "${name}" owner closeline_owner`)
       databases.push(name)
@@ -3131,7 +3131,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        expect(applied.rows[0].n).toBe(13)
+        // 0000 to 0013: the eight before the playbook plus 0009 to 0013.
+        expect(applied.rows[0].n).toBe(14)
         await runMigrations(url.toString())
       } finally {
         await pool.end()
