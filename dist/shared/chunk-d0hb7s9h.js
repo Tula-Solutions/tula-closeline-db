@@ -1428,13 +1428,10 @@ import { sql as sql21 } from "drizzle-orm";
 import { check as check16, text as text36, timestamp as timestamp29 } from "drizzle-orm/pg-core";
 var playbookOrphanSweeps2 = playbookSchema2.table("orphan_sweeps", {
   organizationId: text36("organization_id").primaryKey(),
-  pendingSince: timestamp29("pending_since", { withTimezone: true }),
-  lastAttemptAt: timestamp29("last_attempt_at", { withTimezone: true }).notNull(),
-  sweptThrough: timestamp29("swept_through", { withTimezone: true })
-}, (t) => [
+  sweptThrough: timestamp29("swept_through", { withTimezone: true }).notNull()
+}, () => [
   check16("orphan_sweeps_organization_id_shape", sql21.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
-  check16("orphan_sweeps_organization_not_global", sql21.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)),
-  check16("orphan_sweeps_pending_not_after_last", sql21`${t.pendingSince} <= ${t.lastAttemptAt}`)
+  check16("orphan_sweeps_organization_not_global", sql21.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`))
 ]);
 // src/schema/playbook-work-hints.ts
 import { sql as sql22 } from "drizzle-orm";

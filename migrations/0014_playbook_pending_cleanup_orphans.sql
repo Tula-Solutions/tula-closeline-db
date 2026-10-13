@@ -1,11 +1,8 @@
 CREATE TABLE "playbook"."orphan_sweeps" (
 	"organization_id" text PRIMARY KEY NOT NULL,
-	"pending_since" timestamp with time zone,
-	"last_attempt_at" timestamp with time zone NOT NULL,
-	"swept_through" timestamp with time zone,
+	"swept_through" timestamp with time zone NOT NULL,
 	CONSTRAINT "orphan_sweeps_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
-	CONSTRAINT "orphan_sweeps_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
-	CONSTRAINT "orphan_sweeps_pending_not_after_last" CHECK ("playbook"."orphan_sweeps"."pending_since" <= "playbook"."orphan_sweeps"."last_attempt_at")
+	CONSTRAINT "orphan_sweeps_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000')
 );
 --> statement-breakpoint
 ALTER TABLE "playbook"."work_hints" DROP CONSTRAINT "work_hints_kind_known";--> statement-breakpoint
@@ -18,22 +15,26 @@ ALTER TABLE "playbook"."work_hints" ADD CONSTRAINT "work_hints_kind_known" CHECK
 --
 -- 0014 adds two things. (1) documents_cleanup_idx gains the id (above), so the pending-cleanup list's
 -- keyset (deleted_at, id) is read from the index in order; its predicate is the one the
--- cleanup_pending verification uses. (2) The `orphan_sweep` work kind and its marker table
--- `orphan_sweeps`. The index build above runs inside the migration transaction (not CONCURRENTLY)
--- and blocks writes to playbook.documents while it builds; acceptable while the table is small.
+-- cleanup_pending verification uses. (2) The `orphan_sweep` work kind and `orphan_sweeps`, which
+-- remembers the time the service swept through. The index build above runs inside the migration
+-- transaction (not CONCURRENTLY) and blocks writes to playbook.documents while it builds;
+-- acceptable while the table is small.
+--
+-- Why an upload attempt writes no marker. Every attempt inserts an idempotency key; its trigger
+-- notes the hint (a key-share lookup first, as every kind does, so concurrent attempts of one
+-- Organization never wait for each other) and nothing else. A first design wrote a per-Organization
+-- row on every attempt: its ON CONFLICT DO UPDATE took a row lock each time, so concurrent attempts
+-- queued behind each other until commit. Here the attempts are the keys, the oldest unswept one is
+-- the hint's time, and only the service's own ORPHAN_SWEEP_DONE writes orphan_sweeps.
 
--- Backfill the marker and its hint from the upload attempts that exist now (keys older than 24 hours
--- are purged, so only recent attempts are known). Row-level security is lifted on idempotency_keys
--- for this only, inside the migration's transaction; the new table has none yet.
+-- Backfill the hints from the upload attempts that exist now (keys older than 24 hours are purged,
+-- so only recent attempts are known). Row-level security is lifted on idempotency_keys for this
+-- only, inside the migration's transaction.
 ALTER TABLE "playbook"."idempotency_keys" NO FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-INSERT INTO "playbook"."orphan_sweeps" ("organization_id", "pending_since", "last_attempt_at")
-  SELECT k."organization_id", min(k."created_at"), max(k."created_at")
-    FROM "playbook"."idempotency_keys" k GROUP BY k."organization_id";
---> statement-breakpoint
 INSERT INTO "playbook"."work_hints" ("kind", "organization_id", "due_at")
-  SELECT 'orphan_sweep', s."organization_id", s."pending_since" + interval '25 hours'
-    FROM "playbook"."orphan_sweeps" s;
+  SELECT 'orphan_sweep', k."organization_id", min(k."created_at") + interval '25 hours'
+    FROM "playbook"."idempotency_keys" k GROUP BY k."organization_id";
 --> statement-breakpoint
 ALTER TABLE "playbook"."idempotency_keys" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -46,37 +47,80 @@ ALTER TABLE "playbook"."orphan_sweeps" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "orphan_sweeps_tenant_isolation" ON "playbook"."orphan_sweeps" AS PERMISSIVE FOR ALL TO PUBLIC USING ("organization_id" = NULLIF(current_setting('app.organization_id', true), '')) WITH CHECK ("organization_id" = NULLIF(current_setting('app.organization_id', true), ''));
 --> statement-breakpoint
 
--- Privileges. Only the upload-attempt trigger (SECURITY DEFINER) creates and advances the attempt
--- times; the role reads the row and may update the two columns ORPHAN_SWEEP_DONE moves, nothing else,
--- and cannot insert or delete (a row is the triggers' and the offboarding function's).
+-- Privileges: the role reads its row and writes nothing; orphan_sweep_done (below, SECURITY DEFINER)
+-- is the only writer.
 REVOKE INSERT, UPDATE, DELETE ON "playbook"."orphan_sweeps" FROM closeline_playbook;
 --> statement-breakpoint
-GRANT UPDATE ("pending_since", "swept_through") ON "playbook"."orphan_sweeps" TO closeline_playbook;
---> statement-breakpoint
 
--- Every upload attempt writes an idempotency key, so the key insert notes the marker and the hint.
--- The marker upsert comes first and the hint last, as the other triggers order their locks.
--- pending_since only moves earlier here (least ignores a null), so it stays a lower bound on the
--- oldest unexamined attempt; the hint is due ORPHAN_SWEEP_AGE_MS (25 hours: the service deletes an
--- orphan only when older than 24 hours) after that bound, which is never later than the real work.
+-- Every upload attempt writes an idempotency key, so the key insert notes the hint, due
+-- ORPHAN_SWEEP_AGE_MS (25 hours: the service deletes an orphan only when older than 24 hours) after
+-- the attempt. The hint is the last lock the transaction takes, and note_work only moves it earlier.
 CREATE OR REPLACE FUNCTION "playbook"."note_idempotency_work"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
-DECLARE
-  v_pending timestamptz;
 BEGIN
   PERFORM "playbook"."note_work"('idempotency_purge', NEW."organization_id", NEW."created_at" + interval '24 hours');
-  INSERT INTO "playbook"."orphan_sweeps" AS s ("organization_id", "pending_since", "last_attempt_at")
-  VALUES (NEW."organization_id", NEW."created_at", NEW."created_at")
-  ON CONFLICT ("organization_id") DO UPDATE
-    SET "pending_since" = least(s."pending_since", EXCLUDED."pending_since"),
-        "last_attempt_at" = greatest(s."last_attempt_at", EXCLUDED."last_attempt_at")
-  RETURNING s."pending_since" INTO v_pending;
-  PERFORM "playbook"."note_work"('orphan_sweep', NEW."organization_id", v_pending + interval '25 hours');
+  PERFORM "playbook"."note_work"('orphan_sweep', NEW."organization_id", NEW."created_at" + interval '25 hours');
   RETURN NULL;
 END
 $$;
 --> statement-breakpoint
 
+-- Record that the service swept an Organization's stored objects for orphans through a time, and
+-- keep the hint right. It must run in that Organization's scope. `p_through` is cut to 24 hours
+-- before now (an object younger than that is never swept, and no upload transaction lives that
+-- long), and the recorded time never goes back. It then takes the hint FOR UPDATE, which waits for
+-- every open upload attempt of the Organization (they hold the hint FOR KEY SHARE), reads the
+-- attempts again (a fresh snapshot, so it sees the ones that committed meanwhile) and decides:
+--   * an attempt newer than the swept time exists (or the hint stands for one): the hint is due 25
+--     hours after the oldest such attempt (inserted if missing), and `more` is true;
+--   * none: the hint is removed, `more` is false.
+-- Why a racing attempt cannot lose a pending sweep. (a) The attempt holds the hint FOR KEY SHARE
+-- (or is about to take it): this function's FOR UPDATE waits for it, then its key is visible to the
+-- read that follows, so the hint is kept at or before that attempt's time. (b) The attempt reaches
+-- the hint after this function holds it: the attempt waits for this function's commit, then
+-- re-checks the hint (note_work): if it was removed or moved later than the attempt's time, the
+-- attempt writes it again at its own time. (c) The attempt's key is not committed when this function
+-- reads: that is case (a), the attempt holds the lock. The upload attempts write nothing else this
+-- function could wait on or conflict with, so it cannot deadlock with them: the hint is their last
+-- lock.
+CREATE FUNCTION "playbook"."orphan_sweep_done"(p_organization_id text, p_through timestamptz)
+  RETURNS TABLE ("swept_through" timestamptz, "more" boolean) LANGUAGE plpgsql SECURITY DEFINER
+  SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_column
+DECLARE
+  v_swept timestamptz;
+  v_due timestamptz;
+  v_next timestamptz;
+BEGIN
+  IF p_organization_id IS NULL OR p_organization_id !~ '^org_[0-9a-f]{32}$'
+     OR p_organization_id = 'org_00000000000000000000000000000000' THEN
+    RAISE EXCEPTION 'playbook.orphan_sweep_organization: not an Organization id' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF current_setting('app.organization_id', true) IS DISTINCT FROM p_organization_id THEN
+    RAISE EXCEPTION 'playbook.orphan_sweep_scope: the transaction is not scoped to this Organization' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  INSERT INTO "playbook"."orphan_sweeps" AS s ("organization_id", "swept_through")
+  VALUES (p_organization_id, least(coalesce(p_through, '-infinity'), clock_timestamp() - interval '24 hours'))
+  ON CONFLICT ("organization_id") DO UPDATE SET "swept_through" = greatest(s."swept_through", EXCLUDED."swept_through")
+  RETURNING s."swept_through" INTO v_swept;
+  SELECT h."due_at" INTO v_due FROM "playbook"."work_hints" h
+    WHERE h."kind" = 'orphan_sweep' AND h."organization_id" = p_organization_id FOR UPDATE;
+  SELECT least(
+    (SELECT min(k."created_at") + interval '25 hours' FROM "playbook"."idempotency_keys" k
+      WHERE k."organization_id" = p_organization_id AND k."created_at" > v_swept),
+    CASE WHEN v_due - interval '25 hours' > v_swept THEN v_due END) INTO v_next;
+  IF v_next IS NULL THEN
+    DELETE FROM "playbook"."work_hints" w WHERE w."kind" = 'orphan_sweep' AND w."organization_id" = p_organization_id;
+  ELSIF v_due IS NULL THEN
+    PERFORM "playbook"."note_work"('orphan_sweep', p_organization_id, v_next);
+  ELSE
+    UPDATE "playbook"."work_hints" w SET "due_at" = v_next
+      WHERE w."kind" = 'orphan_sweep' AND w."organization_id" = p_organization_id;
+  END IF;
+  RETURN QUERY SELECT v_swept, v_next IS NOT NULL;
+END
+$$;
+--> statement-breakpoint
 -- Find the Organizations with due work of one kind, in id order after `p_after_id`, at most
 -- `p_batch` returned (clamped to 1..500 here, whatever the caller passes) and at most four times
 -- that many hints visited (never more than 2000), so one call holds a bounded number of locks
@@ -109,7 +153,8 @@ $$;
 --   consumed_purge  two first-entry reads, consumed_message_done_idx and consumed_message_lease_idx.
 --   idempotency     first entry of idempotency_keys_purge_idx for the Organization (min).
 --   purge_spent     Index Only Scan documents_spent_purge_idx, the Organization's spent documents.
---   orphan_sweep    Index Scan orphan_sweeps_pkey, the Organization's one row.
+--   orphan_sweep    Index Scan orphan_sweeps_pkey (one row) and a first-entry read of
+--                   idempotency_keys_purge_idx above the swept-through time.
 CREATE OR REPLACE FUNCTION "playbook"."organizations_with_work"(p_kind text, p_after_id text, p_batch integer)
   RETURNS TABLE ("organization_id" text, "resume_after" text) LANGUAGE plpgsql SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp AS $$
@@ -133,7 +178,7 @@ BEGIN
     RAISE EXCEPTION 'playbook.work_kind: unknown kind of work' USING ERRCODE = 'invalid_parameter_value';
   END IF;
   FOR v_hint IN
-    SELECT h."organization_id" AS org FROM "playbook"."work_hints" h
+    SELECT h."organization_id" AS org, h."due_at" AS due FROM "playbook"."work_hints" h
     WHERE h."kind" = p_kind AND h."organization_id" > v_after AND h."due_at" <= clock_timestamp()
       AND (p_kind = 'consumed_purge' OR h."organization_id" <> v_global)
     ORDER BY h."organization_id"
@@ -163,10 +208,19 @@ BEGIN
       SELECT min(k."created_at") + interval '24 hours' INTO v_next FROM "playbook"."idempotency_keys" k
         WHERE k."organization_id" = v_hint.org;
     ELSIF p_kind = 'orphan_sweep' THEN
-      -- The object store cannot be looked at from here, so "work exists" is the marker's: an upload
-      -- attempt not yet covered by a sweep (pending_since set), due ORPHAN_SWEEP_AGE_MS later.
-      SELECT s."pending_since" + interval '25 hours' INTO v_next FROM "playbook"."orphan_sweeps" s
-        WHERE s."organization_id" = v_hint.org;
+      -- The object store cannot be looked at from here, so "work exists" is: an upload attempt
+      -- newer than the time the service swept through (orphan_sweeps). The attempts are the
+      -- idempotency keys, which are purged after IDEMPOTENCY_PURGE_AGE_MS (24 hours), before an
+      -- attempt is due (25 hours), so the hint's own time is evidence too: a hint due at d stands
+      -- for an attempt at d - 25 hours, and counts while that is newer than the sweep.
+      SELECT least(
+        (SELECT min(k."created_at") + interval '25 hours' FROM "playbook"."idempotency_keys" k
+          WHERE k."organization_id" = v_hint.org
+            AND k."created_at" > coalesce((SELECT s."swept_through" FROM "playbook"."orphan_sweeps" s
+                                            WHERE s."organization_id" = v_hint.org), '-infinity')),
+        CASE WHEN v_hint.due - interval '25 hours' > coalesce((SELECT s."swept_through" FROM "playbook"."orphan_sweeps" s
+                                                                 WHERE s."organization_id" = v_hint.org), '-infinity')
+             THEN v_hint.due END) INTO v_next;
     ELSE
       SELECT min(d."updated_at") INTO v_next FROM "playbook"."documents" d
         WHERE d."organization_id" = v_hint.org AND d."state" = 'deleted' AND d."purge_attempts" >= 20;
@@ -226,13 +280,13 @@ BEGIN
   RETURN true;
 END
 $$;
--- (0014: the orphan_sweep hint and its marker row stay, like the remove-all key's purge hint: an
--- upload attempt of this Organization may have left an object that only the sweep removes.)
+-- (0014: the orphan_sweep hint and the orphan_sweeps row stay, like the remove-all key's purge hint:
+-- an upload attempt of this Organization may have left an object that only the sweep removes.)
 --> statement-breakpoint
--- The functions above keep their signatures, so their grants stand; they are stated again so the
--- migration is the whole truth about who may call them.
-REVOKE ALL ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text) FROM PUBLIC;
+-- The replaced functions keep their signatures, so their grants stand; they are stated again so
+-- the migration is the whole truth about who may call them.
+REVOKE ALL ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text), "playbook"."orphan_sweep_done"(text, timestamptz) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text) TO closeline_playbook;
+GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text), "playbook"."orphan_sweep_done"(text, timestamptz) TO closeline_playbook;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION "playbook"."note_idempotency_work"() FROM PUBLIC;

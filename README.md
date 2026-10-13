@@ -650,7 +650,7 @@ its step, attempt count, counts and the object key of its parsed intermediate.
 | `index_settings` | the embedding model and dimension of an Organization (ADR 0010) |
 | `consumed_message` | the kit's `ProcessedStore` table |
 | `idempotency_keys` | the outcome of one upload or internal call per Organization, user, route and client key; core's pattern without the foreign key |
-| `orphan_sweeps` | the marker behind the `orphan_sweep` kind, one row per Organization that has attempted an upload: newest attempt, the oldest attempt not yet swept, and the time swept through; written by the upload-attempt trigger and by `ORPHAN_SWEEP_DONE` (two columns) |
+| `orphan_sweeps` | the time the service swept an Organization's stored objects for orphans through, one row per Organization that has marked a sweep; read-only to the role, written only by `ORPHAN_SWEEP_DONE` (`playbook.orphan_sweep_done`) |
 | `work_hints` | **not a tenant table**: which Organizations may have work of which kind from when; the registry `organizations_with_work` reads (no service role has any privilege on it) |
 
 **Document states** (`DOCUMENT_STATES`, a check constraint, the names of ADR 0016): `uploaded`,
@@ -865,20 +865,22 @@ list has no delay). The list is a plan-tested index read under a generic plan.
 
 **Orphan objects.** An upload whose outcome was unknown can leave a stored object with no document row,
 and the service deletes such an orphan only once it is older than 24 hours. Every upload attempt writes
-an idempotency key, and the key insert trigger notes the marker `orphan_sweeps` and an `orphan_sweep`
-hint due `ORPHAN_SWEEP_AGE_MS` (25 hours) later, so an idle Organization with one failed upload is still
-named. Why a table and not the hint: the keys are purged after 24 hours, before the hint is due, and the
-hint is removed when there is no work, so the memory of what has been swept must live somewhere else.
-The marker holds `last_attempt_at` (newest attempt), `pending_since` (a lower bound on the oldest
-attempt not yet swept, null when none) and `swept_through`. The discovery function reports the
-Organization when `pending_since` is set, due `pending_since + 25 hours`, and removes the hint when it is
-null. **What the service does:** sweep the Organization's stored objects older than 24 hours that have
-no document row, then run `ORPHAN_SWEEP_DONE` (`$2` the time through which objects were examined: an
-attempt at or before it must have had its object looked at). The statement clears `pending_since` when no
-attempt is newer, and otherwise moves it up to that time, so a newer attempt, or one that raced the sweep,
-keeps the hint. A repeat is idempotent. The marker row stays when an Organization is removed
-(`remove_organization_rest` keeps it and its hint), since an attempt may have left an object only the
-sweep removes.
+an idempotency key, and the key insert trigger notes an `orphan_sweep` hint due `ORPHAN_SWEEP_AGE_MS`
+(25 hours) later, so an idle Organization with one failed upload is still named. **An upload attempt
+writes nothing else:** it takes the hint's key-share lock like every other kind, so concurrent attempts
+of one Organization never wait for each other. The discovery function reports the Organization while an
+upload attempt is newer than the time the service swept through (`orphan_sweeps.swept_through`), due 25
+hours after the oldest such attempt. The keys are purged after 24 hours, before an attempt is due, so the
+hint's own time counts as evidence too (a hint due at `d` stands for an attempt at `d` minus 25 hours).
+**What the service does:** sweep the Organization's stored objects older than 24 hours that have no
+document row, then run `ORPHAN_SWEEP_DONE` in that Organization's scope (`$2` the time through which
+objects were examined; the database cuts it to 24 hours before now and never moves the recorded time
+back). The function waits for any open upload attempt of the Organization, reads the attempts again,
+and either moves the hint to 25 hours after the oldest attempt newer than the sweep (`more` true) or
+removes it (`more` false), so a newer attempt, or one racing the sweep, keeps its hint. A repeat is
+idempotent. The row and the hint stay when an Organization is removed (`remove_organization_rest` keeps
+them), since an attempt may have left an object only the sweep removes. Keep the idempotency purge at
+`IDEMPOTENCY_PURGE_AGE_MS` or older: a shorter age loses the evidence of an attempt before the sweep.
 
 **Spent purges.** A document whose purge reached 20 attempts stays `deleted`, counts toward the quota
 and is never claimed again. `DOCUMENT_LIST_SPENT_PURGES` lists them per Organization by id
@@ -1505,14 +1507,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `ORPHAN_SWEEP_DONE`:
 
     ```sql
-    with s as (select least($2::timestamptz, clock_timestamp()) as t)
-    update playbook.orphan_sweeps o
-    set swept_through = greatest(coalesce(o.swept_through, '-infinity'), (select t from s)),
-        pending_since = case
-          when o.last_attempt_at <= greatest(coalesce(o.swept_through, '-infinity'), (select t from s)) then null
-          else greatest(coalesce(o.pending_since, '-infinity'), greatest(coalesce(o.swept_through, '-infinity'), (select t from s))) end
-    where o.organization_id = $1
-    returning o.swept_through, (o.pending_since is not null) as more
+    select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)
     ```
 
     `ORGANIZATIONS_WITH_WORK`:

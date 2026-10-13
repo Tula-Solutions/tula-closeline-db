@@ -8401,16 +8401,14 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 /**
-* The marker behind the `orphan_sweep` work kind, one row per Organization that has ever attempted
-* an upload. A **tenant table** (row-level security, fail-closed). The idempotency-key insert
-* trigger (every upload attempt writes a key) writes it as `SECURITY DEFINER`: `last_attempt_at` is
-* the newest attempt, `pending_since` a lower bound on the oldest attempt whose stored object the
-* service has not yet examined (null when none is pending). The service moves it with
-* `ORPHAN_SWEEP_DONE`, which sets `swept_through` (the time through which objects were examined) and
-* clears or advances `pending_since`; it can update those two columns and nothing else. The
-* discovery function reports an Organization as having work when `pending_since` is set, due
-* `pending_since + ORPHAN_SWEEP_AGE_MS`. It outlives the work hint and the idempotency keys (which
-* are purged earlier than the orphan age), which is why it is a table and not a hint column.
+* What the `orphan_sweep` work kind remembers between sweeps: one row per Organization, the time
+* through which the service has swept stored objects for orphans (`swept_through`). A **tenant
+* table** (row-level security, fail-closed). It is written only by `playbook.orphan_sweep_done`
+* (`ORPHAN_SWEEP_DONE`), never by an upload attempt, so concurrent attempts of one Organization
+* share no row and never wait for each other. The upload attempts themselves are the idempotency
+* keys (`created_at`), and the work hint holds the oldest unswept one; the discovery function
+* reports an Organization when an attempt is newer than `swept_through`. The role can read its row
+* and cannot write it directly.
 */
 declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 	name: "orphan_sweeps";
@@ -8433,40 +8431,6 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pendingSince: PgColumn_ffrhhp36<{
-			name: "pending_since";
-			tableName: "orphan_sweeps";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		lastAttemptAt: PgColumn_ffrhhp36<{
-			name: "last_attempt_at";
-			tableName: "orphan_sweeps";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
 		sweptThrough: PgColumn_ffrhhp36<{
 			name: "swept_through";
 			tableName: "orphan_sweeps";
@@ -8474,7 +8438,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			columnType: "PgTimestamp";
 			data: Date;
 			driverParam: string;
-			notNull: false;
+			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;

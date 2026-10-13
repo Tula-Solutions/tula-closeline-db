@@ -8584,16 +8584,14 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 /**
-* The marker behind the `orphan_sweep` work kind, one row per Organization that has ever attempted
-* an upload. A **tenant table** (row-level security, fail-closed). The idempotency-key insert
-* trigger (every upload attempt writes a key) writes it as `SECURITY DEFINER`: `last_attempt_at` is
-* the newest attempt, `pending_since` a lower bound on the oldest attempt whose stored object the
-* service has not yet examined (null when none is pending). The service moves it with
-* `ORPHAN_SWEEP_DONE`, which sets `swept_through` (the time through which objects were examined) and
-* clears or advances `pending_since`; it can update those two columns and nothing else. The
-* discovery function reports an Organization as having work when `pending_since` is set, due
-* `pending_since + ORPHAN_SWEEP_AGE_MS`. It outlives the work hint and the idempotency keys (which
-* are purged earlier than the orphan age), which is why it is a table and not a hint column.
+* What the `orphan_sweep` work kind remembers between sweeps: one row per Organization, the time
+* through which the service has swept stored objects for orphans (`swept_through`). A **tenant
+* table** (row-level security, fail-closed). It is written only by `playbook.orphan_sweep_done`
+* (`ORPHAN_SWEEP_DONE`), never by an upload attempt, so concurrent attempts of one Organization
+* share no row and never wait for each other. The upload attempts themselves are the idempotency
+* keys (`created_at`), and the work hint holds the oldest unswept one; the discovery function
+* reports an Organization when an attempt is newer than `swept_through`. The role can read its row
+* and cannot write it directly.
 */
 declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 	name: "orphan_sweeps";
@@ -8616,40 +8614,6 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pendingSince: PgColumn_ffrhhp36<{
-			name: "pending_since";
-			tableName: "orphan_sweeps";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		lastAttemptAt: PgColumn_ffrhhp36<{
-			name: "last_attempt_at";
-			tableName: "orphan_sweeps";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
 		sweptThrough: PgColumn_ffrhhp36<{
 			name: "swept_through";
 			tableName: "orphan_sweeps";
@@ -8657,7 +8621,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			columnType: "PgTimestamp";
 			data: Date;
 			driverParam: string;
-			notNull: false;
+			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
@@ -10596,15 +10560,17 @@ declare const ORGANIZATIONS_WITH_WORK: string;
 /**
 * Mark an Organization's orphan sweep done through a time: `$1` Organization, `$2` the time through
 * which stored objects were examined (every object that an upload attempt at or before `$2` could
-* have stored was looked at; the database clamps it to now and never moves it back). It records
-* `swept_through`, and clears `pending_since` when no upload attempt is newer than `$2`, or moves
-* it up to `$2` when one is (that attempt, or one racing the sweep, keeps the work hint: a hint may
-* be early, never missing). Returns `swept_through` and `more`, true while a newer attempt is
-* pending; no row means the Organization never attempted an upload. Run it in the Organization's
-* scope, after the sweep; repeating it is idempotent. It updates only the two marker columns the
-* role may.
+* have stored was looked at). Run it in that Organization's scope (any other scope is refused),
+* after the sweep. The database cuts `$2` to 24 hours before now (an object younger than that is
+* never swept) and never moves the recorded time back, so a repeat or an older time is harmless.
+* Returns `swept_through` (what is recorded) and `more`: true while an upload attempt newer than
+* that exists, in which case the work hint stays, due {@link ORPHAN_SWEEP_AGE_MS} after the oldest
+* such attempt; false when none does and the hint is removed. It waits for any open upload attempt
+* of the Organization (they are short) and then sees the ones that committed meanwhile, so an attempt
+* racing the sweep keeps its hint: a hint may be early, never missing. It is
+* `playbook.orphan_sweep_done`, `SECURITY DEFINER`, the only writer of `orphan_sweeps`.
 */
-declare const ORPHAN_SWEEP_DONE = "with s as (select least($2::timestamptz, clock_timestamp()) as t)\\nupdate playbook.orphan_sweeps o\\nset swept_through = greatest(coalesce(o.swept_through, '-infinity'), (select t from s)),\\n    pending_since = case\\n      when o.last_attempt_at <= greatest(coalesce(o.swept_through, '-infinity'), (select t from s)) then null\\n      else greatest(coalesce(o.pending_since, '-infinity'), greatest(coalesce(o.swept_through, '-infinity'), (select t from s))) end\\nwhere o.organization_id = $1\\nreturning o.swept_through, (o.pending_since is not null) as more";
+declare const ORPHAN_SWEEP_DONE = "select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)";
 /** One row of {@link ORGANIZATIONS_WITH_WORK}: an Organization with work, or the marker row (null id). */
 interface WorkDiscoveryRow {
 	organization_id: string | null;
@@ -10661,7 +10627,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly ORGANIZATION_REMOVAL_STATUS: "select\\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\\n  (not exists (select 1 from playbook.documents where organization_id = $1)\\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed\\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
 	readonly DOCUMENT_LIST_SPENT_PURGES: string;
 	readonly DOCUMENT_PURGE_RESET: "update playbook.documents\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
-	readonly ORPHAN_SWEEP_DONE: "with s as (select least($2::timestamptz, clock_timestamp()) as t)\\nupdate playbook.orphan_sweeps o\\nset swept_through = greatest(coalesce(o.swept_through, '-infinity'), (select t from s)),\\n    pending_since = case\\n      when o.last_attempt_at <= greatest(coalesce(o.swept_through, '-infinity'), (select t from s)) then null\\n      else greatest(coalesce(o.pending_since, '-infinity'), greatest(coalesce(o.swept_through, '-infinity'), (select t from s))) end\\nwhere o.organization_id = $1\\nreturning o.swept_through, (o.pending_since is not null) as more";
+	readonly ORPHAN_SWEEP_DONE: "select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)";
 	readonly ORGANIZATIONS_WITH_WORK: string;
 };
 /** The one database role that owns every schema and table and runs every migration. */

@@ -1,5 +1,5 @@
 {
-  "id": "1fc03080-f0ec-4be2-a6b2-b42fa194c742",
+  "id": "c10ff532-fabf-4966-8048-b4473ed115c6",
   "prevId": "6ca6110c-d318-4ea7-8798-70720d0a7de9",
   "version": "7",
   "dialect": "postgresql",
@@ -7183,23 +7183,11 @@
           "primaryKey": true,
           "notNull": true
         },
-        "pending_since": {
-          "name": "pending_since",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_attempt_at": {
-          "name": "last_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
         "swept_through": {
           "name": "swept_through",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         }
       },
       "indexes": {},
@@ -7215,10 +7203,6 @@
         "orphan_sweeps_organization_not_global": {
           "name": "orphan_sweeps_organization_not_global",
           "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "orphan_sweeps_pending_not_after_last": {
-          "name": "orphan_sweeps_pending_not_after_last",
-          "value": "\"playbook\".\"orphan_sweeps\".\"pending_since\" <= \"playbook\".\"orphan_sweeps\".\"last_attempt_at\""
         }
       },
       "isRLSEnabled": false

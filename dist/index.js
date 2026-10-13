@@ -7,7 +7,7 @@ import {
   PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-15e7rcss.js";
+} from "./shared/chunk-d0hb7s9h.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -937,14 +937,7 @@ set purge_attempts = 0, purge_started_at = null, purge_lease_until = null,
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS2}
 returning id, purge_attempts`;
 var ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
-var ORPHAN_SWEEP_DONE = `with s as (select least($2::timestamptz, clock_timestamp()) as t)
-update playbook.orphan_sweeps o
-set swept_through = greatest(coalesce(o.swept_through, '-infinity'), (select t from s)),
-    pending_since = case
-      when o.last_attempt_at <= greatest(coalesce(o.swept_through, '-infinity'), (select t from s)) then null
-      else greatest(coalesce(o.pending_since, '-infinity'), greatest(coalesce(o.swept_through, '-infinity'), (select t from s))) end
-where o.organization_id = $1
-returning o.swept_through, (o.pending_since is not null) as more`;
+var ORPHAN_SWEEP_DONE = `select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)`;
 function discoveredOrganizations(rows) {
   const organizations = rows.flatMap((row) => row.organization_id === null ? [] : [row.organization_id]);
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null };

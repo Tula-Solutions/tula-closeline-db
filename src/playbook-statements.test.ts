@@ -100,6 +100,10 @@ describe('the documented playbook statements', () => {
         expect(text).toContain('playbook.organizations_with_work(')
         continue
       }
+      if (name === 'ORPHAN_SWEEP_DONE') {
+        expect(text).toContain('playbook.orphan_sweep_done($1::text, $2::timestamptz)')
+        continue
+      }
       if (name === 'ORGANIZATION_REMOVE_REST') {
         expect(text).toContain('playbook.remove_organization_rest($1::text, $2::text)')
         continue
@@ -431,8 +435,10 @@ describe('pending cleanups and the orphan sweep', () => {
 
   test('the orphan age is 25 hours, in the constant and in the migration, and the kind is known', () => {
     expect(ORPHAN_SWEEP_AGE_MS).toBe(25 * 3_600_000)
-    // the backfill hint, the trigger and the verification
-    expect(migration.split("interval '25 hours'").length - 1).toBe(3)
+    // the backfill, the trigger, the verification and the done function
+    expect(migration.split("interval '25 hours'").length - 1).toBeGreaterThanOrEqual(6)
+    const trigger = migration.slice(migration.indexOf('"playbook"."note_idempotency_work"'))
+    expect(trigger).toContain(`NEW."created_at" + interval '25 hours'`)
     expect(WORK_KINDS).toContain('orphan_sweep')
     expect(migration).toContain("'purge_spent', 'orphan_sweep') THEN")
   })
@@ -445,18 +451,29 @@ describe('pending cleanups and the orphan sweep', () => {
     expect(migration).toContain('v_limit integer := least(v_batch * 4, 2000)')
     expect(migration).toContain('RETURNS TABLE ("organization_id" text, "resume_after" text)')
     expect(migration).toContain(
-      'GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text) TO closeline_playbook;'
+      'GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text), "playbook"."orphan_sweep_done"(text, timestamptz) TO closeline_playbook;'
     )
   })
 
-  test('the marker is a tenant table the role may only read and update in two columns', () => {
+  test('the marker is a tenant table the role only reads; an upload attempt writes none of it', () => {
     expect(migration).toContain('ALTER TABLE "playbook"."orphan_sweeps" FORCE ROW LEVEL SECURITY;')
     expect(migration).toContain(
       'REVOKE INSERT, UPDATE, DELETE ON "playbook"."orphan_sweeps" FROM closeline_playbook;'
     )
-    expect(migration).toContain(
-      'GRANT UPDATE ("pending_since", "swept_through") ON "playbook"."orphan_sweeps" TO closeline_playbook;'
+    // The key-insert trigger notes hints only; it must not write orphan_sweeps (that would take a
+    // row lock per attempt and queue an Organization's concurrent uploads behind each other).
+    const trigger = migration.slice(
+      migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."note_idempotency_work"'),
+      migration.indexOf('CREATE FUNCTION "playbook"."orphan_sweep_done"')
     )
-    expect(ORPHAN_SWEEP_DONE).toContain('update playbook.orphan_sweeps')
+    expect(trigger).not.toContain('orphan_sweeps')
+    expect(trigger).toContain(`note_work"('orphan_sweep'`)
+    // The done function locks the hint before it reads the attempts again.
+    const done = migration.slice(
+      migration.indexOf('CREATE FUNCTION "playbook"."orphan_sweep_done"')
+    )
+    expect(done.indexOf('FOR UPDATE')).toBeGreaterThan(0)
+    expect(done.indexOf('FOR UPDATE')).toBeLessThan(done.indexOf('"playbook"."idempotency_keys" k'))
+    expect(ORPHAN_SWEEP_DONE).toContain('playbook.orphan_sweep_done(')
   })
 })
