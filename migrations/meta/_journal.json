@@ -64,6 +64,27 @@
       "when": 1791905276336,
       "tag": "0008_auth_abandon_not_needed",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791911985229,
+      "tag": "0009_playbook_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791911985791,
+      "tag": "0010_playbook_consumed_message",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791911998787,
+      "tag": "0011_playbook_idempotency_keys",
+      "breakpoints": true
     }
   ]
 }
