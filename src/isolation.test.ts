@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import { isPgSchema } from 'drizzle-orm/pg-core'
 import {
+  ALLOWED_PREDEFINED_ROLES,
   assertTenantIsolation,
   CONTROL_PLANE_TABLE_REASONS,
   CONTROL_PLANE_TABLES,
   ENVIRONMENT_SCOPED_TABLES,
   EXTENSION_SCHEMAS,
   findTenantIsolationGaps,
+  NON_TENANT_TABLE_REASONS,
   NON_TENANT_TABLES,
   TENANT_SCHEMAS,
 } from './isolation'
@@ -22,6 +24,7 @@ interface Row {
   permissive: number
   weak_permissive: number
   weak_environment_permissive: number
+  reachable_by: string[]
 }
 
 const GOOD: Row = {
@@ -34,6 +37,7 @@ const GOOD: Row = {
   permissive: 1,
   weak_permissive: 0,
   weak_environment_permissive: 1,
+  reachable_by: [],
 }
 
 /** An environment-scoped auth table that is fail-closed on environment_id. */
@@ -62,10 +66,15 @@ interface RoleRow {
   role: string
 }
 
+interface MembershipRow {
+  role: string
+  granted: string
+}
+
 // The catalog queries themselves are exercised against Postgres in isolation.integration.ts; here
 // the verdict on each row is. The first query lists relations, the second the risky roles.
-const dbWith = (rows: Row[], roles: RoleRow[] = []) => {
-  const results = [rows, roles]
+const dbWith = (rows: Row[], roles: RoleRow[] = [], memberships: MembershipRow[] = []) => {
+  const results = [rows, roles, memberships]
   return { execute: async () => ({ rows: results.shift() ?? [] }) } as never
 }
 
@@ -108,9 +117,46 @@ describe('findTenantIsolationGaps', () => {
     expect(gaps[0]?.reason).toContain('BYPASSRLS')
   })
 
-  test('an allowlisted table is skipped', async () => {
+  test('an allowlisted table nothing can select from is skipped', async () => {
     const row = { ...GOOD, has_org: false }
     expect(await findTenantIsolationGaps(dbWith([row]), ['core.prospects'])).toEqual([])
+  })
+
+  test('an allowlisted table a service role holds a privilege on is a gap, naming the roles', async () => {
+    const row = {
+      ...GOOD,
+      has_org: false,
+      enabled: false,
+      reachable_by: ['closeline_core', 'closeline_auth'],
+    }
+    const gaps = await findTenantIsolationGaps(dbWith([row]), ['core.prospects'])
+    expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['core.prospects'])
+    expect(gaps[0]?.reason).toContain('closeline_core, closeline_auth')
+    expect(gaps[0]?.reason).toContain('SECURITY DEFINER')
+  })
+
+  test('a protected table that a service role can reach is not a gap: row-level security governs it', async () => {
+    const row = { ...GOOD, reachable_by: ['closeline_core'] }
+    expect(await findTenantIsolationGaps(dbWith([row]))).toEqual([])
+  })
+})
+
+describe('findTenantIsolationGaps on role membership', () => {
+  test('a service role in a role that is not predefined is a gap, naming both', async () => {
+    const gaps = await findTenantIsolationGaps(
+      dbWith([GOOD], [], [{ role: 'closeline_core', granted: 'ops_admin' }])
+    )
+    expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['pg_roles.closeline_core'])
+    expect(gaps[0]?.reason).toContain('ops_admin')
+  })
+
+  test('the predefined roles a service role may belong to are the four monitoring ones', () => {
+    expect([...ALLOWED_PREDEFINED_ROLES]).toEqual([
+      'pg_monitor',
+      'pg_read_all_settings',
+      'pg_read_all_stats',
+      'pg_stat_scan_tables',
+    ])
   })
 })
 
@@ -191,8 +237,17 @@ describe('the auth table categories', () => {
     }
   })
 
-  test('replace the blanket allowlist: no auth table is exempt from the check', () => {
-    expect(NON_TENANT_TABLES).toEqual([])
+  test('exempt only the two core directories and the status table, each with a precise reason, and no auth table', () => {
+    expect([...NON_TENANT_TABLES].sort()).toEqual([
+      'core.invitation_directory',
+      'core.membership_directory',
+      'core.organization_state',
+    ])
+    expect(Object.keys(NON_TENANT_TABLE_REASONS).sort()).toEqual([...NON_TENANT_TABLES].sort())
+    for (const reason of Object.values(NON_TENANT_TABLE_REASONS)) {
+      expect(reason.trim().length).toBeGreaterThan(60)
+      expect(reason).not.toContain('\n')
+    }
   })
 })
 

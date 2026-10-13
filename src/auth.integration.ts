@@ -325,10 +325,12 @@ describe('the auth schema, against Postgres', () => {
     test('every auth table is in exactly one category, and the isolation check verifies it', async () => {
       const categorised = [...ENVIRONMENT_SCOPED_TABLES, ...CONTROL_PLANE_TABLES].sort()
       expect(categorised).toEqual(tables.map((table) => `auth.${table}`))
-      // Nothing is exempt any more: the check passes with an empty allowlist.
-      expect(NON_TENANT_TABLES).toEqual([])
+      // No auth table is exempt: only the two core directories are on the allowlist, so with the
+      // allowlist emptied the check reports nothing in auth.
+      expect(NON_TENANT_TABLES.filter((name) => name.startsWith('auth.'))).toEqual([])
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
-      expect(await findTenantIsolationGaps(handle.db, [])).toEqual([])
+      const unlisted = await findTenantIsolationGaps(handle.db, [])
+      expect(unlisted.filter((gap) => gap.schema === 'auth')).toEqual([])
     })
 
     test('the environment policy text is the one the check compares against, on every scoped table', async () => {

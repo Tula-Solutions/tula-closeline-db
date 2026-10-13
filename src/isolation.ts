@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING } from './environment'
+import { OWNER_ROLE } from './roles'
 import { ORGANIZATION_SETTING, TENANT_POLICY_EXPRESSION } from './tenant'
 
 /**
@@ -9,6 +10,19 @@ import { ORGANIZATION_SETTING, TENANT_POLICY_EXPRESSION } from './tenant'
  * keeps this list equal to the schemas exported from `src/schema`.
  */
 export const TENANT_SCHEMAS = ['auth', 'core', 'playbook'] as const
+
+/**
+ * The only roles a `closeline_*` service role may be a member of: Postgres's read-only monitoring
+ * roles. The service roles are NOINHERIT, so no other membership (a predefined role such as
+ * `pg_write_all_data` included) is visible to the table checks; {@link findTenantIsolationGaps}
+ * reports every other one.
+ */
+export const ALLOWED_PREDEFINED_ROLES: readonly string[] = [
+  'pg_monitor',
+  'pg_read_all_settings',
+  'pg_read_all_stats',
+  'pg_stat_scan_tables',
+]
 
 /**
  * The `auth` tables scoped to an auth environment, as `schema.table`. Each has no `organization_id`
@@ -70,11 +84,24 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
 
 /**
  * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
- * one-line reason. Empty: the `auth` tables, which have no `organization_id`, are verified under
- * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped.
- * An entry here needs a decision record in the hub.
+ * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
+ * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
+ * only entries are the two `core` directories and the Organization status table, which are asked
+ * before an Organization is known. An entry here needs a decision record in the hub. An exempt
+ * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
+ * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
+ * UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN), at table or column level: a read leaks every
+ * Organization, and a write could forge a user-to-Organization mapping or free a user. It may be
+ * reached only through a `SECURITY DEFINER` function.
  */
-export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {}
+export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'core.invitation_directory':
+    'asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in',
+  'core.membership_directory':
+    'asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in',
+  'core.organization_state':
+    "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
+}
 
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
 export const NON_TENANT_TABLES: readonly string[] = Object.keys(NON_TENANT_TABLE_REASONS)
@@ -108,10 +135,16 @@ interface CatalogRow extends Record<string, unknown> {
   permissive: number
   weak_permissive: number
   weak_environment_permissive: number
+  reachable_by: string[]
 }
 
 interface RoleRow extends Record<string, unknown> {
   role: string
+}
+
+interface MembershipRow extends Record<string, unknown> {
+  role: string
+  granted: string
 }
 
 /**
@@ -143,8 +176,12 @@ export interface AuthTableCategories {
  *   USING and WITH CHECK expression `tenantRlsStatements` writes (any weaker or wider one could
  *   open the table across Organizations).
  *
- * Tables on `allowlist` are skipped. A `closeline_*` role that is a superuser or has `BYPASSRLS` is
- * a gap too, because it ignores every policy.
+ * Tables on `allowlist` are skipped, except that one on which any `closeline_*` role other than
+ * the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` or
+ * `MAINTAIN` privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
+ * security a read would show every Organization's rows, and a write could forge or erase the
+ * mapping the lookups rest on. A `closeline_*` role
+ * that is a superuser or has `BYPASSRLS` is a gap too, because it ignores every policy.
  *
  * @param db - A database handle connected as any role; the catalogs are readable by all.
  * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
@@ -187,7 +224,14 @@ export async function findTenantIsolationGaps(
                and not (p.cmd = 'ALL'
                         and p.qual = ${ENVIRONMENT_POLICY_EXPRESSION}
                         and p.with_check = ${ENVIRONMENT_POLICY_EXPRESSION})
-           ) as weak_environment_permissive
+           ) as weak_environment_permissive,
+           (select coalesce(array_agg(r.rolname::text order by r.rolname), '{}'::text[])
+              from pg_roles r
+             where r.rolname like 'closeline\\_%' and r.rolname <> ${OWNER_ROLE}
+               and (has_table_privilege(r.oid, c.oid,
+                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN')
+                    or has_any_column_privilege(r.oid, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+           ) as reachable_by
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname not in ('drizzle', 'information_schema')
@@ -201,6 +245,13 @@ export async function findTenantIsolationGaps(
       continue
     }
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
+      if (row.reachable_by.length > 0) {
+        gaps.push({
+          schema: row.schema,
+          table: row.table,
+          reason: `is exempt from row-level security but ${row.reachable_by.join(', ')} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`,
+        })
+      }
       continue
     }
     const reason = gapReason(row, categories)
@@ -218,6 +269,29 @@ export async function findTenantIsolationGaps(
       schema: 'pg_roles',
       table: role,
       reason: 'is a superuser or has BYPASSRLS, so it ignores every row-level security policy',
+    })
+  }
+
+  // The service roles are NOINHERIT, so a privilege reached through a role they belong to is
+  // invisible to the privilege check above (it applies after SET ROLE). Any membership of a role
+  // outside ALLOWED_PREDEFINED_ROLES is therefore a gap. The owner role is excluded by
+  // the same constant the table query uses, so a grant made to it is not reported.
+  const memberships = await db.execute<MembershipRow>(sql`
+    select m.rolname as role, g.rolname as granted
+      from pg_auth_members am
+      join pg_roles m on m.oid = am.member
+      join pg_roles g on g.oid = am.roleid
+     where m.rolname like 'closeline\\_%' and m.rolname <> ${OWNER_ROLE}
+       and g.rolname not in (${sql.join(
+         ALLOWED_PREDEFINED_ROLES.map((role) => sql`${role}`),
+         sql`, `
+       )})
+     order by m.rolname, g.rolname`)
+  for (const { role, granted } of memberships.rows) {
+    gaps.push({
+      schema: 'pg_roles',
+      table: role,
+      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role outside ${ALLOWED_PREDEFINED_ROLES.join(', ')}`,
     })
   }
   return gaps

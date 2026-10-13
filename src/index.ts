@@ -1,5 +1,7 @@
 export type { Database, DbHandle, DbOptions, Schema, Transaction } from './client'
 export { createDb, DEFAULT_POOL_OPTIONS, reportConnectionError } from './client'
+export type { InvitationForToken, OrganizationOfUser, OrganizationStatus } from './core-lookups'
+export { invitationForToken, organizationOfUser } from './core-lookups'
 export { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING, withEnvironment } from './environment'
 export type { AuthTableCategories, TenantIsolationGap } from './isolation'
 export {

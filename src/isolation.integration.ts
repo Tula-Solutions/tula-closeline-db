@@ -10,7 +10,11 @@ import {
   migrateUp,
   resetTestRoles,
 } from './integration-support'
-import { assertTenantIsolation, findTenantIsolationGaps } from './isolation'
+import {
+  ALLOWED_PREDEFINED_ROLES,
+  assertTenantIsolation,
+  findTenantIsolationGaps,
+} from './isolation'
 import { TENANT_POLICY_EXPRESSION, tenantRlsStatements } from './tenant'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
@@ -95,6 +99,48 @@ describe('the tenant isolation catalog check', () => {
   test('a table without organization_id is reported unless it is on the allowlist', async () => {
     await reset('id text primary key')
     expect((await gapsFor())[0]?.reason).toContain('organization_id')
+    // An allowlisted table has no row-level security, so no service role may be able to read it.
+    await owner.query(`revoke all on "core"."${table}" from closeline_core`)
+    expect(await gapsFor([qualified])).toEqual([])
+  })
+
+  test.each([
+    ['a table SELECT', (t: string) => `grant select on ${t} to closeline_core`],
+    ['a single-column SELECT', (t: string) => `grant select (id) on ${t} to closeline_core`],
+    ['a SELECT to PUBLIC', (t: string) => `grant select on ${t} to public`],
+    ['a table INSERT', (t: string) => `grant insert on ${t} to closeline_core`],
+    ['a single-column INSERT', (t: string) => `grant insert (id) on ${t} to closeline_core`],
+    ['an INSERT to PUBLIC', (t: string) => `grant insert on ${t} to public`],
+    ['a table UPDATE', (t: string) => `grant update on ${t} to closeline_core`],
+    ['a single-column UPDATE', (t: string) => `grant update (id) on ${t} to closeline_core`],
+    ['a table DELETE', (t: string) => `grant delete on ${t} to closeline_core`],
+    ['a TRUNCATE', (t: string) => `grant truncate on ${t} to closeline_core`],
+    ['a table REFERENCES', (t: string) => `grant references on ${t} to closeline_core`],
+    [
+      'a single-column REFERENCES',
+      (t: string) => `grant references (id) on ${t} to closeline_core`,
+    ],
+    ['a TRIGGER', (t: string) => `grant trigger on ${t} to closeline_core`],
+    ['a MAINTAIN (LOCK TABLE, VACUUM)', (t: string) => `grant maintain on ${t} to closeline_core`],
+  ])(
+    'an allowlisted table a service role holds a privilege on is reported: %s',
+    async (_name, grant) => {
+      await reset('id text primary key')
+      await owner.query(`revoke all on "core"."${table}" from closeline_core`)
+      expect(await gapsFor([qualified])).toEqual([])
+      await owner.query(grant(qualified))
+      const gaps = await gapsFor([qualified])
+      expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual([qualified])
+      expect(gaps[0]?.reason).toContain('closeline_core')
+      expect(gaps[0]?.reason).toContain('SECURITY DEFINER')
+      const failure = await assertTenantIsolation(handle.db, [qualified]).catch((e: Error) => e)
+      expect((failure as Error).message).toContain(qualified)
+    }
+  )
+
+  test('the owner holding every privilege on an allowlisted table is not a gap', async () => {
+    await reset('id text primary key')
+    await owner.query(`revoke all on "core"."${table}" from closeline_core`)
     expect(await gapsFor([qualified])).toEqual([])
   })
 
@@ -351,6 +397,63 @@ describe('the role check', () => {
       await admin.query('alter role closeline_core nobypassrls')
     }
     expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role that is a member of a role that is not predefined is reported', async () => {
+    // Named closeline_it_super_* so resetTestRoles drops it if this run is killed first.
+    const group = `closeline_it_super_group_${suffix}`
+    await admin.query(`create role "${group}" nologin`)
+    await admin.query(`grant "${group}" to closeline_core`)
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+      expect(gaps[0]?.reason).toContain(group)
+      const failure = await assertTenantIsolation(handle.db).catch((error: Error) => error)
+      expect((failure as Error).message).toContain('closeline_core')
+    } finally {
+      await admin.query(`drop role "${group}"`)
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role in a monitoring role on the allow-list is not reported', async () => {
+    for (const role of ALLOWED_PREDEFINED_ROLES) {
+      await admin.query(`grant ${role} to closeline_core`)
+      try {
+        expect(await roleGaps()).toEqual([])
+      } finally {
+        await admin.query(`revoke ${role} from closeline_core`)
+      }
+    }
+  })
+
+  test.each([
+    'pg_read_all_data',
+    'pg_write_all_data',
+    'pg_execute_server_program',
+    'pg_write_server_files',
+  ])(
+    'a service role in %s is reported, because a predefined role is not safe by being predefined',
+    async (predefined) => {
+      await admin.query(`grant ${predefined} to closeline_core`)
+      try {
+        const gaps = await roleGaps()
+        expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+        expect(gaps[0]?.reason).toContain(predefined)
+      } finally {
+        await admin.query(`revoke ${predefined} from closeline_core`)
+      }
+      expect(await roleGaps()).toEqual([])
+    }
+  )
+
+  test('a role granted to the owner is not a membership of a service role', async () => {
+    await admin.query('grant closeline_core to closeline_owner')
+    try {
+      expect(await roleGaps()).toEqual([])
+    } finally {
+      await admin.query('revoke closeline_core from closeline_owner')
+    }
   })
 
   test('a closeline role that is a superuser is reported', async () => {

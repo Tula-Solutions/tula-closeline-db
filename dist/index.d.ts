@@ -1,6 +1,6 @@
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDENTITY_PROVIDERS, Identity, InstanceAuditLog, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, identities, instanceAuditLogs, nativeApps, oauthProviders, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDENTITY_PROVIDERS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -6486,6 +6486,927 @@ type NewWorkspace = typeof workspaces.$inferInsert;
 import { PgSchema as PgSchema_mtt0uw2 } from "drizzle-orm/pg-core";
 /** The `core` Postgres schema, owned by the core service (login role `closeline_core`). */
 declare const coreSchema: PgSchema_mtt0uw2<"core">;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g31 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp31 } from "drizzle-orm/pg-core";
+/** The roles a membership can hold, most privileged first. Mirrors the contract's `ROLES`. */
+declare const MEMBERSHIP_ROLES: readonly ["owner", "admin", "manager", "rep"];
+/** The roles an invitation can offer: ownership passes by promotion, never by invitation. */
+declare const INVITATION_ROLES: readonly ["admin", "manager", "rep"];
+/** The Regions an Organization can be created in. Mirrors the contract's `REGIONS`. */
+declare const ORGANIZATION_REGIONS: readonly ["us", "eu"];
+/** The states an Organization is in; `deleted` keeps the row for the retention window. */
+declare const ORGANIZATION_STATUSES: readonly ["active", "suspended", "deleted"];
+/** The states an invitation is in; "expired" is not stored, it is read from `expires_at`. */
+declare const INVITATION_STATES: readonly ["pending", "accepted", "revoked"];
+/**
+* An Organization (core.organizations). Its primary key is named `organization_id` so the one
+* canonical row-level-security policy applies to it unchanged. `region` is fixed at creation:
+* a trigger refuses any change (ADR 0001), and the service role holds no `UPDATE` on the column.
+* `owner_count` is kept by triggers on `memberships` and is what serialises changes to an
+* Organization's Owners, so no concurrent pair of transactions can remove the last two. The
+* service role cannot write it, and an insert always starts it at zero; a deferred trigger
+* refuses to commit an Organization that has no Owner. The last-Owner rule holds while the
+* Organization is `active` or `suspended`; a `deleted` Organization (kept for retention) may have
+* every membership removed, the last Owner included, so a retention job can empty it and free its
+* users to join another Organization. An emptied Organization cannot be made `active` or
+* `suspended` again.
+*/
+declare const organizations: PgTableWithColumns_a5zn0g31<{
+	name: "organizations";
+	schema: "core";
+	columns: {
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "organizations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		name: PgColumn_ffrhhp31<{
+			name: "name";
+			tableName: "organizations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		region: PgColumn_ffrhhp31<{
+			name: "region";
+			tableName: "organizations";
+			dataType: "string";
+			columnType: "PgText";
+			data: "eu" | "us";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["us", "eu"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		status: PgColumn_ffrhhp31<{
+			name: "status";
+			tableName: "organizations";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "deleted" | "suspended";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["active", "suspended", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		ownerCount: PgColumn_ffrhhp31<{
+			name: "owner_count";
+			tableName: "organizations";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp31<{
+			name: "created_at";
+			tableName: "organizations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp31<{
+			name: "updated_at";
+			tableName: "organizations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A user's membership of an Organization, with one role. `user_id` is an opaque `usr_` id from the
+* auth service: no foreign key crosses schemas. A user belongs to exactly one Organization; that
+* is enforced by `membership_directory_one_organization_per_user`, because a unique index on this
+* table cannot see rows hidden by row-level security.
+*
+* Lists served (keyset, `LIMIT` a page):
+* - Members of an Organization: `WHERE organization_id = $1 AND id > $cursor ORDER BY id`, on
+*   `memberships_organization_id_id_key`.
+* - One user's membership, for a role check: `memberships_organization_user_key`.
+*/
+declare const memberships: PgTableWithColumns_a5zn0g31<{
+	name: "memberships";
+	schema: "core";
+	columns: {
+		id: PgColumn_ffrhhp31<{
+			name: "id";
+			tableName: "memberships";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "memberships";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		userId: PgColumn_ffrhhp31<{
+			name: "user_id";
+			tableName: "memberships";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		role: PgColumn_ffrhhp31<{
+			name: "role";
+			tableName: "memberships";
+			dataType: "string";
+			columnType: "PgText";
+			data: "admin" | "manager" | "owner" | "rep";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["owner", "admin", "manager", "rep"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp31<{
+			name: "created_at";
+			tableName: "memberships";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp31<{
+			name: "updated_at";
+			tableName: "memberships";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A Team inside an Organization. Names are unique per Organization, ignoring case.
+*
+* Lists served:
+* - Teams of an Organization: `WHERE organization_id = $1 AND name_key > $cursor ORDER BY
+*   name_key`, on `teams_organization_name_key` (unique, so the key is the whole cursor).
+*   `lower()` itself cannot be an index condition under row-level security, hence the column.
+*
+* `name_key` folds ASCII letters only, with the explicit `"C"` collation, so it is the same on
+* every cluster whatever its locale; "É" and "é" are different names. The service must fold the
+* same way (`name.replace(/[A-Z]/g, ...)`, not `toLowerCase()`) wherever it compares names.
+*/
+declare const teams: PgTableWithColumns_a5zn0g31<{
+	name: "teams";
+	schema: "core";
+	columns: {
+		id: PgColumn_ffrhhp31<{
+			name: "id";
+			tableName: "teams";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "teams";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		name: PgColumn_ffrhhp31<{
+			name: "name";
+			tableName: "teams";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		nameKey: PgColumn_ffrhhp31<{
+			name: "name_key";
+			tableName: "teams";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: {
+				type: "always";
+			};
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp31<{
+			name: "created_at";
+			tableName: "teams";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp31<{
+			name: "updated_at";
+			tableName: "teams";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A membership's place in a Team. Both foreign keys carry `organization_id`, so a Team and a member
+* of different Organizations cannot be joined; Postgres checks foreign keys without applying
+* row-level security, which is why a plain id reference would not be enough.
+*
+* Lists served:
+* - Members of a Team: `WHERE organization_id = $1 AND team_id = $2 AND membership_id > $cursor
+*   ORDER BY membership_id`, on the primary key.
+* - Teams a membership is in: `WHERE organization_id = $1 AND membership_id = $2 AND team_id >
+*   $cursor ORDER BY team_id`, on `team_members_membership_idx` (which also serves the cascade
+*   when a membership is removed).
+*/
+declare const teamMembers: PgTableWithColumns_a5zn0g31<{
+	name: "team_members";
+	schema: "core";
+	columns: {
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "team_members";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		teamId: PgColumn_ffrhhp31<{
+			name: "team_id";
+			tableName: "team_members";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		membershipId: PgColumn_ffrhhp31<{
+			name: "membership_id";
+			tableName: "team_members";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp31<{
+			name: "created_at";
+			tableName: "team_members";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An invitation to join an Organization. Only a hash of the token is stored (64 lowercase hex
+* characters, a SHA-256). One pending invitation per email per Organization; a re-invite revokes
+* the old one first (an expired invitation stays `pending` until then). `accepted` and `revoked`
+* are final: no statement that sets the state, its timestamps, the `id` or the `token_hash` on such
+* a row is accepted, so an invitation cannot be accepted twice and a used hash cannot be moved off
+* its row and issued again. The database refuses to accept an invitation after `expires_at` (the
+* instant itself is expired) or while its Organization is not `active`. The role is never `owner`
+* (ownership passes by promotion). The email is stored folded with the ASCII-only rule below and
+* is printable ASCII only (no space, control or non-ASCII character) with exactly one `@`; an
+* internationalised domain is stored in its ASCII (A-label) form, converted by the service before
+* it writes. The service folds with the same rule and validates the whole address at the edge.
+* `invited_by_user_id` is an opaque `usr_` id, so it
+* outlives the inviter's membership. Deleting the Team clears `team_id` (the migration replaces
+* the generated foreign key with `ON DELETE SET NULL (team_id)`, which Drizzle cannot express).
+* The service role cannot `DELETE` an invitation: it is revoked, and only deleting its
+* Organization removes it. Accepting an invitation and creating its membership is one
+* transaction in the service.
+*
+* Lists served:
+* - Pending invitations of an Organization: `WHERE organization_id = $1 AND state = 'pending' AND
+*   (created_at, id) > ($c, $i) ORDER BY created_at, id`, on `invitations_pending_list_idx`.
+*/
+declare const invitations: PgTableWithColumns_a5zn0g31<{
+	name: "invitations";
+	schema: "core";
+	columns: {
+		id: PgColumn_ffrhhp31<{
+			name: "id";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		email: PgColumn_ffrhhp31<{
+			name: "email";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		role: PgColumn_ffrhhp31<{
+			name: "role";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: "admin" | "manager" | "rep";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["admin", "manager", "rep"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		teamId: PgColumn_ffrhhp31<{
+			name: "team_id";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		invitedByUserId: PgColumn_ffrhhp31<{
+			name: "invited_by_user_id";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		tokenHash: PgColumn_ffrhhp31<{
+			name: "token_hash";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp31<{
+			name: "state";
+			tableName: "invitations";
+			dataType: "string";
+			columnType: "PgText";
+			data: "accepted" | "pending" | "revoked";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["pending", "accepted", "revoked"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		expiresAt: PgColumn_ffrhhp31<{
+			name: "expires_at";
+			tableName: "invitations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		acceptedAt: PgColumn_ffrhhp31<{
+			name: "accepted_at";
+			tableName: "invitations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		revokedAt: PgColumn_ffrhhp31<{
+			name: "revoked_at";
+			tableName: "invitations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp31<{
+			name: "created_at";
+			tableName: "invitations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp31<{
+			name: "updated_at";
+			tableName: "invitations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* Which Organization a user belongs to: the one fact sign-in asks before any Organization is
+* known. It is not under row-level security and no service role holds any privilege on it:
+* `closeline_core` reaches it only through the `SECURITY DEFINER` function
+* `core.organization_of_user(user_id)` (`organizationOfUser`), one row for one exact key, which
+* joins {@link organizationState} for the status. The `SECURITY DEFINER` triggers on `memberships`
+* write it, and it holds no status of its own, so a status change never touches it. A user belongs
+* to exactly one Organization, enforced by the unique constraint on `user_id`. To allow several,
+* one migration drops `membership_directory_one_organization_per_user` and replaces the function.
+* It has no index on `organization_id` alone: nothing reads it by Organization, and with one a plan
+* cached for the delete by key could scan every member of the Organization per row.
+*/
+declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
+	name: "membership_directory";
+	schema: "core";
+	columns: {
+		userId: PgColumn_ffrhhp31<{
+			name: "user_id";
+			tableName: "membership_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "membership_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* Which Organization and invitation a token hash opens, for the pending invitations only: a row
+* leaves when its invitation is accepted or revoked. It carries `expires_at` so that
+* `core.invitation_for_token(token_hash)` (`invitationForToken`) can answer, for one exact key,
+* only when the invitation is pending and unexpired (and, by joining {@link organizationState},
+* in an `active` Organization), without reading a tenant table. Not under row-level security; no
+* service role holds any privilege on it. The `SECURITY DEFINER` triggers on `invitations` keep
+* it, and a status change never touches it. It has no index on `organization_id` alone: nothing
+* reads it by Organization, and such an index is one a cached plan could pick for a delete by key.
+*/
+declare const invitationDirectory: PgTableWithColumns_a5zn0g31<{
+	name: "invitation_directory";
+	schema: "core";
+	columns: {
+		tokenHash: PgColumn_ffrhhp31<{
+			name: "token_hash";
+			tableName: "invitation_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "invitation_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		invitationId: PgColumn_ffrhhp31<{
+			name: "invitation_id";
+			tableName: "invitation_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		expiresAt: PgColumn_ffrhhp31<{
+			name: "expires_at";
+			tableName: "invitation_directory";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An Organization's status, one row per Organization, so a status change writes one row however
+* many members and invitations the Organization has. Sign-in and accepting an invitation ask the
+* status before any Organization is known, so it cannot sit behind row-level security: it is a
+* second no-access table (see {@link membershipDirectory}), joined by `core.organization_of_user`
+* and `core.invitation_for_token`, and no service role holds any privilege on it. A trigger on
+* `organizations` writes it in the same transaction as the Organization's own row (an insert
+* creates it, a change of `status` updates it, and deleting the Organization cascades). It is
+* written nowhere else and holds nothing a lookup can use without an exact key from another table.
+*/
+declare const organizationState: PgTableWithColumns_a5zn0g31<{
+	name: "organization_state";
+	schema: "core";
+	columns: {
+		organizationId: PgColumn_ffrhhp31<{
+			name: "organization_id";
+			tableName: "organization_state";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		status: PgColumn_ffrhhp31<{
+			name: "status";
+			tableName: "organization_state";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "deleted" | "suspended";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["active", "suspended", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
 import { PgSchema as PgSchema_mtt0uw3 } from "drizzle-orm/pg-core";
 /** The `playbook` Postgres schema, owned by the playbook service (login role `closeline_playbook`). */
 declare const playbookSchema: PgSchema_mtt0uw3<"playbook">;
@@ -6546,6 +7467,50 @@ interface DbHandle {
 * @throws If the connection string is empty or an option is out of bounds.
 */
 declare function createDb(connectionString: string, options?: DbOptions): DbHandle;
+/** The state an Organization is in, as `core.organizations.status` stores it. */
+type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
+/** The Organization a user belongs to, as `core.organization_of_user` answers. */
+interface OrganizationOfUser {
+	/** The Organization the user belongs to (`org_` and 32 hex characters). */
+	organizationId: string;
+	/** The Organization's status; a sign-in refuses everything but `active`. */
+	status: OrganizationStatus;
+}
+/** The pending invitation a token hash opens, as `core.invitation_for_token` answers. */
+interface InvitationForToken {
+	/** The Organization that issued the invitation. */
+	organizationId: string;
+	/** The invitation to read, inside that Organization's scope. */
+	invitationId: string;
+}
+/**
+* Find the Organization a user belongs to: the question sign-in asks before any Organization is
+* known. It calls `core.organization_of_user`, the only way `closeline_core` reaches the
+* membership directory. Run it on the pooled handle, not inside `withOrganization`; then read the
+* membership itself inside `withOrganization` for the Organization it names.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param userId - The user's opaque id: `usr_` and 32 lowercase hex characters.
+* @returns The Organization and its status, or `null` when the user belongs to none.
+* @throws If `userId` is malformed (before any query runs), or if the directory holds more than
+*   one Organization for the user (the one-Organization rule was relaxed without updating this).
+*/
+declare function organizationOfUser(db: Pick<Database, "execute">, userId: string): Promise<OrganizationOfUser | null>;
+/**
+* Find the invitation a token hash opens: the question accepting an invitation asks before any
+* Organization is known. It calls `core.invitation_for_token`, the only way `closeline_core`
+* reaches the invitation directory. The database answers only for an invitation that is still
+* pending and unexpired in an `active` Organization, so a used, revoked or expired token, an
+* unknown one and one of a suspended or deleted Organization all give `null` and cannot be told
+* apart. Then accept inside `withOrganization`: update the invitation and create the membership
+* in one transaction.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param tokenHash - The SHA-256 of the token: 64 lowercase hex characters, never the token.
+* @returns The Organization and invitation ids, or `null`.
+* @throws If `tokenHash` is malformed (before any query runs).
+*/
+declare function invitationForToken(db: Pick<Database, "execute">, tokenHash: string): Promise<InvitationForToken | null>;
 /**
 * The transaction-local setting the `auth` schema's row-level-security policies compare
 * `environment_id` against. It is tula-auth's, kept so the service copied from it runs unchanged;
@@ -6603,9 +7568,15 @@ declare const CONTROL_PLANE_TABLE_REASONS: Readonly<Record<string, string>>;
 declare const CONTROL_PLANE_TABLES: readonly string[];
 /**
 * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
-* one-line reason. Empty: the `auth` tables, which have no `organization_id`, are verified under
-* {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped.
-* An entry here needs a decision record in the hub.
+* one-line reason. The `auth` tables, which have no `organization_id`, are verified under
+* {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
+* only entries are the two `core` directories and the Organization status table, which are asked
+* before an Organization is known. An entry here needs a decision record in the hub. An exempt
+* table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
+* gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
+* UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN), at table or column level: a read leaks every
+* Organization, and a write could forge a user-to-Organization mapping or free a user. It may be
+* reached only through a `SECURITY DEFINER` function.
 */
 declare const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>>;
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
@@ -6650,8 +7621,12 @@ interface AuthTableCategories {
 *   USING and WITH CHECK expression `tenantRlsStatements` writes (any weaker or wider one could
 *   open the table across Organizations).
 *
-* Tables on `allowlist` are skipped. A `closeline_*` role that is a superuser or has `BYPASSRLS` is
-* a gap too, because it ignores every policy.
+* Tables on `allowlist` are skipped, except that one on which any `closeline_*` role other than
+* the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` or
+* `MAINTAIN` privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
+* security a read would show every Organization's rows, and a write could forge or erase the
+* mapping the lookups rest on. A `closeline_*` role
+* that is a superuser or has `BYPASSRLS` is a gap too, because it ignores every policy.
 *
 * @param db - A database handle connected as any role; the catalogs are readable by all.
 * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
@@ -6706,4 +7681,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, InvitationForToken, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
