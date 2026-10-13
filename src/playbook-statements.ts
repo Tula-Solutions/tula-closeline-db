@@ -2,6 +2,7 @@ import {
   DOCUMENT_PURGE_MAX_ATTEMPTS,
   INGESTION_JOB_MAX_ATTEMPTS,
   INGESTION_STEPS,
+  PENDING_CLEANUP_PREDICATE,
 } from './schema/playbook-tables'
 
 /**
@@ -26,8 +27,31 @@ export const DOCUMENT_LIST_MAX_PAGE = 100
  */
 export const PLAYBOOK_MAX_BATCH = 500
 
-/** The least age, in milliseconds, {@link IDEMPOTENCY_PURGE} removes a key at: one hour. */
-export const IDEMPOTENCY_MIN_PURGE_AGE_MS = 3_600_000
+/**
+ * How old an upload attempt is when its stored object may be an orphan worth sweeping, in
+ * milliseconds: 25 hours. The service deletes an orphan object only when it is older than 24 hours;
+ * the extra hour covers the time between an attempt's start (its key's `created_at`) and the object
+ * being written. `organizations_with_work` reports `orphan_sweep` at this age after the oldest
+ * attempt not yet marked swept, and {@link ORPHAN_SWEEP_DONE} cuts the swept-through time to this
+ * long before now, so an attempt counts as swept only when its object was surely old enough to be
+ * deleted.
+ */
+export const ORPHAN_SWEEP_AGE_MS = 25 * 60 * 60 * 1000
+
+/**
+ * How old an idempotency key is when it becomes purgeable, in milliseconds: 26 hours, one hour more
+ * than {@link ORPHAN_SWEEP_AGE_MS}, so the key of an upload attempt is still there when its orphan
+ * sweep is due. Core documents no age for its own keys, so this is the playbook's.
+ * `organizations_with_work` hints `idempotency_purge` at this age, and {@link IDEMPOTENCY_PURGE}
+ * is floored at this age in SQL, so a younger age passed to it is raised to this one.
+ */
+export const IDEMPOTENCY_PURGE_AGE_MS = ORPHAN_SWEEP_AGE_MS + 60 * 60 * 1000
+
+/**
+ * The least age, in milliseconds, {@link IDEMPOTENCY_PURGE} removes a key at: the same 26 hours as
+ * {@link IDEMPOTENCY_PURGE_AGE_MS}, so no caller can purge the keys of unswept upload attempts.
+ */
+export const IDEMPOTENCY_MIN_PURGE_AGE_MS = IDEMPOTENCY_PURGE_AGE_MS
 
 // A batch size or page size clamped to 1..max in SQL, null included.
 const CLAMP = (parameter: string, max: number) =>
@@ -68,6 +92,11 @@ const STEP_ORDER = `array[${INGESTION_STEPS.map((step) => `'${step}'`).join(', '
  * inserts a document, so two uploads of one Organization queue and the quota check in
  * {@link DOCUMENT_INSERT} (a later statement, with its own snapshot) sees the earlier upload's
  * counts. `$1` Organization. Always returns one row; the lock ends with the transaction.
+ *
+ * **Order matters:** every upload transaction must insert its idempotency key
+ * ({@link IDEMPOTENCY_BEGIN}) *before* it takes this lock. The key insert takes the orphan-sweep
+ * hint; erasure, `ORPHAN_SWEEP_DONE` and uploads cannot wait on each other in a cycle only while
+ * uploads go hint first, then this lock.
  */
 export const QUOTA_LOCK = `select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked`
 
@@ -392,6 +421,26 @@ export const DOCUMENT_CLEANUP_BEGIN = `select d.id, d.epoch,
       and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear
 from playbook.documents d
 where d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int`
+
+/**
+ * One page of the Organization's deleted documents whose vector cleanup is pending: not recorded
+ * for the current `deletion_seq` ({@link DOCUMENT_CLEANUP_DONE} records it) and not yet purged (a
+ * purged document is a removed row). Oldest deletion first by `deleted_at` then `id`, so a pass
+ * visits each once. `$1` Organization, `$2` and `$3` the cursor, the `deleted_at` (as the database's
+ * text form, `deleted_at::text`) and `id` of the last row of the previous page (`'-infinity'` and
+ * `''` for the first page), `$4` the page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH}, null
+ * included. Rows carry `id`, `epoch`, `deletion_seq` (what {@link DOCUMENT_CLEANUP_BEGIN} needs)
+ * and `deleted_at` (the cursor, and for the service's own settle delay). The predicate is
+ * {@link PENDING_CLEANUP_PREDICATE}, the one `documents_cleanup_idx` is built on and the
+ * `cleanup_pending` discovery verification uses; the index (Organization, `deleted_at`, `id`) serves
+ * the page in order with no sort, under a generic plan too.
+ */
+export const DOCUMENT_LIST_PENDING_CLEANUP = `select id, epoch, deletion_seq, deleted_at
+from playbook.documents
+where organization_id = $1 and ${PENDING_CLEANUP_PREDICATE}
+  and (deleted_at, id) > ($2::timestamptz, $3::text)
+order by deleted_at, id
+limit ${BATCH('$4')}`
 
 /**
  * Record that the cleanup of one deletion finished. `$1` Organization, `$2` document, `$3` the
@@ -856,7 +905,8 @@ returning key`
 
 /**
  * Purge one bounded batch of an Organization's old keys, inside its scope. `$1` Organization, `$2`
- * the least age in milliseconds (raised to {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}), `$3` batch size,
+ * the least age in milliseconds (raised to {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}, 26 hours: a key
+ * is the evidence of an upload attempt whose orphan sweep may not have run), `$3` batch size,
  * clamped to 1..{@link PLAYBOOK_MAX_BATCH}. Oldest first on `idempotency_keys_purge_idx`, skipping
  * rows another transaction holds; repeat until a batch removes none (a short batch does not mean
  * the backlog is empty). The row count is the number removed.
@@ -880,14 +930,6 @@ where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and
  * younger.
  */
 export const CONSUMED_PURGE_AGE_MS = 15 * 24 * 60 * 60 * 1000
-
-/**
- * How old an idempotency key is when it becomes purgeable, in milliseconds: 24 hours. Core documents
- * no age for its own keys, so this is the playbook's. `organizations_with_work` hints
- * `idempotency_purge` at this age; {@link IDEMPOTENCY_PURGE} still accepts any age above
- * {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}.
- */
-export const IDEMPOTENCY_PURGE_AGE_MS = 24 * 60 * 60 * 1000
 
 /**
  * The route the remove-all call stores its idempotency key under. Pass it to
@@ -966,9 +1008,13 @@ select id, epoch, deletion_seq, changed from d order by id`
 
 /**
  * Remove what an Organization has left once it has no document: index settings, the usage row,
- * consumed messages, idempotency keys and work hints. `$1` Organization, `$2` a route whose
+ * consumed messages, every idempotency key and the work hints (except the orphan sweep's hint, and
+ * the purge hint of the kept key, which stay). `$1` Organization, `$2` a route whose
  * idempotency keys are kept (pass {@link REMOVE_ALL_IDEMPOTENCY_ROUTE}, so the remove-all call's own
- * key survives; kept keys age out through {@link IDEMPOTENCY_PURGE}). Run it inside the
+ * key survives; it ages out through {@link IDEMPOTENCY_PURGE}). Before the keys go it records the
+ * creation time of the latest upload attempt among them in `orphan_sweeps.erased_attempt_at`, so
+ * the Organization is still reported for `orphan_sweep` until a sweep covers it; no key content
+ * remains. Run it inside the
  * Organization's scope, in a transaction of its own after the last purge. The one row has `removed`:
  * true when nothing is left (also when called again), false, with nothing deleted, while any
  * document row exists, soft-deleted ones included. It is a `SECURITY DEFINER` function
@@ -1033,8 +1079,10 @@ returning id, purge_attempts`
  * `cleanup_pending` (deleted documents whose vector cleanup is not recorded, five minutes after the
  * delete), `consumed_purge` (done messages {@link CONSUMED_PURGE_AGE_MS} old, lapsed claims; the
  * all-zero global scope is included for this kind only), `idempotency_purge` (keys
- * {@link IDEMPOTENCY_PURGE_AGE_MS} old) and `purge_spent` (documents whose purge reached the
- * bound). `$1` the kind, `$2` the point to continue from (null or `''` for the first call), `$3` the
+ * {@link IDEMPOTENCY_PURGE_AGE_MS} old), `purge_spent` (documents whose purge reached the
+ * bound) and `orphan_sweep` (an Organization with an upload attempt the service has not yet swept
+ * for orphan objects, {@link ORPHAN_SWEEP_AGE_MS} after that attempt; mark it with
+ * {@link ORPHAN_SWEEP_DONE}). `$1` the kind, `$2` the point to continue from (null or `''` for the first call), `$3` the
  * page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here and again inside the function.
  *
  * **Rows.** Each is an Organization id and `resume_after`, the last hint the call visited. One call
@@ -1051,6 +1099,23 @@ returning id, purge_attempts`
  * only; see the migration for the plan per kind.
  */
 export const ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH('$3')})`
+
+/**
+ * Mark an Organization's orphan sweep done through a time: `$1` Organization, `$2` the time through
+ * which stored objects were examined (every object that an upload attempt at or before `$2` could
+ * have stored was looked at). **Compute `$2` when the sweep starts, not when this is called**: an
+ * object stored while the sweep ran may have been missed, and a time taken at the end would count
+ * it as examined. Run it in that Organization's scope (any other scope is refused),
+ * after the sweep. The database cuts `$2` to {@link ORPHAN_SWEEP_AGE_MS} (25 hours) before now (an
+ * object younger than that is never counted as swept) and never moves the recorded time back, so a repeat or an older time is harmless.
+ * Returns `swept_through` (what is recorded) and `more`: true while an upload attempt newer than
+ * that exists, in which case the work hint stays, due {@link ORPHAN_SWEEP_AGE_MS} after the oldest
+ * such attempt; false when none does and the hint is removed. It waits for any open upload attempt
+ * of the Organization (they are short) and then sees the ones that committed meanwhile, so an attempt
+ * racing the sweep keeps its hint: a hint may be early, never missing. It is
+ * `playbook.orphan_sweep_done`, `SECURITY DEFINER`, the only writer of `orphan_sweeps`.
+ */
+export const ORPHAN_SWEEP_DONE = `select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)`
 
 /** One row of {@link ORGANIZATIONS_WITH_WORK}: an Organization with work, or the marker row (null id). */
 export interface WorkDiscoveryRow {
@@ -1086,6 +1151,7 @@ export const PLAYBOOK_STATEMENTS = {
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_REQUEUE,
+  DOCUMENT_LIST_PENDING_CLEANUP,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
   DOCUMENT_PURGE_CLAIM,
@@ -1114,5 +1180,6 @@ export const PLAYBOOK_STATEMENTS = {
   ORGANIZATION_REMOVAL_STATUS,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_RESET,
+  ORPHAN_SWEEP_DONE,
   ORGANIZATIONS_WITH_WORK,
 } as const

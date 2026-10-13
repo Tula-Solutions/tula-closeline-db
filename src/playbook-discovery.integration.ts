@@ -13,6 +13,7 @@ import {
   DOCUMENT_ERASE_BATCH,
   DOCUMENT_GET,
   DOCUMENT_INSERT,
+  DOCUMENT_LIST_PENDING_CLEANUP,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
@@ -30,6 +31,8 @@ import {
   ORGANIZATION_REMOVAL_STATUS,
   ORGANIZATION_REMOVE_REST,
   ORGANIZATIONS_WITH_WORK,
+  ORPHAN_SWEEP_AGE_MS,
+  ORPHAN_SWEEP_DONE,
   QUOTA_LOCK,
   QUOTA_USAGE,
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
@@ -209,6 +212,7 @@ describe('work discovery, erasure and spent purges', () => {
         'index_settings',
         'idempotency_keys',
         'organization_usage',
+        'orphan_sweeps',
       ]) {
         const rows = await c.query(
           `select to_jsonb(t)::text as r from playbook.${table} t order by to_jsonb(t)::text`
@@ -231,6 +235,15 @@ describe('work discovery, erasure and spent purges', () => {
   const page = async (kind: string, after: string | null, batch: number | null) =>
     discoveredOrganizations(await rawPage(kind, after, batch)).organizations
 
+  /** An upload attempt as the owner can write one: an idempotency key created `hoursAgo` hours ago. */
+  const insertKey = (org: string, hoursAgo: number) =>
+    asOwner(org, (c) =>
+      c.query(
+        `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+         values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - ($5::float8 * interval '1 hour'))`,
+        [org, newUser(), `key-${hex()}`, hashOf('x'), hoursAgo]
+      )
+    )
   describe('discovery', () => {
     /** Organization ids that share a random prefix, so a sweep can be confined to them. */
     const family = (count: number) => {
@@ -360,7 +373,7 @@ describe('work discovery, erasure and spent purges', () => {
           await inOrg(org, (c) =>
             c.query(
               `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
-               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '25 hours')`,
+               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '27 hours')`,
               [org, newUser(), `key-${hex()}`, hashOf('x')]
             )
           )
@@ -401,6 +414,20 @@ describe('work discovery, erasure and spent purges', () => {
             await inOrg(org, (c) => c.query(DOCUMENT_LIST_SPENT_PURGES, [org, '', 10]))
           ).rows[0]
           await inOrg(org, (c) => c.query(DOCUMENT_PURGE_RESET, [org, spent.id]))
+        },
+      },
+      {
+        kind: 'orphan_sweep',
+        // An upload attempt made 26 hours ago, with nothing else: swept 25 hours after the attempt.
+        due: async (org) => {
+          await insertKey(org, 26)
+        },
+        // An attempt made just now is not due for 25 hours.
+        notDue: async (org) => {
+          await insertKey(org, 0)
+        },
+        finish: async (org) => {
+          await inOrg(org, (c) => c.query(ORPHAN_SWEEP_DONE, [org, new Date()]))
         },
       },
     ]
@@ -811,6 +838,39 @@ describe('work discovery, erasure and spent purges', () => {
               )
             ).rows[0].lease_expires_at,
         },
+        {
+          kind: 'orphan_sweep',
+          setup: async (org) => {
+            await inOrg(org, (c) =>
+              c.query(IDEMPOTENCY_BEGIN, [
+                org,
+                newUser(),
+                'documents.upload',
+                `k-${hex()}`,
+                hashOf('x'),
+              ])
+            )
+            return {}
+          },
+          write: (org, tx) =>
+            tx.client.query(IDEMPOTENCY_BEGIN, [
+              org,
+              newUser(),
+              'documents.upload',
+              `k-${hex()}`,
+              hashOf('x'),
+            ]),
+          // The sweeper removed the hint, so the writer wrote it again at its own attempt: 25 hours
+          // after the newest key (the writer's).
+          expected: async (org) =>
+            (
+              await asOwner(org, (c) =>
+                c.query(
+                  `select max(created_at) + interval '25 hours' as d from playbook.idempotency_keys`
+                )
+              )
+            ).rows[0].d,
+        },
       ]
 
       test.each(races)(
@@ -909,8 +969,9 @@ describe('work discovery, erasure and spent purges', () => {
       await inOrg(org, (c) => c.query(CONSUMED_COMPLETE, ['c', org, 'm1', token]))
       await inOrg(org, (c) =>
         c.query(
-          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
-           values ($1, $2, 'documents.upload', 'k1', $3), ($1, $4, $5, 'k2', $3)`,
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+           values ($1, $2, 'documents.upload', 'k1', $3, clock_timestamp() - interval '30 hours'),
+                  ($1, $4, $5, 'k2', $3, clock_timestamp())`,
           [org, newUser(), hashOf('x'), ZERO_USER, REMOVE_ALL_IDEMPOTENCY_ROUTE]
         )
       )
@@ -1027,9 +1088,21 @@ describe('work discovery, erasure and spent purges', () => {
       ).toEqual({ removed: true })
       const keys = await inOrg(org, (c) => c.query('select route from playbook.idempotency_keys'))
       expect(keys.rows).toEqual([{ route: REMOVE_ALL_IDEMPOTENCY_ROUTE }])
-      for (const kind of WORK_KINDS.filter((k) => k !== 'idempotency_purge')) {
+      for (const kind of WORK_KINDS.filter(
+        (k) => k !== 'idempotency_purge' && k !== 'orphan_sweep'
+      )) {
         expect(await hintOf(kind, org)).toBeUndefined()
       }
+      // The upload attempt may have left an object only the sweep removes: its hint stays, and the
+      // row records the erased attempt's time (the 30-hour-old key's), nothing else of it.
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+      const swept = await asOwner(org, (c) =>
+        c.query('select erased_attempt_at from playbook.orphan_sweeps')
+      )
+      expect(swept.rowCount).toBe(1)
+      expect(Date.now() - (swept.rows[0].erased_attempt_at as Date).getTime()).toBeGreaterThan(
+        29.9 * 3_600_000
+      )
 
       // The second Organization: every row and its counter exactly as before.
       expect(await snapshot(other)).toEqual(otherBefore)
@@ -1394,6 +1467,702 @@ describe('work discovery, erasure and spent purges', () => {
     })
   })
 
+  describe('pending cleanups', () => {
+    const FIRST = ['-infinity', ''] as const
+    const pending = (org: string, cursor: readonly string[] = FIRST, size: number | null = 100) =>
+      inOrg(org, (c) => c.query(DOCUMENT_LIST_PENDING_CLEANUP, [org, ...cursor, size]))
+    const deletedAtText = async (org: string, id: string) =>
+      (
+        await asOwner(org, (c) =>
+          c.query('select deleted_at::text as t from playbook.documents where id = $1', [id])
+        )
+      ).rows[0].t as string
+
+    test('it lists exactly the deleted documents whose current deletion is not cleaned, and no cleaned one', async () => {
+      const org = newOrg()
+      const [live, deleted, cleaned, restored, again] = [
+        await mustAdd(org),
+        await mustAdd(org),
+        await mustAdd(org),
+        await mustAdd(org),
+        await mustAdd(org),
+      ] as [Added, Added, Added, Added, Added]
+      await remove(org, deleted.id)
+      await remove(org, cleaned.id)
+      await inOrg(org, (c) => c.query(DOCUMENT_CLEANUP_DONE, [org, cleaned.id, 1]))
+      await remove(org, restored.id)
+      expect((await restore(org, restored.id)).rowCount).toBe(1)
+      // Deleted, cleaned, restored and deleted again: the second deletion is pending (deletion_seq 2).
+      await remove(org, again.id)
+      await inOrg(org, (c) => c.query(DOCUMENT_CLEANUP_DONE, [org, again.id, 1]))
+      expect((await restore(org, again.id)).rowCount).toBe(1)
+      await remove(org, again.id)
+      const rows = (await pending(org)).rows
+      expect(rows.map((r) => r.id).sort()).toEqual([deleted.id, again.id].sort())
+      expect(rows.find((r) => r.id === again.id)).toMatchObject({ deletion_seq: 2 })
+      expect(rows.find((r) => r.id === deleted.id)).toMatchObject({ deletion_seq: 1, epoch: 1 })
+      expect(rows.map((r) => r.id)).not.toContain(live.id)
+      // A row carries what DOCUMENT_CLEANUP_BEGIN takes, and begin accepts it.
+      const begin = await inOrg(org, (c) =>
+        c.query(DOCUMENT_CLEANUP_BEGIN, [org, deleted.id, rows[0]?.deletion_seq ?? 1])
+      )
+      expect(begin.rowCount).toBe(1)
+      // Recording the cleanup removes it from the list; a purged document is gone with its row.
+      await inOrg(org, (c) => c.query(DOCUMENT_CLEANUP_DONE, [org, deleted.id, 1]))
+      expect((await pending(org)).rows.map((r) => r.id)).toEqual([again.id])
+    })
+
+    test('it agrees with the cleanup_pending discovery kind: an Organization is named exactly when the list has a row', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.documents set deleted_at = deleted_at - interval '10 minutes', purge_due_at = purge_due_at - interval '10 minutes' where id = $1`,
+          [doc.id]
+        )
+      )
+      expect((await pending(org)).rowCount).toBe(1)
+      expect(await page('cleanup_pending', org.slice(0, -1), 500)).toContain(org)
+      await inOrg(org, (c) => c.query(DOCUMENT_CLEANUP_DONE, [org, doc.id, 1]))
+      expect((await pending(org)).rowCount).toBe(0)
+      expect(await page('cleanup_pending', org.slice(0, -1), 500)).not.toContain(org)
+    })
+
+    test('it pages a deleted_at tie across the page boundary without a repeat or a miss, and clamps the page', async () => {
+      const org = newOrg()
+      const docs: Added[] = []
+      for (let i = 0; i < 5; i++) {
+        docs.push(await mustAdd(org))
+      }
+      for (const d of docs) {
+        await remove(org, d.id)
+      }
+      // Four share one deletion time; the fifth is older.
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.documents set deleted_at = '2026-01-01 00:00:00.123456+00' where id = any($1)`,
+          [docs.slice(1).map((d) => d.id)]
+        )
+      )
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.documents set deleted_at = '2025-12-31 00:00:00+00' where id = $1`,
+          [(docs[0] as Added).id]
+        )
+      )
+      const seen: string[] = []
+      let cursor: readonly string[] = FIRST
+      const sizes: number[] = []
+      for (let pages = 0; pages < 6; pages++) {
+        const rows = (await pending(org, cursor, 2)).rows
+        if (rows.length === 0) {
+          break
+        }
+        sizes.push(rows.length)
+        seen.push(...rows.map((r) => r.id))
+        const last = rows.at(-1)?.id as string
+        cursor = [await deletedAtText(org, last), last]
+      }
+      expect(sizes).toEqual([2, 2, 1])
+      expect(seen).toEqual([
+        (docs[0] as Added).id,
+        ...docs
+          .slice(1)
+          .map((d) => d.id)
+          .sort(),
+      ])
+      // A huge, zero, negative or null page size is clamped, not refused.
+      for (const size of [2_000_000_000, 0, -3, null]) {
+        const rows = (await pending(org, FIRST, size)).rows
+        expect(rows.length).toBeGreaterThanOrEqual(1)
+        expect(rows.length).toBeLessThanOrEqual(500)
+      }
+      expect((await pending(org, FIRST, null)).rowCount).toBe(1)
+    })
+
+    test('another Organization sees none of them, and the owner in scope sees them as a control', async () => {
+      const [a, b] = [newOrg(), newOrg()]
+      const doc = await mustAdd(a)
+      await remove(a, doc.id)
+      expect((await pending(b)).rowCount).toBe(0)
+      expect(
+        (await inOrg(b, (c) => c.query(DOCUMENT_LIST_PENDING_CLEANUP, [a, ...FIRST, 100]))).rowCount
+      ).toBe(0)
+      const control = await asOwner(a, (c) =>
+        c.query(DOCUMENT_LIST_PENDING_CLEANUP, [a, ...FIRST, 100])
+      )
+      expect(control.rows.map((r) => r.id)).toEqual([doc.id])
+      const crossed = await asOwner(b, (c) =>
+        c.query(DOCUMENT_LIST_PENDING_CLEANUP, [a, ...FIRST, 100])
+      )
+      expect(crossed.rowCount).toBe(0)
+    })
+
+    test('under a generic plan it reads documents_cleanup_idx forward, with no Sort', async () => {
+      interface PlanNode {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Name'?: string
+        'Scan Direction'?: string
+        Plans?: PlanNode[]
+      }
+      const walk = (n: PlanNode): PlanNode[] => [n, ...(n.Plans ?? []).flatMap(walk)]
+      const org = newOrg()
+      const plan = await inOrg(org, async (c) => {
+        await c.query('set local plan_cache_mode = force_generic_plan')
+        await c.query('set local enable_seqscan = off')
+        await c.query(
+          `prepare pending_probe(text, timestamptz, text, int) as ${DOCUMENT_LIST_PENDING_CLEANUP}`
+        )
+        try {
+          const r = await c.query(
+            `explain (format json, costs off) execute pending_probe('${org}', '-infinity', '', 50)`
+          )
+          return r.rows[0]['QUERY PLAN'][0].Plan as PlanNode
+        } finally {
+          await c.query('deallocate pending_probe')
+        }
+      })
+      const nodes = walk(plan)
+      const detail = `plan:\n${JSON.stringify(plan, null, 1)}`
+      const scans = nodes.filter((n) => n['Relation Name'] === 'documents')
+      // Asserted: one scan of documents, an Index Scan on documents_cleanup_idx, forward (the keyset
+      // order is ascending), and no Sort node anywhere in the plan.
+      expect([scans.length, detail]).toEqual([1, detail])
+      expect([
+        scans[0]?.['Node Type'],
+        scans[0]?.['Index Name'],
+        scans[0]?.['Scan Direction'],
+        detail,
+      ]).toEqual(['Index Scan', 'documents_cleanup_idx', 'Forward', detail])
+      expect([nodes.some((n) => n['Node Type'] === 'Sort'), detail]).toEqual([false, detail])
+    })
+  })
+
+  describe('the orphan sweep', () => {
+    const attempt = (org: string) =>
+      inOrg(org, (c) =>
+        c.query(IDEMPOTENCY_BEGIN, [org, newUser(), 'documents.upload', `k-${hex()}`, hashOf('x')])
+      )
+    const done = (org: string, through: Date = new Date()) =>
+      inOrg(org, (c) => c.query(ORPHAN_SWEEP_DONE, [org, through]))
+    const sweptOf = async (org: string) =>
+      (await asOwner(org, (c) => c.query('select swept_through from playbook.orphan_sweeps')))
+        .rows[0]?.swept_through as Date | undefined
+    const named = async (org: string) =>
+      (await page('orphan_sweep', org.slice(0, -1), 500)).includes(org)
+
+    test('the age is 25 hours; an Organization with one upload attempt and nothing else is returned after it, not before, and not again once swept', async () => {
+      expect(ORPHAN_SWEEP_AGE_MS).toBe(25 * 3_600_000)
+      const org = newOrg()
+      await attempt(org)
+      const hint = await hintOf('orphan_sweep', org)
+      const wait = new Date(hint.due_at).getTime() - Date.now()
+      expect(wait).toBeGreaterThan(ORPHAN_SWEEP_AGE_MS - 60_000)
+      expect(wait).toBeLessThanOrEqual(ORPHAN_SWEEP_AGE_MS)
+      // Before the due time: not returned, and the hint is kept.
+      expect(await named(org)).toBe(false)
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+      // 24.9 hours after the attempt: still not returned. 25.1 hours after: returned.
+      const early = newOrg()
+      await insertKey(early, 24.9)
+      expect(await named(early)).toBe(false)
+      const due = newOrg()
+      await insertKey(due, 25.1)
+      expect(await named(due)).toBe(true)
+      // Marked swept: through the cut, which covers that attempt; not returned again, hint removed.
+      const marked = await done(due)
+      expect(marked.rows).toEqual([{ swept_through: expect.any(Date), more: false }])
+      expect(await named(due)).toBe(false)
+      expect(await hintOf('orphan_sweep', due)).toBeUndefined()
+      expect(await sweptOf(due)).toBeInstanceOf(Date)
+    })
+
+    test('a newer attempt keeps the Organization pending: the sweep covers the old attempt, the hint moves to the newer one', async () => {
+      const org = newOrg()
+      await insertKey(org, 26)
+      expect(await named(org)).toBe(true)
+      await attempt(org)
+      const marked = await done(org)
+      // The attempt made just now is not covered by a sweep through 25 hours ago.
+      expect(marked.rows[0]).toMatchObject({ more: true })
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      expect(new Date(hint.due_at).getTime() - Date.now()).toBeGreaterThan(
+        ORPHAN_SWEEP_AGE_MS - 60_000
+      )
+      expect(await named(org)).toBe(false)
+      // An older time, or a repeat, is harmless and the recorded time never goes back.
+      const before = (await sweptOf(org)) as Date
+      const older = await done(org, new Date(Date.now() - 72 * 3_600_000))
+      expect(older.rows[0]).toMatchObject({ more: true })
+      expect((await sweptOf(org))?.getTime()).toBeGreaterThanOrEqual(before.getTime())
+      // A time in the future is cut to 25 hours before now.
+      const future = await done(org, new Date(Date.now() + 10 * 86_400_000))
+      const cut = (future.rows[0].swept_through as Date).getTime()
+      expect(cut).toBeLessThan(Date.now() - 24.9 * 3_600_000)
+      expect(cut).toBeGreaterThan(Date.now() - 25.1 * 3_600_000)
+    })
+
+    test('K1: an attempt less than 25 hours old is not covered by a sweep at the ceiling: two attempts 59 minutes apart', async () => {
+      // Now is the first attempt's due time (it was made a moment more than 25 hours ago); the
+      // second was made 59 minutes after it, so it is 24h01m old and its due time is 59 minutes on.
+      const org = newOrg()
+      await insertKey(org, 25.01)
+      await insertKey(org, 25.01 - 59 / 60)
+      expect(await named(org)).toBe(true)
+      // The ceiling: the cut is now - 25 hours, which covers the first and not the second (a cut of
+      // 24 hours would have counted the second as swept although its object may be too young).
+      const marked = await done(org, new Date())
+      expect(marked.rows[0]).toMatchObject({ more: true })
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      const wait = new Date(hint.due_at).getTime() - Date.now()
+      expect(wait).toBeGreaterThan(50 * 60_000)
+      expect(wait).toBeLessThan(60 * 60_000)
+      expect(await named(org)).toBe(false)
+      // A second Organization, an hour later in the same story: the second attempt is due and
+      // covered by the ceiling, and only then is the Organization finished.
+      const later = newOrg()
+      await insertKey(later, 26.01)
+      await insertKey(later, 26.01 - 59 / 60)
+      expect(await named(later)).toBe(true)
+      expect((await done(later, new Date())).rows[0]).toMatchObject({ more: false })
+      expect(await named(later)).toBe(false)
+      expect(await hintOf('orphan_sweep', later)).toBeUndefined()
+    })
+
+    test('L1: erasure deletes every key but the kept route and records the latest attempt; the Organization stays reported until a sweep covers it', async () => {
+      const org = newOrg()
+      // Now is the first attempt's due time; the second was made 30 minutes after it.
+      await insertKey(org, 25.01)
+      await insertKey(org, 25.01 - 0.5)
+      await asOwner(org, (c) =>
+        c.query(
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
+           values ($1, $2, $3, 'internal', $4)`,
+          [org, ZERO_USER, REMOVE_ALL_IDEMPOTENCY_ROUTE, hashOf('x')]
+        )
+      )
+      const rest = await inOrg(org, (c) =>
+        c.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
+      )
+      expect(rest.rows[0]).toEqual({ removed: true })
+      // No upload key remains, young or old: only the kept route's own key.
+      const left = await asOwner(org, (c) => c.query('select route from playbook.idempotency_keys'))
+      expect(left.rows).toEqual([{ route: REMOVE_ALL_IDEMPOTENCY_ROUTE }])
+      // The row holds two times and nothing else; the erased time is the later attempt's.
+      const row = (
+        await asOwner(org, (c) =>
+          c.query(`select swept_through, erased_attempt_at, to_jsonb(s) - 'organization_id' as j
+                   from playbook.orphan_sweeps s`)
+        )
+      ).rows[0]
+      expect(Object.keys(row.j).sort()).toEqual(['erased_attempt_at', 'swept_through'])
+      const erased = (row.erased_attempt_at as Date).getTime()
+      expect(Date.now() - erased).toBeGreaterThan(24.4 * 3_600_000)
+      expect(Date.now() - erased).toBeLessThan(24.6 * 3_600_000)
+      // The first attempt is due: reported. The sweep covers it, but not the later one.
+      expect(await named(org)).toBe(true)
+      expect((await done(org, new Date())).rows[0]).toMatchObject({ more: true })
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      const wait = new Date(hint.due_at).getTime() - Date.now()
+      expect(wait).toBeGreaterThan(20 * 60_000)
+      expect(wait).toBeLessThan(40 * 60_000)
+      expect(await named(org)).toBe(false)
+      // The row is kept while the erased time is uncovered. Once it is (the clock cannot be moved,
+      // so the erased time and the hint, which stands for that attempt, are moved back as the
+      // owner), the next done removes hint and row.
+      await asOwner(org, async (c) => {
+        await c.query(
+          `update playbook.orphan_sweeps set erased_attempt_at = clock_timestamp() - interval '26 hours'`
+        )
+        await c.query(
+          `update playbook.work_hints set due_at = clock_timestamp() - interval '1 hour' where kind = 'orphan_sweep'`
+        )
+      })
+      // The kept route's own key counts as an attempt for discovery (any key newer than the sweep
+      // does) and would move the hint to its own time, so it goes before anything runs discovery.
+      await asOwner(org, (c) =>
+        c.query(`delete from playbook.idempotency_keys where route = $1`, [
+          REMOVE_ALL_IDEMPOTENCY_ROUTE,
+        ])
+      )
+      expect(await named(org)).toBe(false)
+      expect((await done(org, new Date())).rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', org)).toBeUndefined()
+      expect(
+        (await asOwner(org, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(0)
+    })
+
+    test('L1: a done racing an erasure waits for it, then counts the erased attempt', async () => {
+      const org = newOrg()
+      await insertKey(org, 24.9)
+      const erasing = await open(org)
+      const marking = await open(org)
+      try {
+        await erasing.client.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
+        const finished = marking.client.query(ORPHAN_SWEEP_DONE, [org, new Date()])
+        await untilBlocked(marking.pid)
+        await erasing.client.query('commit')
+        const result = await finished
+        // The key is gone, yet the attempt is pending: it is newer than the cut.
+        expect(result.rows[0]).toMatchObject({ more: true })
+        await marking.client.query('commit')
+      } finally {
+        await finish(erasing, marking)
+      }
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+    })
+
+    test('L1: no cycle among an upload attempt, a done and an erasure', async () => {
+      const org = newOrg()
+      await insertKey(org, 30)
+      const upload = await open(org)
+      const marking = await open(org)
+      const erasing = await open(org)
+      try {
+        // The upload holds the hint (key-share); done takes the row and waits for the hint; the
+        // erasure waits for the row; the upload then asks for the upload lock, which nobody holds.
+        await upload.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        const marked = marking.client.query(ORPHAN_SWEEP_DONE, [org, new Date()])
+        await untilBlocked(marking.pid)
+        const erased = erasing.client.query(ORGANIZATION_REMOVE_REST, [
+          org,
+          REMOVE_ALL_IDEMPOTENCY_ROUTE,
+        ])
+        await untilBlocked(erasing.pid)
+        await upload.client.query(QUOTA_LOCK, [org])
+        await upload.client.query('commit')
+        expect((await marked).rows[0]).toMatchObject({ more: true })
+        await marking.client.query('commit')
+        expect((await erased).rows[0]).toEqual({ removed: true })
+        await erasing.client.query('commit')
+      } finally {
+        await finish(upload, marking, erasing)
+      }
+    })
+
+    test('K3: after erasure, a sweep and done leave neither the hint nor the row; a document keeps the row', async () => {
+      const org = newOrg()
+      await insertKey(org, 30)
+      await inOrg(org, (c) =>
+        c.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
+      )
+      expect(await named(org)).toBe(true)
+      expect((await done(org)).rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', org)).toBeUndefined()
+      expect(
+        (await asOwner(org, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(0)
+      // A later attempt starts again from nothing: the hint is back, the row is not needed yet.
+      await attempt(org)
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+      // With a document in the Organization the row stays when the hint goes.
+      const kept = newOrg()
+      await mustAdd(kept)
+      await insertKey(kept, 30)
+      expect(await named(kept)).toBe(true)
+      expect((await done(kept)).rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', kept)).toBeUndefined()
+      expect(
+        (await asOwner(kept, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(1)
+    })
+
+    test('K4: two open transactions each inserting a key for an Organization with no hint: the second waits for the first, and the hint resolves to the earlier time', async () => {
+      const org = newOrg()
+      // The earlier-starting transaction inserts second, so it lowers the hint the first wrote.
+      const early = await open(org)
+      const lateStarter = await open(org)
+      try {
+        await lateStarter.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        const writing = early.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        await untilBlocked(early.pid)
+        await lateStarter.client.query('commit')
+        await writing
+        await early.client.query('commit')
+      } finally {
+        await finish(early, lateStarter)
+      }
+      const earliest = (
+        await asOwner(org, (c) =>
+          c.query(
+            `select min(created_at) + interval '25 hours' as d from playbook.idempotency_keys`
+          )
+        )
+      ).rows[0].d as Date
+      expect(new Date((await hintOf('orphan_sweep', org)).due_at)).toEqual(new Date(earliest))
+    })
+
+    test('an Organization that never attempted an upload has nothing to mark, and done creates no hint', async () => {
+      const org = newOrg()
+      const marked = await done(org)
+      expect(marked.rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', org)).toBeUndefined()
+    })
+
+    test('an attempt open while the sweeper function runs keeps its hint: the locked hint is skipped, not removed', async () => {
+      const org = newOrg()
+      await insertKey(org, 26)
+      expect(await named(org)).toBe(true)
+      await done(org)
+      expect(await hintOf('orphan_sweep', org)).toBeUndefined()
+      // A stale hint with nothing pending (as a sweep can leave it), and a new attempt open.
+      await owner.query(
+        `insert into playbook.work_hints (kind, organization_id, due_at) values ('orphan_sweep', $1, clock_timestamp() - interval '1 hour')`,
+        [org]
+      )
+      const writer = await open(org)
+      try {
+        await writer.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        expect(await named(org)).toBe(false)
+        await writer.client.query('commit')
+      } finally {
+        await finish(writer)
+      }
+      // The hint survived the sweep that met it locked; the next sweep moves it to the attempt's time.
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+      expect(await named(org)).toBe(false)
+      const hint = await hintOf('orphan_sweep', org)
+      expect(new Date(hint.due_at).getTime() - Date.now()).toBeGreaterThan(
+        ORPHAN_SWEEP_AGE_MS - 60_000
+      )
+    })
+
+    test('a sweep marked done while an attempt is open waits for it, then keeps the Organization pending', async () => {
+      const org = newOrg()
+      await insertKey(org, 26)
+      const writer = await open(org)
+      const marking = await open(org)
+      try {
+        await writer.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        const finished = marking.client.query(ORPHAN_SWEEP_DONE, [org, new Date()])
+        await untilBlocked(marking.pid)
+        await writer.client.query('commit')
+        // It returned only after the writer committed, and it saw the writer's key.
+        const result = await finished
+        expect(result.rows[0]).toMatchObject({ more: true })
+        await marking.client.query('commit')
+      } finally {
+        await finish(writer, marking)
+      }
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      expect(new Date(hint.due_at).getTime() - Date.now()).toBeGreaterThan(
+        ORPHAN_SWEEP_AGE_MS - 60_000
+      )
+    })
+
+    test('an attempt that starts while done holds the hint waits for done, then writes the hint at its own time', async () => {
+      const org = newOrg()
+      await insertKey(org, 26)
+      const marking = await open(org)
+      const writer = await open(org)
+      try {
+        const marked = await marking.client.query(ORPHAN_SWEEP_DONE, [org, new Date()])
+        // Nothing newer was visible: done removed the hint (uncommitted) and holds it.
+        expect(marked.rows[0]).toMatchObject({ more: false })
+        const writing = writer.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        await untilBlocked(writer.pid)
+        await marking.client.query('commit')
+        await writing
+        await writer.client.query('commit')
+      } finally {
+        await finish(marking, writer)
+      }
+      const hint = await hintOf('orphan_sweep', org)
+      expect(hint).toBeDefined()
+      expect(new Date(hint.due_at).getTime() - Date.now()).toBeGreaterThan(
+        ORPHAN_SWEEP_AGE_MS - 60_000
+      )
+    })
+
+    test('the table is read-only to the role and invisible outside the scope; done refuses another scope and other roles', async () => {
+      const [org, other] = [newOrg(), newOrg()]
+      await insertKey(org, 26)
+      await done(org)
+      const read = await inOrg(org, (c) => c.query('select * from playbook.orphan_sweeps'))
+      expect(read.rowCount).toBe(1)
+      for (const text of [
+        `insert into playbook.orphan_sweeps (organization_id, swept_through) values ('${newOrg()}', now())`,
+        'delete from playbook.orphan_sweeps',
+        'update playbook.orphan_sweeps set swept_through = now()',
+      ]) {
+        expect(await rejectionOf(inOrg(org, (c) => c.query(text)))).toContain('permission denied')
+      }
+      expect((await playbook.query('select 1 from playbook.orphan_sweeps')).rowCount).toBe(0)
+      expect(
+        (await inOrg(other, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(0)
+      // Another Organization's scope cannot mark this one: refused, and nothing changes.
+      const before = await sweptOf(org)
+      expect(
+        await rejectionOf(inOrg(other, (c) => c.query(ORPHAN_SWEEP_DONE, [org, new Date()])))
+      ).toContain('not scoped to this Organization')
+      expect(await sweptOf(org)).toEqual(before)
+      for (const pool of [core, auth]) {
+        expect(
+          await rejectionOf(pool.query(ORGANIZATIONS_WITH_WORK, ['orphan_sweep', '', 5]))
+        ).toMatch(/permission denied/)
+        expect(await rejectionOf(pool.query(ORPHAN_SWEEP_DONE, [org, new Date()]))).toMatch(
+          /permission denied/
+        )
+      }
+      for (const [role, held] of [
+        ['closeline_playbook', true],
+        ['closeline_core', false],
+        ['closeline_auth', false],
+        ['public', false],
+      ] as const) {
+        const r = await owner.query(
+          `select has_function_privilege($1, 'playbook.organizations_with_work(text, text, integer)', 'EXECUTE') as a,
+                  has_function_privilege($1, 'playbook.remove_organization_rest(text, text)', 'EXECUTE') as b,
+                  has_function_privilege($1, 'playbook.orphan_sweep_done(text, timestamptz)', 'EXECUTE') as c`,
+          [role]
+        )
+        expect([role, r.rows[0].a, r.rows[0].b, r.rows[0].c]).toEqual([role, held, held, held])
+      }
+    })
+
+    test('the replaced function still refuses a scope, still resumes, and the old kinds and statements work as before', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      expect(
+        await rejectionOf(
+          inOrg(org, (c) => c.query(ORGANIZATIONS_WITH_WORK, ['orphan_sweep', '', 5]))
+        )
+      ).toContain('outside any Organization')
+      expect(await page('jobs_due', org.slice(0, -1), 500)).toContain(org)
+      const rows = await rawPage('jobs_due', org.slice(0, -1), 500)
+      expect(rows.every((r) => typeof r.resume_after === 'string')).toBe(true)
+      expect((await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, doc.id]))).rowCount).toBe(1)
+      expect(await rejectionOf(page('nope', null, 5))).toContain('unknown kind of work')
+    })
+  })
+
+  describe('concurrent writers of one Organization do not block each other', () => {
+    // A block would raise 55P03 after two seconds instead of hanging the run.
+    const quick = async (...txs: { client: PoolClient }[]) => {
+      for (const tx of txs) {
+        await tx.client.query(`set local lock_timeout = '2s'`)
+      }
+    }
+    const beginKey = (tx: { client: PoolClient }, org: string) =>
+      tx.client.query(IDEMPOTENCY_BEGIN, [
+        org,
+        newUser(),
+        'documents.upload',
+        `k-${hex()}`,
+        hashOf('x'),
+      ])
+
+    test('two open transactions each inserting an idempotency key, an earlier hint already there', async () => {
+      const org = newOrg()
+      await insertKey(org, 30)
+      const [first, second] = [await open(org), await open(org)]
+      try {
+        await quick(first, second)
+        await beginKey(first, org)
+        await beginKey(second, org)
+        await first.client.query('commit')
+        await second.client.query('commit')
+      } finally {
+        await finish(first, second)
+      }
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+    })
+
+    test('two open transactions each inserting an idempotency key after a fresh attempt', async () => {
+      const org = newOrg()
+      await inOrg(org, (c) => beginKey({ client: c }, org))
+      const [first, second] = [await open(org), await open(org)]
+      try {
+        await quick(first, second)
+        await beginKey(first, org)
+        await beginKey(second, org)
+        await first.client.query('commit')
+        await second.client.query('commit')
+      } finally {
+        await finish(first, second)
+      }
+    })
+
+    test('two open transactions each claiming a consumed message', async () => {
+      const org = newOrg()
+      await inOrg(org, (c) =>
+        c.query(CONSUMED_CLAIM, ['c', org, 'm0', crypto.randomUUID(), 60_000])
+      )
+      const [first, second] = [await open(org), await open(org)]
+      try {
+        await quick(first, second)
+        await first.client.query(CONSUMED_CLAIM, ['c', org, 'm1', crypto.randomUUID(), 120_000])
+        await second.client.query(CONSUMED_CLAIM, ['c', org, 'm2', crypto.randomUUID(), 120_000])
+        await first.client.query('commit')
+        await second.client.query('commit')
+      } finally {
+        await finish(first, second)
+      }
+    })
+
+    test('two open transactions each deleting a document', async () => {
+      const org = newOrg()
+      const seed = await mustAdd(org)
+      await remove(org, seed.id)
+      const a = await mustAdd(org)
+      const b = await mustAdd(org)
+      const [first, second] = [await open(org), await open(org)]
+      try {
+        await quick(first, second)
+        await first.client.query(DOCUMENT_SOFT_DELETE, [org, a.id, newUser(), 0])
+        await second.client.query(DOCUMENT_SOFT_DELETE, [org, b.id, newUser(), 0])
+        await first.client.query('commit')
+        await second.client.query('commit')
+      } finally {
+        await finish(first, second)
+      }
+    })
+  })
+
   describe('isolation: the new statements', () => {
     const USER = ZERO_USER
     interface Case {
@@ -1441,6 +2210,15 @@ describe('work discovery, erasure and spent purges', () => {
             )
           )
           return [a, doc.id]
+        },
+      },
+      {
+        name: 'DOCUMENT_LIST_PENDING_CLEANUP',
+        text: DOCUMENT_LIST_PENDING_CLEANUP,
+        prepare: async (a) => {
+          const doc = await mustAdd(a)
+          await remove(a, doc.id)
+          return [a, '-infinity', '', 10]
         },
       },
       {

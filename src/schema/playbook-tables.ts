@@ -71,6 +71,15 @@ const createdAt = () => ts('created_at').notNull().defaultNow()
 const updatedAt = () => ts('updated_at').notNull().defaultNow()
 
 /**
+ * The rows whose vector cleanup is pending: deleted, and the cleanup recorded for an older
+ * deletion than the current one (or never). One text, used by `documents_cleanup_idx` (its
+ * predicate), the `DOCUMENT_LIST_PENDING_CLEANUP` statement, and, with the alias `d.`, the
+ * `cleanup_pending` verification in `playbook.organizations_with_work`, so the three cannot differ.
+ */
+export const PENDING_CLEANUP_PREDICATE =
+  "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)"
+
+/**
  * A document of an Organization's Playbook: the record of an uploaded file, never its content or
  * its text (the file is in object storage under `object_key`, the chunks in the vector store).
  *
@@ -216,12 +225,12 @@ export const documents = playbookSchema.table(
     index('documents_unbarred_idx')
       .on(t.organizationId, t.id)
       .where(sql`${t.restoreBarredAt} is null`),
-    // Deleted documents whose vector cleanup is not recorded for the current deletion.
+    // Deleted documents whose vector cleanup is not recorded for the current deletion
+    // ({@link PENDING_CLEANUP_PREDICATE}), by deletion time then id: the pending-cleanup list's keyset
+    // and the discovery kind's first entry of an Organization.
     index('documents_cleanup_idx')
-      .on(t.organizationId, t.deletedAt)
-      .where(
-        sql`${t.state} = 'deleted' and (${t.vectorsRemovedSeq} is null or ${t.vectorsRemovedSeq} < ${t.deletionSeq})`
-      ),
+      .on(t.organizationId, t.deletedAt, t.id)
+      .where(sql.raw(PENDING_CLEANUP_PREDICATE)),
     // Documents whose purge reached the attempt bound, for a person to list and reset.
     index('documents_spent_purge_idx')
       .on(t.organizationId, t.id)

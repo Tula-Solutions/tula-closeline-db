@@ -23,6 +23,7 @@ const documentsMigration = read('0009_playbook_documents.sql')
 const consumedMigration = read('0010_playbook_consumed_message.sql')
 const idempotencyMigration = read('0011_playbook_idempotency_keys.sql')
 const discoveryMigration = read('0012_playbook_work_discovery.sql')
+const orphanMigration = read('0014_playbook_pending_cleanup_orphans.sql')
 
 const NAMES = [
   'consumed_message',
@@ -31,10 +32,11 @@ const NAMES = [
   'index_settings',
   'ingestion_jobs',
   'organization_usage',
+  'orphan_sweeps',
 ]
 
 describe('the playbook schema', () => {
-  test('has the six tenant tables and the work registry, and nothing else', () => {
+  test('has the seven tenant tables and the work registry, and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
   })
 
@@ -49,7 +51,7 @@ describe('the playbook schema', () => {
   test.each(NAMES)('%s has organization_id, the canonical policy, and is not exempt', (name) => {
     const config = tables.find((t) => t.name === name)
     expect(config?.columns.map((c) => c.name)).toContain('organization_id')
-    const sql = documentsMigration + consumedMigration + idempotencyMigration
+    const sql = documentsMigration + consumedMigration + idempotencyMigration + orphanMigration
     for (const statement of tenantRlsStatements('playbook', name)) {
       expect(sql).toContain(statement)
     }

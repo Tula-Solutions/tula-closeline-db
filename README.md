@@ -636,7 +636,7 @@ ASCII-lower-cased name), members of a Team (`team_members_pkey`), Teams of a mem
 The Playbook service's documents, their ingestion, the quota counts, the per-Organization index
 settings, the queue consumer's record of handled messages and the idempotency keys (hub issues 51 and
 53, ADR 0016, ADR 0010). Migrations `0009` (documents, usage, jobs, index settings), `0010` (consumed
-messages), `0011` (idempotency keys) and `0012` (work discovery, erasure, spent purges) and `0013` (page count, the state list index); released as 0.12.0. Every table carries `organization_id` as the
+messages), `0011` (idempotency keys) and `0012` (work discovery, erasure, spent purges) `0013` (page count, the state list index) and `0014` (pending cleanups, the orphan sweep); released as 0.13.0. Every table carries `organization_id` as the
 contract's prefixed text, forced row-level security with the one canonical policy, and grants for
 `closeline_playbook` only. **No file content and no extracted text is stored**: the file is in
 object storage (`documents.object_key`), the chunks are in the vector store, and a job holds only
@@ -650,6 +650,7 @@ its step, attempt count, counts and the object key of its parsed intermediate.
 | `index_settings` | the embedding model and dimension of an Organization (ADR 0010) |
 | `consumed_message` | the kit's `ProcessedStore` table |
 | `idempotency_keys` | the outcome of one upload or internal call per Organization, user, route and client key; core's pattern without the foreign key |
+| `orphan_sweeps` | the time the service swept an Organization's stored objects for orphans through (`swept_through`) and the creation time of the latest upload attempt whose key erasure deleted (`erased_attempt_at`); read-only to the role, written only by `ORPHAN_SWEEP_DONE` (`playbook.orphan_sweep_done`) and `ORGANIZATION_REMOVE_REST` |
 | `work_hints` | **not a tenant table**: which Organizations may have work of which kind from when; the registry `organizations_with_work` reads (no service role has any privilege on it) |
 
 **Document states** (`DOCUMENT_STATES`, a check constraint, the names of ADR 0016): `uploaded`,
@@ -790,7 +791,7 @@ Organization ids and nothing else, in id order after `after_id`, each row with `
 (deleted, vector cleanup not recorded, five minutes after the delete), `consumed_purge` (done
 messages `CONSUMED_PURGE_AGE_MS` old, 15 days, above the queue's retention, and lapsed claims at their
 lease end; the only kind that returns the all-zero global scope), `idempotency_purge` (keys
-`IDEMPOTENCY_PURGE_AGE_MS` old, 24 hours, since core documents no age of its own) and `purge_spent`. The hints are written by `SECURITY DEFINER`
+`IDEMPOTENCY_PURGE_AGE_MS` old, 26 hours, since core documents no age of its own), `purge_spent` and `orphan_sweep` (below). The hints are written by `SECURITY DEFINER`
 triggers on the tenant tables and only ever move a time earlier; the function moves a verified hint
 to the next due time, or removes it when no work is left, so a hint is never later than real work and
 a stale one is cleaned by the sweep that meets it. Hints another transaction is changing are skipped
@@ -845,11 +846,62 @@ cleanup message for a `deletion_seq` is idempotent (it may be published twice). 
 When no document row is left, `ORGANIZATION_REMOVE_REST` removes the rest: the function
 `playbook.remove_organization_rest` deletes the Organization's index settings, usage row, consumed
 messages, idempotency keys (except the remove-all route's own, `REMOVE_ALL_IDEMPOTENCY_ROUTE`) and work
-hints. It refuses, and deletes nothing, while any document row exists; it acts only on the
+hints (except the `orphan_sweep` hint and its marker row, which stay). It refuses, and deletes nothing, while any document row exists; it acts only on the
 Organization the calling transaction is scoped to; and it takes the upload lock first. That is the
 smallest grant that cannot strip a live Organization (the service role keeps no `DELETE` on those
 tables). `ORGANIZATION_REMOVAL_STATUS` answers the route's end state: `removed` is true when no
 document, index settings, usage row or consumed message of the Organization is left.
+
+**Pending cleanups.** `DOCUMENT_LIST_PENDING_CLEANUP` lists an Organization's deleted documents whose
+vector cleanup is not recorded for their current `deletion_seq` (and which are not purged: a purged
+document is a removed row), oldest deletion first by `deleted_at` then `id`, `LIMIT` clamped to
+`PLAYBOOK_MAX_BATCH`. Rows carry `id`, `epoch`, `deletion_seq` (what `DOCUMENT_CLEANUP_BEGIN` takes) and
+`deleted_at`; carry the cursor as `deleted_at::text` and the id, `'-infinity'` and `''` for the first page.
+The predicate is `PENDING_CLEANUP_PREDICATE`, one text shared by the statement, by `documents_cleanup_idx`
+(now on `(organization_id, deleted_at, id)`, so the page is read in order with no sort) and by the
+`cleanup_pending` verification, so the discovery kind and the list agree exactly: an Organization is
+reported if and only if the list has a row for it (the hint is due five minutes after the delete, the
+list has no delay). The list is a plan-tested index read under a generic plan.
+
+**Orphan objects.** An upload whose outcome was unknown can leave a stored object with no document row,
+and the service deletes such an orphan only once it is older than 24 hours. Every upload attempt writes
+an idempotency key, and the key insert trigger notes an `orphan_sweep` hint due `ORPHAN_SWEEP_AGE_MS`
+(25 hours) later, so an idle Organization with one failed upload is still named. **An upload attempt
+writes nothing else:** it takes the hint's key-share lock like every other kind, so concurrent attempts
+of one Organization never wait for each other, except that the attempt which creates the hint, or
+lowers it to an earlier time, waits for a writer of the hint that is still open (two first attempts of
+an Organization with no hint queue briefly, and the hint ends at the earlier time). The discovery function reports the Organization while an
+upload attempt is newer than the time the service swept through (`orphan_sweeps.swept_through`), due 25
+hours after the oldest such attempt. The keys are purged after 26 hours, an hour after an attempt is due,
+so a sweep that runs within that hour still finds them; for a later one the hint's own time counts as
+evidence too (a hint due at `d` stands for an attempt at `d` minus 25 hours).
+**What the service does:** sweep the Organization's stored objects older than 24 hours that have no
+document row, then run `ORPHAN_SWEEP_DONE` in that Organization's scope (`$2` the time through which
+objects were examined, **taken when the sweep starts, not when `ORPHAN_SWEEP_DONE` is called**: an
+object stored while the sweep ran may have been missed, and a time taken at the end would count it as
+examined; the database cuts it to 25 hours before now, `ORPHAN_SWEEP_AGE_MS`, because an
+attempt's key is made when its transaction starts and its object after, so a younger attempt is never
+counted as swept; it never moves the recorded time back). The function waits for any open upload
+attempt of the Organization, so call it under a short `lock_timeout` and retry; it reads the attempts again,
+and either moves the hint to 25 hours after the oldest attempt newer than the sweep (`more` true) or
+removes it (`more` false), so a newer attempt, or one racing the sweep, keeps its hint. When it removes
+the hint and the Organization has no idempotency key and no document left, it removes the
+`orphan_sweeps` row as well; a later attempt starts again from nothing. A repeat is idempotent. **After
+erasure** (`remove_organization_rest`) no idempotency key remains except the remove-all call's own
+(the kept route's), so nothing of an upload attempt's request or response is kept, and
+`ORGANIZATION_REMOVAL_STATUS` does not look at what follows. What remains, only until a sweep covers
+it, is the `orphan_sweep` hint and the `orphan_sweeps` row, which holds two times and no content:
+`swept_through` and `erased_attempt_at`, the creation time of the latest upload attempt whose key was
+erased (null when none). The discovery function and `ORPHAN_SWEEP_DONE` treat `erased_attempt_at` as a
+pending attempt while it is newer than `swept_through`, so the Organization is reported 25 hours after
+that attempt and the sweep that covers it removes the hint and the row (when the Organization then has
+no key and no document); at most about 25 hours after the last attempt, longer only if the service does
+not sweep. Erasure takes the `orphan_sweeps` row before the upload lock, and an upload attempt never
+touches the row, so erasure, `ORPHAN_SWEEP_DONE` (row, then hint) and uploads (hint, then upload lock)
+cannot wait on each other in a cycle. **This requires every upload transaction to insert its idempotency key
+(`IDEMPOTENCY_BEGIN`) before it takes the upload lock (`QUOTA_LOCK`)**; the other order can close a cycle. Keep the idempotency purge at `IDEMPOTENCY_PURGE_AGE_MS` (the
+statement enforces it). A server clock stepped forward by 24 hours or more is outside what this
+protects.
 
 **Spent purges.** A document whose purge reached 20 attempts stays `deleted`, counts toward the quota
 and is never claimed again. `DOCUMENT_LIST_SPENT_PURGES` lists them per Organization by id
@@ -865,8 +917,9 @@ document and is idempotent.
 transaction; a completed row is never rewritten (trigger `idempotency_keys_final`); a replay reads
 `IDEMPOTENCY_LOOKUP` and compares the request hash. An internal call (remove-all) has no user and
 uses `INTERNAL_CALL_USER_ID`. `IDEMPOTENCY_PURGE` is per Organization and bounded, and removes keys
-at least `IDEMPOTENCY_MIN_PURGE_AGE_MS` (an hour) old; the discovery hints keys at
-`IDEMPOTENCY_PURGE_AGE_MS` (24 hours), so pass that age.
+at least `IDEMPOTENCY_MIN_PURGE_AGE_MS` old, which is `IDEMPOTENCY_PURGE_AGE_MS` (26 hours, an hour
+more than the orphan sweep's age): an age passed below it is raised to it in SQL, so no caller can purge
+the keys of upload attempts whose orphan sweep may not have run. Pass `IDEMPOTENCY_PURGE_AGE_MS`.
 
 **Statements.** Exported from the library, exactly as the integration tests run them (the strings
 are plain text, not type-checked against the schema). Every time is the database clock; callers pass
@@ -1040,6 +1093,17 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     union all
     select id, state, epoch, deletion_seq, false from playbook.documents
     where organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)
+    ```
+
+    `DOCUMENT_LIST_PENDING_CLEANUP`:
+
+    ```sql
+    select id, epoch, deletion_seq, deleted_at
+    from playbook.documents
+    where organization_id = $1 and state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)
+      and (deleted_at, id) > ($2::timestamptz, $3::text)
+    order by deleted_at, id
+    limit least(greatest(coalesce($4::int, 1), 1), 500)
     ```
 
     `DOCUMENT_CLEANUP_BEGIN`:
@@ -1369,7 +1433,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     with batch as (
       select user_id, route, key from playbook.idempotency_keys
       where organization_id = $1
-        and created_at < clock_timestamp() - make_interval(secs => greatest(coalesce($2::float8, 0), 3600000) / 1000)
+        and created_at < clock_timestamp() - make_interval(secs => greatest(coalesce($2::float8, 0), 93600000) / 1000)
       order by created_at
       limit least(greatest(coalesce($3::int, 1), 1), 500)
       for update skip locked)
@@ -1460,6 +1524,12 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()
     where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20
     returning id, purge_attempts
+    ```
+
+    `ORPHAN_SWEEP_DONE`:
+
+    ```sql
+    select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)
     ```
 
     `ORGANIZATIONS_WITH_WORK`:
