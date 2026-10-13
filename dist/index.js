@@ -827,6 +827,8 @@ var IDEMPOTENCY_PURGE = `with batch as (
 delete from playbook.idempotency_keys k
 using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`;
+var CONSUMED_PURGE_AGE_MS = 15 * 24 * 60 * 60 * 1000;
+var IDEMPOTENCY_PURGE_AGE_MS = 24 * 60 * 60 * 1000;
 var REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
 var DOCUMENT_ERASE_BATCH = `with t as (select clock_timestamp() as now),
 cand as (
@@ -834,12 +836,23 @@ cand as (
   where organization_id = $1 and restore_barred_at is null
   order by id
   limit ${BATCH("$2")}),
+jl as (
+  select id from playbook.ingestion_jobs
+  where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+  order by id
+  for update),
 j as (
   update playbook.ingestion_jobs
   set state = 'cancelled', claim_token = null, finished_at = (select now from t), updated_at = (select now from t),
       next_attempt_at = case when state = 'running' then next_attempt_at else (select now from t) end
-  where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+  where organization_id = $1 and id in (select id from jl)
   returning id),
+dl as (
+  select id from playbook.documents
+  where organization_id = $1 and id in (select id from cand) and restore_barred_at is null
+    and (select count(*) from j) >= 0
+  order by id
+  for update),
 d as (
   update playbook.documents x
   set state = 'deleted',
@@ -850,8 +863,7 @@ d as (
       purge_due_at = least(coalesce(x.purge_due_at, (select now from t)), (select now from t)),
       restore_barred_at = (select now from t), failure_reason = null, updated_at = (select now from t)
   from cand
-  where x.organization_id = $1 and x.id = cand.id and x.restore_barred_at is null
-    and (select count(*) from j) >= 0
+  where x.organization_id = $1 and x.id = cand.id and x.id in (select id from dl)
   returning x.id, x.epoch, x.deletion_seq, (x.deletion_seq <> cand.deletion_seq) as changed)
 select id, epoch, deletion_seq, changed from d order by id`;
 var ORGANIZATION_REMOVE_REST = `select playbook.remove_organization_rest($1::text, $2::text) as removed`;
@@ -877,7 +889,11 @@ set purge_attempts = 0, purge_started_at = null, purge_lease_until = null,
     restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS2}
 returning id, purge_attempts`;
-var ORGANIZATIONS_WITH_WORK = `select organization_id from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
+var ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
+function discoveredOrganizations(rows) {
+  const organizations = rows.flatMap((row) => row.organization_id === null ? [] : [row.organization_id]);
+  return { organizations, resumeAfter: rows[0]?.resume_after ?? null };
+}
 var PLAYBOOK_STATEMENTS = {
   QUOTA_LOCK,
   QUOTA_USAGE,
@@ -937,6 +953,7 @@ export {
   CONSUMED_COMPLETE,
   CONSUMED_LOOKUP,
   CONSUMED_PURGE,
+  CONSUMED_PURGE_AGE_MS,
   CONSUMED_RELEASE,
   CONSUMED_RENEW,
   CONTROL_PLANE_TABLES,
@@ -970,6 +987,7 @@ export {
   IDEMPOTENCY_LOOKUP,
   IDEMPOTENCY_MIN_PURGE_AGE_MS,
   IDEMPOTENCY_PURGE,
+  IDEMPOTENCY_PURGE_AGE_MS,
   INDEX_SETTINGS_UPSERT,
   INDEX_VECTORS_MARK,
   INGESTION_JOB_ADVANCE,
@@ -1004,6 +1022,7 @@ export {
   assertTenantIsolation,
   claimedJobs,
   createDb,
+  discoveredOrganizations,
   findTenantIsolationGaps,
   invitationForToken,
   organizationOfUser,

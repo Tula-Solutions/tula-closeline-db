@@ -10289,6 +10289,21 @@ declare const IDEMPOTENCY_COMPLETE = "update playbook.idempotency_keys\nset stat
 */
 declare const IDEMPOTENCY_PURGE: string;
 /**
+* How old a done consumed message is when it becomes purgeable, in milliseconds: 15 days, above the
+* queue's retention (14 days at most, per the kit), because a message younger than the retention
+* could still be redelivered. `organizations_with_work` hints `consumed_purge` at this age; a lapsed
+* claim is purgeable at its lease end. The cutoff passed to {@link CONSUMED_PURGE} should not be
+* younger.
+*/
+declare const CONSUMED_PURGE_AGE_MS: number;
+/**
+* How old an idempotency key is when it becomes purgeable, in milliseconds: 24 hours. Core documents
+* no age for its own keys, so this is the playbook's. `organizations_with_work` hints
+* `idempotency_purge` at this age; {@link IDEMPOTENCY_PURGE} still accepts any age above
+* {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}.
+*/
+declare const IDEMPOTENCY_PURGE_AGE_MS: number;
+/**
 * The route the remove-all call stores its idempotency key under. Pass it to
 * {@link ORGANIZATION_REMOVE_REST} so the call's own key survives the removal it belongs to.
 */
@@ -10315,9 +10330,13 @@ declare const REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
 * uploaded meanwhile is taken by a later call; whether the Organization is empty is
 * {@link ORGANIZATION_REMOVAL_STATUS}'s answer.
 *
-* **Locks.** Jobs first, documents second, as the delete does: the job update locks the active jobs
-* of the candidate documents (waiting for a claim's short transaction), and the document update
-* depends on it, so it runs after. A job a concurrent restore or requeue commits after this
+* **Locks.** Jobs first, documents second, as the delete does, and each set in id order
+* (`order by id for update`), so two batches over the same documents take the same rows in the same
+* order and cannot deadlock on each other: the job locks wait for a claim's short transaction, and
+* the document locks depend on the job update, so they come after. One erase loop per Organization
+* is expected; a `40P01` or `40001` is retried with a bounded, jittered retry. The vector cleanup
+* for a `deletion_seq` is idempotent: it may be published twice (a call retried after a lost
+* answer, or a restore the batch waited for) and the second does nothing. A job a concurrent restore or requeue commits after this
 * statement's snapshot is cancelled by {@link INGESTION_JOB_CLAIM} (the document is no longer live
 * at its epoch). A document a concurrent purge claim holds is waited for, then re-read.
 */
@@ -10366,17 +10385,40 @@ declare const DOCUMENT_PURGE_RESET = "update playbook.documents\\nset purge_atte
 * Find the Organizations with due work of one kind: `purge_due` (documents due for purge),
 * `jobs_due` (jobs queued and due, or running with a lapsed lease, spent ones included),
 * `cleanup_pending` (deleted documents whose vector cleanup is not recorded, five minutes after the
-* delete), `consumed_purge` (done messages an hour old, lapsed claims; the all-zero global scope is
-* included for this kind only), `idempotency_purge` (keys an hour old) and `purge_spent` (documents
-* whose purge reached the bound). `$1` the kind, `$2` the last Organization id of the previous page
-* (null or `''` for the first), `$3` the page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here
-* and again inside the function. Ids only, in id order. Run it outside any Organization's scope (a
-* scope the caller holds is restored); then run the kind's statement once per id, in that
-* Organization's scope. An empty page ends the sweep; a short page does not (hints another
-* transaction was changing are skipped until the next sweep). The function is `SECURITY DEFINER`
-* and executable by the playbook role only; see the migration for the plan per kind.
+* delete), `consumed_purge` (done messages {@link CONSUMED_PURGE_AGE_MS} old, lapsed claims; the
+* all-zero global scope is included for this kind only), `idempotency_purge` (keys
+* {@link IDEMPOTENCY_PURGE_AGE_MS} old) and `purge_spent` (documents whose purge reached the
+* bound). `$1` the kind, `$2` the point to continue from (null or `''` for the first call), `$3` the
+* page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here and again inside the function.
+*
+* **Rows.** Each is an Organization id and `resume_after`, the last hint the call visited. One call
+* visits at most four times the page size of hints (stale ones are cleaned as they are met), so its
+* work and locks are bounded. When nothing was returned but hints were visited, one marker row has a
+* null `organization_id` and the `resume_after`; no rows at all ends the sweep. Read the rows with
+* {@link discoveredOrganizations} and call again from `resume_after`. A short page does not end the
+* sweep (hints another transaction holds are skipped until the next sweep).
+*
+* **Rules.** Run it unscoped: inside a tenant-scoped transaction it raises `insufficient_privilege`
+* (`42501`). It must be the only statement of its transaction, which commits at once, because it
+* holds the visited hints' locks until then. Then run the kind's statement once per id, in that
+* Organization's scope. The function is `SECURITY DEFINER` and executable by the playbook role
+* only; see the migration for the plan per kind.
 */
 declare const ORGANIZATIONS_WITH_WORK: string;
+/** One row of {@link ORGANIZATIONS_WITH_WORK}: an Organization with work, or the marker row (null id). */
+interface WorkDiscoveryRow {
+	organization_id: string | null;
+	resume_after: string;
+}
+/**
+* Read the rows of {@link ORGANIZATIONS_WITH_WORK}: the Organizations with work (the marker row
+* dropped) and where to continue. `resumeAfter` is null when the call returned no row, which ends
+* the sweep; otherwise pass it as the next call's `$2`.
+*/
+declare function discoveredOrganizations(rows: readonly WorkDiscoveryRow[]): {
+	organizations: string[];
+	resumeAfter: string | null;
+};
 /** Every statement above by name, for the README check and the integration tests. */
 declare const PLAYBOOK_STATEMENTS: {
 	readonly QUOTA_LOCK: "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
@@ -10457,4 +10499,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, assertTenantIsolation, claimedJobs, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

@@ -20,6 +20,7 @@ import {
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
+  discoveredOrganizations,
   IDEMPOTENCY_BEGIN,
   INDEX_SETTINGS_UPSERT,
   INGESTION_JOB_CLAIM,
@@ -32,6 +33,7 @@ import {
   QUOTA_LOCK,
   QUOTA_USAGE,
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
+  type WorkDiscoveryRow,
 } from './playbook-statements'
 import { WORK_KINDS } from './schema/playbook-work-hints'
 
@@ -224,10 +226,10 @@ describe('work discovery, erasure and spent purges', () => {
     ).rows[0]
 
   /** Ask for one page of Organizations with work, outside any Organization's scope. */
+  const rawPage = async (kind: string, after: string | null, batch: number | null) =>
+    (await playbook.query<WorkDiscoveryRow>(ORGANIZATIONS_WITH_WORK, [kind, after, batch])).rows
   const page = async (kind: string, after: string | null, batch: number | null) =>
-    (await playbook.query(ORGANIZATIONS_WITH_WORK, [kind, after, batch])).rows.map(
-      (r) => r.organization_id as string
-    )
+    discoveredOrganizations(await rawPage(kind, after, batch)).organizations
 
   describe('discovery', () => {
     /** Organization ids that share a random prefix, so a sweep can be confined to them. */
@@ -245,14 +247,13 @@ describe('work discovery, erasure and spent purges', () => {
     const sweep = async (kind: string, f: { after: string }, batch: number) => {
       const found: string[] = []
       let cursor: string | null = f.after
-      for (let pages = 0; pages < 100; pages++) {
-        const ids: string[] = await page(kind, cursor, batch)
-        const mine = ids.filter((id) => id.startsWith(f.after))
-        found.push(...mine)
-        if (ids.length === 0 || mine.length < ids.length) {
+      for (let pages = 0; pages < 500 && cursor; pages++) {
+        const result = discoveredOrganizations(await rawPage(kind, cursor, batch))
+        found.push(...result.organizations.filter((id) => id.startsWith(f.after)))
+        if (result.resumeAfter === null || !result.resumeAfter.startsWith(f.after)) {
           break
         }
-        cursor = ids[ids.length - 1] ?? null
+        cursor = result.resumeAfter
       }
       return found
     }
@@ -342,11 +343,12 @@ describe('work discovery, erasure and spent purges', () => {
       },
       {
         kind: 'consumed_purge',
+        // Completed 16 days ago is purgeable (the cutoff is 15); completed 2 hours ago is not.
         due: async (org) => {
-          await insertDoneMessage(org, 2)
+          await insertDoneMessage(org, 16 * 24)
         },
         notDue: async (org) => {
-          await insertDoneMessage(org, 0)
+          await insertDoneMessage(org, 2)
         },
         finish: async (org) => {
           await asOwner(org, (c) => c.query('delete from playbook.consumed_message'))
@@ -358,20 +360,18 @@ describe('work discovery, erasure and spent purges', () => {
           await inOrg(org, (c) =>
             c.query(
               `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
-               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '2 hours')`,
+               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '25 hours')`,
               [org, newUser(), `key-${hex()}`, hashOf('x')]
             )
           )
         },
         notDue: async (org) => {
           await inOrg(org, (c) =>
-            c.query(IDEMPOTENCY_BEGIN, [
-              org,
-              newUser(),
-              'documents.upload',
-              `key-${hex()}`,
-              hashOf('x'),
-            ])
+            c.query(
+              `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+               values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '2 hours')`,
+              [org, newUser(), `key-${hex()}`, hashOf('x')]
+            )
           )
         },
         finish: async (org) => {
@@ -467,7 +467,7 @@ describe('work discovery, erasure and spent purges', () => {
       await asOwner(ZERO_ORG, (c) =>
         c.query(
           `insert into playbook.consumed_message (consumer, organization_id, message_id, state, claim_token, completed_at)
-           values ('c', $1, $2, 'done', gen_random_uuid(), clock_timestamp() - interval '3 hours')`,
+           values ('c', $1, $2, 'done', gen_random_uuid(), clock_timestamp() - interval '16 days')`,
           [ZERO_ORG, `old-${hex()}`]
         )
       )
@@ -485,20 +485,19 @@ describe('work discovery, erasure and spent purges', () => {
       }
     })
 
-    test('it returns ids and nothing else, and leaves the caller scope as it found it', async () => {
+    test('it refuses to run inside an Organization scope, and unscoped it returns ids and a resume point and ends unscoped', async () => {
       const org = newOrg()
       await mustAdd(org)
-      await inOrg(org, async (c) => {
-        const result = await c.query(ORGANIZATIONS_WITH_WORK, ['jobs_due', org.slice(0, -1), 500])
-        expect(result.fields.map((f) => f.name)).toEqual(['organization_id'])
-        const scope = await c.query(`select current_setting('app.organization_id', true) as s`)
-        expect(scope.rows[0].s).toBe(org)
-      })
-      // And with no scope at all the setting is left empty, not set to an Organization.
+      expect(
+        await rejectionOf(
+          inOrg(org, (c) => c.query(ORGANIZATIONS_WITH_WORK, ['jobs_due', org.slice(0, -1), 500]))
+        )
+      ).toContain('outside any Organization')
       const c = await playbook.connect()
       try {
         await c.query('begin')
-        await c.query(ORGANIZATIONS_WITH_WORK, ['jobs_due', '', 1])
+        const result = await c.query(ORGANIZATIONS_WITH_WORK, ['jobs_due', org.slice(0, -1), 1])
+        expect(result.fields.map((f) => f.name)).toEqual(['organization_id', 'resume_after'])
         const scope = await c.query(
           `select coalesce(current_setting('app.organization_id', true), '') as s`
         )
@@ -507,6 +506,48 @@ describe('work discovery, erasure and spent purges', () => {
         await c.query('rollback')
         c.release()
       }
+    })
+
+    test('2,000 stale hints: each call does bounded work, and repeated calls reach every real Organization and end', async () => {
+      const prefix = hex().slice(0, 16)
+      const at = (i: number) => `org_${prefix}${i.toString(16).padStart(16, '0')}`
+      await owner.query(
+        `insert into playbook.work_hints (kind, organization_id, due_at)
+         select 'jobs_due', 'org_' || $1 || lpad(to_hex(i), 16, '0'), clock_timestamp() - interval '1 hour'
+           from generate_series(1, 2000) i where i <> 1000`,
+        [prefix]
+      )
+      const real = [at(1000), at(2001)]
+      for (const org of real) {
+        await mustAdd(org)
+      }
+      const remaining = async () =>
+        Number(
+          (
+            await owner.query(
+              `select count(*)::int as n from playbook.work_hints where kind = 'jobs_due' and organization_id like $1`,
+              [`org_${prefix}%`]
+            )
+          ).rows[0].n
+        )
+      expect(await remaining()).toBe(2001)
+      const first = discoveredOrganizations(await rawPage('jobs_due', `org_${prefix}`, 10))
+      // A batch of 10 visits at most 40 hints: at most 40 stale hints are gone after one call.
+      expect(await remaining()).toBeGreaterThanOrEqual(2001 - 40)
+      expect(first.resumeAfter).not.toBeNull()
+      const found: string[] = []
+      let cursor: string | null = `org_${prefix}`
+      let calls = 0
+      for (; calls < 500 && cursor; calls++) {
+        const result = discoveredOrganizations(await rawPage('jobs_due', cursor, 10))
+        found.push(...result.organizations.filter((id) => id.startsWith(`org_${prefix}`)))
+        cursor =
+          result.resumeAfter?.startsWith(`org_${prefix}`) === true ? result.resumeAfter : null
+      }
+      expect(calls).toBeLessThan(500)
+      expect(found).toEqual(real)
+      // The stale hints were cleaned as they were met; the two real ones stay.
+      expect(await remaining()).toBe(2)
     })
 
     test('another service role cannot run it, and the playbook role cannot read the registry', async () => {
@@ -578,6 +619,168 @@ describe('work discovery, erasure and spent purges', () => {
         'note_job_work',
         'note_work',
       ])
+    })
+
+    test('writers noting an already-early hint do not block each other, and the sweeper skips the hint while either is open', async () => {
+      const org = newOrg()
+      // A key created 30 hours ago: its hint is due, six hours ago.
+      await inOrg(org, (c) =>
+        c.query(
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+           values ($1, $2, 'documents.upload', $3, $4, clock_timestamp() - interval '30 hours')`,
+          [org, newUser(), `key-${hex()}`, hashOf('x')]
+        )
+      )
+      const first = await open(org)
+      const second = await open(org)
+      try {
+        for (const tx of [first, second]) {
+          // A block here would raise 55P03 after two seconds instead of hanging the run.
+          await tx.client.query(`set local lock_timeout = '2s'`)
+          await tx.client.query(IDEMPOTENCY_BEGIN, [
+            org,
+            newUser(),
+            'documents.upload',
+            `key-${hex()}`,
+            hashOf('x'),
+          ])
+        }
+        expect(await page('idempotency_purge', org.slice(0, -1), 500)).not.toContain(org)
+        await first.client.query('commit')
+        expect(await page('idempotency_purge', org.slice(0, -1), 500)).not.toContain(org)
+        await second.client.query('commit')
+      } finally {
+        await finish(first, second)
+      }
+      expect(await page('idempotency_purge', org.slice(0, -1), 500)).toContain(org)
+    })
+
+    describe('a writer racing the sweeper that is about to remove the hint', () => {
+      // The sweeper holds the hint FOR UPDATE and removes it; a writer noting work in the meantime
+      // takes its share lock first-come or waits for the sweeper. With the share-lock path the
+      // writer waits for the sweeper's lock (the writer finds a hint early enough, so it takes
+      // FOR SHARE and queues behind FOR UPDATE), then finds no row and writes the hint again.
+      interface Race {
+        kind: string
+        /** Make the first work, so a hint exists. */
+        setup: (org: string) => Promise<unknown>
+        /** Start the writer's work in an open transaction: the statement that blocks. */
+        write: (org: string, tx: { client: PoolClient }) => Promise<unknown>
+        /** The time the written hint must have afterwards. */
+        expected: (org: string, state: unknown) => Promise<Date>
+        prepare?: (org: string) => Promise<unknown>
+      }
+      const races: Race[] = [
+        {
+          kind: 'purge_due',
+          setup: async (org) => {
+            const first = await mustAdd(org)
+            await remove(org, first.id)
+            return mustAdd(org)
+          },
+          write: (org, tx) =>
+            tx.client.query(DOCUMENT_SOFT_DELETE, [
+              org,
+              (tx as unknown as { doc: string }).doc,
+              newUser(),
+              0,
+            ]),
+          expected: async (org, state) => (await row(org, (state as Added).id)).purge_due_at,
+        },
+        {
+          kind: 'jobs_due',
+          setup: async (org) => {
+            await mustAdd(org)
+            return { id: newDoc(), jobId: newJob() }
+          },
+          write: (org, tx) => {
+            const { id, jobId } = (tx as unknown as { insert: { id: string; jobId: string } })
+              .insert
+            return tx.client.query(DOCUMENT_INSERT, [
+              org,
+              id,
+              'n.pdf',
+              hashOf(`race ${id}`),
+              10,
+              'application/pdf',
+              'pdf',
+              newUser(),
+              `${org}/${id}`,
+              jobId,
+              BIG,
+              10 ** 12,
+            ])
+          },
+          expected: async (org, state) =>
+            (await jobRow(org, (state as { jobId: string }).jobId)).next_attempt_at,
+        },
+        {
+          kind: 'consumed_purge',
+          setup: async (org) => {
+            await inOrg(org, (c) =>
+              c.query(CONSUMED_CLAIM, ['c', org, 'm0', crypto.randomUUID(), 60_000])
+            )
+            return { message: 'm1' }
+          },
+          write: (org, tx) =>
+            tx.client.query(CONSUMED_CLAIM, ['c', org, 'm1', crypto.randomUUID(), 120_000]),
+          expected: async (org) =>
+            (
+              await inOrg(org, (c) =>
+                c.query(
+                  `select lease_expires_at from playbook.consumed_message where message_id = 'm1'`
+                )
+              )
+            ).rows[0].lease_expires_at,
+        },
+      ]
+
+      test.each(races)(
+        '$kind: the hint exists afterwards, due when the new work is',
+        async (race) => {
+          const org = newOrg()
+          const state = await race.setup(org)
+          // The hint exists and is due to be checked: make it due now so a sweeper could take it.
+          await owner.query(
+            `update playbook.work_hints set due_at = clock_timestamp() - interval '1 minute' where kind = $1 and organization_id = $2`,
+            [race.kind, org]
+          )
+          expect(await hintOf(race.kind, org)).toBeDefined()
+          const sweeper = await owner.connect()
+          const writer = await open(org)
+          try {
+            await sweeper.query('begin')
+            await sweeper.query(
+              `select 1 from playbook.work_hints where kind = $1 and organization_id = $2 for update`,
+              [race.kind, org]
+            )
+            if (race.kind === 'jobs_due') {
+              await writer.client.query(QUOTA_LOCK, [org])
+            }
+            const target = Object.assign(writer, {
+              doc: (state as Added).id,
+              insert: state,
+            })
+            const writing = race.write(org, target)
+            await untilBlocked(writer.pid)
+            // The sweeper saw no work (as it would after the work finished) and removes the hint.
+            await sweeper.query(
+              `delete from playbook.work_hints where kind = $1 and organization_id = $2`,
+              [race.kind, org]
+            )
+            await sweeper.query('commit')
+            await writing
+            await writer.client.query('commit')
+          } finally {
+            await sweeper.query('rollback').catch(() => undefined)
+            sweeper.release()
+            await finish(writer)
+          }
+          const hint = await hintOf(race.kind, org)
+          expect(hint).toBeDefined()
+          expect(new Date(hint.due_at)).toEqual(new Date(await race.expected(org, state)))
+        }
+      )
     })
 
     test('a job claimed and heartbeated does not move the hint; a delete notes the purge time', async () => {

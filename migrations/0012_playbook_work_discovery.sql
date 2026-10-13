@@ -36,14 +36,35 @@ REVOKE ALL ON "playbook"."work_hints" FROM closeline_playbook;
 -- registry says where to look; the discovery function then looks in that Organization's own scope.
 
 -- Record that an Organization may have work of a kind from a time on. Only ever moves the time
--- earlier. The conflicting row is locked, so a write queues behind a verification that holds the
--- row and lands after the verification's decision, never inside it.
+-- earlier. It first looks for a hint that is already early enough and takes a SHARE lock on it:
+-- share locks do not conflict with each other, so writers of one Organization and kind do not queue
+-- behind each other, and they still conflict with the sweeper's FOR UPDATE. Only when no such row
+-- exists does it upsert (which locks the row it writes).
+--
+-- Why this cannot lose a hint the sweeper is about to remove. The sweeper (organizations_with_work)
+-- holds a hint FOR UPDATE while it decides, and deletes it only when it saw no work.
+--   * The sweeper holds the row first: the writer's FOR SHARE waits for the sweeper's commit. If the
+--     hint was deleted, the re-checked SELECT finds no row, so the writer upserts a new one; if the
+--     hint was moved later than the writer's time, the re-checked qual fails and the upsert moves it
+--     earlier; if it was kept, the writer finds it and skips, correctly.
+--   * The writer holds the share lock first: the sweeper's FOR UPDATE SKIP LOCKED skips the row, so
+--     it can neither delete nor move it while the writer's transaction (which holds the new tenant
+--     row, not yet visible to the sweeper) is open.
+-- Lock order is unchanged: a hint row is the last lock any transaction takes.
 CREATE FUNCTION "playbook"."note_work"(p_kind text, p_organization_id text, p_due_at timestamptz) RETURNS void
-  LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  PERFORM 1 FROM "playbook"."work_hints" h
+    WHERE h."kind" = p_kind AND h."organization_id" = p_organization_id AND h."due_at" <= p_due_at
+    FOR SHARE;
+  IF FOUND THEN
+    RETURN;
+  END IF;
   INSERT INTO "playbook"."work_hints" AS h ("kind", "organization_id", "due_at")
   VALUES (p_kind, p_organization_id, p_due_at)
   ON CONFLICT ("kind", "organization_id") DO UPDATE SET "due_at" = EXCLUDED."due_at"
-  WHERE h."due_at" > EXCLUDED."due_at"
+  WHERE h."due_at" > EXCLUDED."due_at";
+END
 $$;
 --> statement-breakpoint
 
@@ -90,12 +111,14 @@ CREATE TRIGGER "ingestion_jobs_note_work_update" AFTER UPDATE ON "playbook"."ing
   EXECUTE FUNCTION "playbook"."note_job_work"();
 --> statement-breakpoint
 
--- A consumed message is purgeable an hour after it is done, or when its claim lapses.
+-- A done consumed message is purgeable only below the queue's retention cutoff: 15 days after it
+-- is done (the kit: retention is 14 days at most, 15 is safe), so it is not "due" before that. A
+-- lapsed claim is purgeable at its lease end.
 CREATE FUNCTION "playbook"."note_consumed_work"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   PERFORM "playbook"."note_work"('consumed_purge', NEW."organization_id",
-    CASE WHEN NEW."state" = 'done' THEN NEW."completed_at" + interval '1 hour' ELSE NEW."lease_expires_at" END);
+    CASE WHEN NEW."state" = 'done' THEN NEW."completed_at" + interval '15 days' ELSE NEW."lease_expires_at" END);
   RETURN NULL;
 END
 $$;
@@ -107,11 +130,12 @@ CREATE TRIGGER "consumed_message_note_work_update" AFTER UPDATE ON "playbook"."c
   FOR EACH ROW WHEN (OLD."state" IS DISTINCT FROM NEW."state") EXECUTE FUNCTION "playbook"."note_consumed_work"();
 --> statement-breakpoint
 
--- An idempotency key is purgeable an hour after it was created.
+-- An idempotency key is purgeable 24 hours after it was created. Core documents no age for its own
+-- keys, so this is the playbook's own (IDEMPOTENCY_PURGE_AGE_MS in the statements).
 CREATE FUNCTION "playbook"."note_idempotency_work"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-  PERFORM "playbook"."note_work"('idempotency_purge', NEW."organization_id", NEW."created_at" + interval '1 hour');
+  PERFORM "playbook"."note_work"('idempotency_purge', NEW."organization_id", NEW."created_at" + interval '24 hours');
   RETURN NULL;
 END
 $$;
@@ -121,20 +145,30 @@ CREATE TRIGGER "idempotency_keys_note_work" AFTER INSERT ON "playbook"."idempote
 --> statement-breakpoint
 
 -- Find the Organizations with due work of one kind, in id order after `p_after_id`, at most
--- `p_batch` (clamped to 1..500 here, whatever the caller passes). Returns ids and nothing else; the
--- all-zero global scope only for `consumed_purge`. It reads the due hints of the kind in id order
--- and verifies each in that Organization's own scope, as the owner, by asking the tenant table (on
--- its Organization-leading partial index) for the Organization's earliest due time of the kind:
--- due now, the Organization is returned and the hint kept; due later, the hint moves there; no
--- work left, the hint is removed. Stale hints are therefore cleaned by the sweep that meets them,
--- and a hint is never later than real work. Hints another transaction is changing are skipped
--- (SKIP LOCKED): that Organization shows up on the next sweep, and nothing here waits on a lock.
--- The caller's own Organization scope setting is restored before returning.
+-- `p_batch` returned (clamped to 1..500 here, whatever the caller passes) and at most four times
+-- that many hints visited (never more than 2000), so one call holds a bounded number of locks
+-- whatever the backlog of stale hints. Returns Organization ids (the all-zero global scope only for
+-- `consumed_purge`) and, on every row, `resume_after`: the last hint visited, which is where the
+-- next call continues, so a caller neither skips nor repeats an Organization. When nothing was
+-- returned but hints were visited, one marker row comes back with a null `organization_id` and the
+-- `resume_after` to continue from; no rows at all means the sweep is over.
+--
+-- It must run unscoped (the sweeper has no Organization): called inside a tenant-scoped
+-- transaction it raises insufficient_privilege, so no tenant request path can use it. It reads the
+-- due hints of the kind in id order and verifies each in that Organization's own scope, as the
+-- owner, by asking the tenant table (on its Organization-leading partial index) for the
+-- Organization's earliest due time of the kind: due now, the Organization is returned and the hint
+-- kept; due later, the hint moves there; no work left, the hint is removed. Stale hints are
+-- therefore cleaned by the sweep that meets them, and a hint is never later than real work. Hints
+-- another transaction is changing or sharing are skipped (SKIP LOCKED): that Organization shows up
+-- on the next sweep, and nothing here waits on a lock. The hint locks are held until the caller's
+-- transaction ends, so run this as the only statement of its transaction. The session ends
+-- unscoped, as it began.
 --
 -- Expected plans (the registry is small: at most one row per kind and Organization with work):
 --   candidate scan  Index Scan on work_hints_due_idx / work_hints_pkey (kind = $1, id > $2),
 --                   filter due_at <= now(), LockRows, top-N by id: proportional to the due hints
---                   of the kind, never to a tenant table.
+--                   of the kind (and bounded by the visited cap), never to a tenant table.
 --   purge_due       Index Only Scan documents_purge_idx, the Organization's deleted documents.
 --   jobs_due        Index Only Scan ingestion_jobs_due_idx, first entry of the Organization (min).
 --   cleanup_pending Index Only Scan documents_cleanup_idx, first entry of the Organization (min).
@@ -142,18 +176,24 @@ CREATE TRIGGER "idempotency_keys_note_work" AFTER INSERT ON "playbook"."idempote
 --   idempotency     first entry of idempotency_keys_purge_idx for the Organization (min).
 --   purge_spent     Index Only Scan documents_spent_purge_idx, the Organization's spent documents.
 CREATE FUNCTION "playbook"."organizations_with_work"(p_kind text, p_after_id text, p_batch integer)
-  RETURNS TABLE ("organization_id" text) LANGUAGE plpgsql SECURITY DEFINER
+  RETURNS TABLE ("organization_id" text, "resume_after" text) LANGUAGE plpgsql SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_column
 DECLARE
   v_batch integer := least(greatest(coalesce(p_batch, 1), 1), 500);
+  v_limit integer := least(v_batch * 4, 2000);
   v_after text := coalesce(p_after_id, '');
-  v_saved text := coalesce(current_setting('app.organization_id', true), '');
   v_global constant text := 'org_00000000000000000000000000000000';
   v_hint record;
   v_next timestamptz;
-  v_found integer := 0;
+  v_ids text[] := ARRAY[]::text[];
+  v_visited integer := 0;
+  v_last text;
 BEGIN
+  IF nullif(current_setting('app.organization_id', true), '') IS NOT NULL THEN
+    RAISE EXCEPTION 'playbook.work_scope: the sweep runs outside any Organization''s scope'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
   IF p_kind IS NULL OR p_kind NOT IN ('purge_due', 'jobs_due', 'cleanup_pending', 'consumed_purge', 'idempotency_purge', 'purge_spent') THEN
     RAISE EXCEPTION 'playbook.work_kind: unknown kind of work' USING ERRCODE = 'invalid_parameter_value';
   END IF;
@@ -164,6 +204,8 @@ BEGIN
     ORDER BY h."organization_id"
     FOR UPDATE OF h SKIP LOCKED
   LOOP
+    v_visited := v_visited + 1;
+    v_last := v_hint.org;
     PERFORM set_config('app.organization_id', v_hint.org, true);
     IF p_kind = 'purge_due' THEN
       SELECT min(greatest(d."purge_due_at", coalesce(d."purge_lease_until", d."purge_due_at"))) INTO v_next
@@ -178,12 +220,12 @@ BEGIN
           AND (d."vectors_removed_seq" IS NULL OR d."vectors_removed_seq" < d."deletion_seq");
     ELSIF p_kind = 'consumed_purge' THEN
       SELECT least(
-        (SELECT min(c."completed_at") + interval '1 hour' FROM "playbook"."consumed_message" c
+        (SELECT min(c."completed_at") + interval '15 days' FROM "playbook"."consumed_message" c
           WHERE c."organization_id" = v_hint.org AND c."state" = 'done'),
         (SELECT min(c."lease_expires_at") FROM "playbook"."consumed_message" c
           WHERE c."organization_id" = v_hint.org AND c."state" = 'claimed')) INTO v_next;
     ELSIF p_kind = 'idempotency_purge' THEN
-      SELECT min(k."created_at") + interval '1 hour' INTO v_next FROM "playbook"."idempotency_keys" k
+      SELECT min(k."created_at") + interval '24 hours' INTO v_next FROM "playbook"."idempotency_keys" k
         WHERE k."organization_id" = v_hint.org;
     ELSE
       SELECT min(d."updated_at") INTO v_next FROM "playbook"."documents" d
@@ -195,14 +237,17 @@ BEGIN
       UPDATE "playbook"."work_hints" w SET "due_at" = v_next
         WHERE w."kind" = p_kind AND w."organization_id" = v_hint.org;
       IF v_next <= clock_timestamp() THEN
-        organization_id := v_hint.org;
-        RETURN NEXT;
-        v_found := v_found + 1;
-        EXIT WHEN v_found >= v_batch;
+        v_ids := v_ids || v_hint.org;
       END IF;
     END IF;
+    EXIT WHEN cardinality(v_ids) >= v_batch OR v_visited >= v_limit;
   END LOOP;
-  PERFORM set_config('app.organization_id', v_saved, true);
+  PERFORM set_config('app.organization_id', '', true);
+  IF cardinality(v_ids) > 0 THEN
+    RETURN QUERY SELECT u.i, v_last FROM unnest(v_ids) WITH ORDINALITY AS u(i, n) ORDER BY u.n;
+  ELSIF v_visited > 0 THEN
+    RETURN QUERY SELECT NULL::text, v_last;
+  END IF;
   RETURN;
 END
 $$;
@@ -275,10 +320,10 @@ INSERT INTO "playbook"."work_hints" ("kind", "organization_id", "due_at")
     FROM "playbook"."ingestion_jobs" j WHERE j."state" IN ('queued', 'running') GROUP BY j."organization_id"
   UNION ALL
   SELECT 'consumed_purge', c."organization_id",
-         least(min(c."completed_at") FILTER (WHERE c."state" = 'done') + interval '1 hour', min(c."lease_expires_at") FILTER (WHERE c."state" = 'claimed'))
+         least(min(c."completed_at") FILTER (WHERE c."state" = 'done') + interval '15 days', min(c."lease_expires_at") FILTER (WHERE c."state" = 'claimed'))
     FROM "playbook"."consumed_message" c GROUP BY c."organization_id"
   UNION ALL
-  SELECT 'idempotency_purge', k."organization_id", min(k."created_at") + interval '1 hour'
+  SELECT 'idempotency_purge', k."organization_id", min(k."created_at") + interval '24 hours'
     FROM "playbook"."idempotency_keys" k GROUP BY k."organization_id";
 --> statement-breakpoint
 ALTER TABLE "playbook"."documents" FORCE ROW LEVEL SECURITY;

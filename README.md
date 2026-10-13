@@ -778,25 +778,50 @@ due hint in that Organization's own scope before returning it: `ORGANIZATIONS_WI
 statement. It is `SECURITY DEFINER` with `search_path = pg_catalog, pg_temp`, every object
 schema-qualified, a batch cap of 500 inside the function (a null or huge batch is clamped there and in
 the statement), `EXECUTE` revoked from PUBLIC and granted to `closeline_playbook` only, and it returns
-Organization ids and nothing else, in id order after `after_id`. Kinds (`WORK_KINDS`): `purge_due`,
+Organization ids and nothing else, in id order after `after_id`, each row with `resume_after`. Kinds (`WORK_KINDS`): `purge_due`,
 `jobs_due` (queued and due, or running with a lapsed lease, spent jobs included), `cleanup_pending`
 (deleted, vector cleanup not recorded, five minutes after the delete), `consumed_purge` (done
-messages an hour old and lapsed claims; the only kind that returns the all-zero global scope),
-`idempotency_purge` (keys an hour old) and `purge_spent`. The hints are written by `SECURITY DEFINER`
+messages `CONSUMED_PURGE_AGE_MS` old, 15 days, above the queue's retention, and lapsed claims at their
+lease end; the only kind that returns the all-zero global scope), `idempotency_purge` (keys
+`IDEMPOTENCY_PURGE_AGE_MS` old, 24 hours, since core documents no age of its own) and `purge_spent`. The hints are written by `SECURITY DEFINER`
 triggers on the tenant tables and only ever move a time earlier; the function moves a verified hint
 to the next due time, or removes it when no work is left, so a hint is never later than real work and
 a stale one is cleaned by the sweep that meets it. Hints another transaction is changing are skipped
-(`SKIP LOCKED`), so a short page does not mean the sweep is done: **an empty page ends it**. The
-caller runs it outside any Organization's scope (a scope it holds is restored), then runs the kind's
-statement once per id in that Organization's scope. Expected plans: the candidate scan is an index scan
+(`SKIP LOCKED`), so a short page does not mean the sweep is done.
+
+**The sweep loop.** One call visits at most four times the batch of hints (never more than 2000), so
+its work and locks are bounded however many stale hints there are. Every row carries `resume_after`,
+the last hint visited; when nothing was returned but hints were visited, one marker row has a null
+`organization_id`. `discoveredOrganizations(rows)` returns `{ organizations, resumeAfter }`: run the
+kind's statement once per Organization, in that Organization's scope, then call again with
+`resumeAfter` as `after_id`; **no row at all ends the sweep** (`resumeAfter` is null). The call
+**raises `insufficient_privilege` (`42501`) inside an Organization's scope**, so run it unscoped, and
+it must be **the only statement of its transaction**, which commits at once, because it holds the
+visited hints' locks until then.
+
+```ts
+let after: string | null = ''
+while (after !== null) {
+  const { organizations, resumeAfter } = discoveredOrganizations(
+    await sweeper.query(ORGANIZATIONS_WITH_WORK, [kind, after, 100])
+  )
+  for (const organization of organizations) await runKind(kind, organization)
+  after = resumeAfter
+}
+```
+
+ Expected plans: the candidate scan is an index scan
 of `work_hints` for the kind (proportional to the due hints, never to a tenant table), and each
 verification is a first-entry or small-range read of the tenant table on an Organization-leading
 partial index: `documents_purge_idx` (purge), `ingestion_jobs_due_idx` (jobs), `documents_cleanup_idx`
 (cleanup), `consumed_message_done_idx` and `consumed_message_lease_idx` (messages),
 `idempotency_keys_purge_idx` (keys) and `documents_spent_purge_idx` (spent). The cost of the registry is
-one upsert of a hint row per delete, job state change, consumed message and idempotency key; the
-upsert locks that row, so writes of one Organization and kind queue behind each other for the length
-of their short transactions. The registry is not a tenant table, so it has an entry in
+one hint note per delete, job state change, consumed message and idempotency key: the note first looks
+for a hint that is already early enough and takes a share lock on it (share locks do not conflict, so
+writers of one Organization and kind do not queue behind each other, while the sweeper's exclusive
+lock still conflicts with them), and writes the row only when none is. A writer holding the share
+lock keeps the sweeper from removing the hint; a writer queued behind the sweeper re-checks after it
+commits and writes the hint again if it was removed, so no hint is lost. The registry is not a tenant table, so it has an entry in
 `NON_TENANT_TABLES` (the decision record belongs in the hub).
 
 **Erasure and offboarding.** `DOCUMENT_ERASE_BATCH` takes up to N documents of an Organization that
@@ -806,7 +831,9 @@ fence for the cleanup), an already deleted one has its purge time pulled to now,
 `restore_barred_at`, so neither restore can bring it back, and `purge_due_at` is now, so the normal
 purge claim takes it next. It returns `id`, `epoch`, `deletion_seq` and `changed` (the service
 publishes the vector cleanup for the changed ones). Repeat until it returns no row; a repeat is
-idempotent. The purge then runs as for any deleted document (claim, file removal, cleanup, complete).
+idempotent. It locks the jobs, then the documents, each in id order, so two batches cannot deadlock on
+each other; one erase loop per Organization is expected, a `40P01` or `40001` is retried, and the
+cleanup message for a `deletion_seq` is idempotent (it may be published twice). The purge then runs as for any deleted document (claim, file removal, cleanup, complete).
 When no document row is left, `ORGANIZATION_REMOVE_REST` removes the rest: the function
 `playbook.remove_organization_rest` deletes the Organization's index settings, usage row, consumed
 messages, idempotency keys (except the remove-all route's own, `REMOVE_ALL_IDEMPOTENCY_ROUTE`) and work
@@ -830,7 +857,8 @@ document and is idempotent.
 transaction; a completed row is never rewritten (trigger `idempotency_keys_final`); a replay reads
 `IDEMPOTENCY_LOOKUP` and compares the request hash. An internal call (remove-all) has no user and
 uses `INTERNAL_CALL_USER_ID`. `IDEMPOTENCY_PURGE` is per Organization and bounded, and removes keys
-at least an hour old.
+at least `IDEMPOTENCY_MIN_PURGE_AGE_MS` (an hour) old; the discovery hints keys at
+`IDEMPOTENCY_PURGE_AGE_MS` (24 hours), so pass that age.
 
 **Statements.** Exported from the library, exactly as the integration tests run them (the strings
 are plain text, not type-checked against the schema). Every time is the database clock; callers pass
@@ -1349,12 +1377,23 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1 and restore_barred_at is null
       order by id
       limit least(greatest(coalesce($2::int, 1), 1), 500)),
+    jl as (
+      select id from playbook.ingestion_jobs
+      where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+      order by id
+      for update),
     j as (
       update playbook.ingestion_jobs
       set state = 'cancelled', claim_token = null, finished_at = (select now from t), updated_at = (select now from t),
           next_attempt_at = case when state = 'running' then next_attempt_at else (select now from t) end
-      where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+      where organization_id = $1 and id in (select id from jl)
       returning id),
+    dl as (
+      select id from playbook.documents
+      where organization_id = $1 and id in (select id from cand) and restore_barred_at is null
+        and (select count(*) from j) >= 0
+      order by id
+      for update),
     d as (
       update playbook.documents x
       set state = 'deleted',
@@ -1365,8 +1404,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
           purge_due_at = least(coalesce(x.purge_due_at, (select now from t)), (select now from t)),
           restore_barred_at = (select now from t), failure_reason = null, updated_at = (select now from t)
       from cand
-      where x.organization_id = $1 and x.id = cand.id and x.restore_barred_at is null
-        and (select count(*) from j) >= 0
+      where x.organization_id = $1 and x.id = cand.id and x.id in (select id from dl)
       returning x.id, x.epoch, x.deletion_seq, (x.deletion_seq <> cand.deletion_seq) as changed)
     select id, epoch, deletion_seq, changed from d order by id
     ```
@@ -1417,7 +1455,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `ORGANIZATIONS_WITH_WORK`:
 
     ```sql
-    select organization_id from playbook.organizations_with_work($1::text, $2::text, least(greatest(coalesce($3::int, 1), 1), 500))
+    select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, least(greatest(coalesce($3::int, 1), 1), 500))
     ```
 
 **The consumed-message table** is the kit's `ProcessedStore` store (`claim`, `renew`, `complete`,

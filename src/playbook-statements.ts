@@ -783,6 +783,23 @@ using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`
 
 /**
+ * How old a done consumed message is when it becomes purgeable, in milliseconds: 15 days, above the
+ * queue's retention (14 days at most, per the kit), because a message younger than the retention
+ * could still be redelivered. `organizations_with_work` hints `consumed_purge` at this age; a lapsed
+ * claim is purgeable at its lease end. The cutoff passed to {@link CONSUMED_PURGE} should not be
+ * younger.
+ */
+export const CONSUMED_PURGE_AGE_MS = 15 * 24 * 60 * 60 * 1000
+
+/**
+ * How old an idempotency key is when it becomes purgeable, in milliseconds: 24 hours. Core documents
+ * no age for its own keys, so this is the playbook's. `organizations_with_work` hints
+ * `idempotency_purge` at this age; {@link IDEMPOTENCY_PURGE} still accepts any age above
+ * {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}.
+ */
+export const IDEMPOTENCY_PURGE_AGE_MS = 24 * 60 * 60 * 1000
+
+/**
  * The route the remove-all call stores its idempotency key under. Pass it to
  * {@link ORGANIZATION_REMOVE_REST} so the call's own key survives the removal it belongs to.
  */
@@ -810,9 +827,13 @@ export const REMOVE_ALL_IDEMPOTENCY_ROUTE = 'organizations.remove_all'
  * uploaded meanwhile is taken by a later call; whether the Organization is empty is
  * {@link ORGANIZATION_REMOVAL_STATUS}'s answer.
  *
- * **Locks.** Jobs first, documents second, as the delete does: the job update locks the active jobs
- * of the candidate documents (waiting for a claim's short transaction), and the document update
- * depends on it, so it runs after. A job a concurrent restore or requeue commits after this
+ * **Locks.** Jobs first, documents second, as the delete does, and each set in id order
+ * (`order by id for update`), so two batches over the same documents take the same rows in the same
+ * order and cannot deadlock on each other: the job locks wait for a claim's short transaction, and
+ * the document locks depend on the job update, so they come after. One erase loop per Organization
+ * is expected; a `40P01` or `40001` is retried with a bounded, jittered retry. The vector cleanup
+ * for a `deletion_seq` is idempotent: it may be published twice (a call retried after a lost
+ * answer, or a restore the batch waited for) and the second does nothing. A job a concurrent restore or requeue commits after this
  * statement's snapshot is cancelled by {@link INGESTION_JOB_CLAIM} (the document is no longer live
  * at its epoch). A document a concurrent purge claim holds is waited for, then re-read.
  */
@@ -822,12 +843,23 @@ cand as (
   where organization_id = $1 and restore_barred_at is null
   order by id
   limit ${BATCH('$2')}),
+jl as (
+  select id from playbook.ingestion_jobs
+  where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+  order by id
+  for update),
 j as (
   update playbook.ingestion_jobs
   set state = 'cancelled', claim_token = null, finished_at = (select now from t), updated_at = (select now from t),
       next_attempt_at = case when state = 'running' then next_attempt_at else (select now from t) end
-  where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+  where organization_id = $1 and id in (select id from jl)
   returning id),
+dl as (
+  select id from playbook.documents
+  where organization_id = $1 and id in (select id from cand) and restore_barred_at is null
+    and (select count(*) from j) >= 0
+  order by id
+  for update),
 d as (
   update playbook.documents x
   set state = 'deleted',
@@ -838,8 +870,7 @@ d as (
       purge_due_at = least(coalesce(x.purge_due_at, (select now from t)), (select now from t)),
       restore_barred_at = (select now from t), failure_reason = null, updated_at = (select now from t)
   from cand
-  where x.organization_id = $1 and x.id = cand.id and x.restore_barred_at is null
-    and (select count(*) from j) >= 0
+  where x.organization_id = $1 and x.id = cand.id and x.id in (select id from dl)
   returning x.id, x.epoch, x.deletion_seq, (x.deletion_seq <> cand.deletion_seq) as changed)
 select id, epoch, deletion_seq, changed from d order by id`
 
@@ -910,17 +941,47 @@ returning id, purge_attempts`
  * Find the Organizations with due work of one kind: `purge_due` (documents due for purge),
  * `jobs_due` (jobs queued and due, or running with a lapsed lease, spent ones included),
  * `cleanup_pending` (deleted documents whose vector cleanup is not recorded, five minutes after the
- * delete), `consumed_purge` (done messages an hour old, lapsed claims; the all-zero global scope is
- * included for this kind only), `idempotency_purge` (keys an hour old) and `purge_spent` (documents
- * whose purge reached the bound). `$1` the kind, `$2` the last Organization id of the previous page
- * (null or `''` for the first), `$3` the page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here
- * and again inside the function. Ids only, in id order. Run it outside any Organization's scope (a
- * scope the caller holds is restored); then run the kind's statement once per id, in that
- * Organization's scope. An empty page ends the sweep; a short page does not (hints another
- * transaction was changing are skipped until the next sweep). The function is `SECURITY DEFINER`
- * and executable by the playbook role only; see the migration for the plan per kind.
+ * delete), `consumed_purge` (done messages {@link CONSUMED_PURGE_AGE_MS} old, lapsed claims; the
+ * all-zero global scope is included for this kind only), `idempotency_purge` (keys
+ * {@link IDEMPOTENCY_PURGE_AGE_MS} old) and `purge_spent` (documents whose purge reached the
+ * bound). `$1` the kind, `$2` the point to continue from (null or `''` for the first call), `$3` the
+ * page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here and again inside the function.
+ *
+ * **Rows.** Each is an Organization id and `resume_after`, the last hint the call visited. One call
+ * visits at most four times the page size of hints (stale ones are cleaned as they are met), so its
+ * work and locks are bounded. When nothing was returned but hints were visited, one marker row has a
+ * null `organization_id` and the `resume_after`; no rows at all ends the sweep. Read the rows with
+ * {@link discoveredOrganizations} and call again from `resume_after`. A short page does not end the
+ * sweep (hints another transaction holds are skipped until the next sweep).
+ *
+ * **Rules.** Run it unscoped: inside a tenant-scoped transaction it raises `insufficient_privilege`
+ * (`42501`). It must be the only statement of its transaction, which commits at once, because it
+ * holds the visited hints' locks until then. Then run the kind's statement once per id, in that
+ * Organization's scope. The function is `SECURITY DEFINER` and executable by the playbook role
+ * only; see the migration for the plan per kind.
  */
-export const ORGANIZATIONS_WITH_WORK = `select organization_id from playbook.organizations_with_work($1::text, $2::text, ${BATCH('$3')})`
+export const ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH('$3')})`
+
+/** One row of {@link ORGANIZATIONS_WITH_WORK}: an Organization with work, or the marker row (null id). */
+export interface WorkDiscoveryRow {
+  organization_id: string | null
+  resume_after: string
+}
+
+/**
+ * Read the rows of {@link ORGANIZATIONS_WITH_WORK}: the Organizations with work (the marker row
+ * dropped) and where to continue. `resumeAfter` is null when the call returned no row, which ends
+ * the sweep; otherwise pass it as the next call's `$2`.
+ */
+export function discoveredOrganizations(rows: readonly WorkDiscoveryRow[]): {
+  organizations: string[]
+  resumeAfter: string | null
+} {
+  const organizations = rows.flatMap((row) =>
+    row.organization_id === null ? [] : [row.organization_id]
+  )
+  return { organizations, resumeAfter: rows[0]?.resume_after ?? null }
+}
 
 /** Every statement above by name, for the README check and the integration tests. */
 export const PLAYBOOK_STATEMENTS = {

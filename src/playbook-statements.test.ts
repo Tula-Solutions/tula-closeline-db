@@ -6,6 +6,7 @@ import {
   CONSUMED_COMPLETE,
   CONSUMED_LOOKUP,
   CONSUMED_PURGE,
+  CONSUMED_PURGE_AGE_MS,
   CONSUMED_RENEW,
   claimedJobs,
   DOCUMENT_BY_HASH,
@@ -25,7 +26,9 @@ import {
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
+  discoveredOrganizations,
   IDEMPOTENCY_PURGE,
+  IDEMPOTENCY_PURGE_AGE_MS,
   INDEX_SETTINGS_UPSERT,
   INGESTION_JOB_ADVANCE,
   INGESTION_JOB_CLAIM,
@@ -330,5 +333,55 @@ describe('work discovery, erasure and spent purges', () => {
     expect(DOCUMENT_PURGE_RESET).toContain(
       'restore_barred_at = coalesce(restore_barred_at, clock_timestamp())'
     )
+  })
+})
+
+describe('review round 1 of the work discovery', () => {
+  const migration = readFileSync(
+    fileURLToPath(new URL('../migrations/0012_playbook_work_discovery.sql', import.meta.url)),
+    'utf8'
+  )
+
+  test('the purge ages are constants the migration and the statements share', () => {
+    expect(CONSUMED_PURGE_AGE_MS).toBe(15 * 86_400_000)
+    expect(IDEMPOTENCY_PURGE_AGE_MS).toBe(24 * 3_600_000)
+    expect(migration.split("interval '15 days'").length - 1).toBe(3)
+    expect(migration.split("interval '24 hours'").length - 1).toBe(3)
+    expect(migration).not.toContain("interval '1 hour'")
+  })
+
+  test('the erase batch locks jobs, then documents, each in id order', () => {
+    expect(DOCUMENT_ERASE_BATCH).toMatch(/jl as \([\s\S]*order by id\n\s+for update\)/)
+    expect(DOCUMENT_ERASE_BATCH).toMatch(/dl as \([\s\S]*order by id\n\s+for update\)/)
+    expect(DOCUMENT_ERASE_BATCH.indexOf('jl as')).toBeLessThan(
+      DOCUMENT_ERASE_BATCH.indexOf('dl as')
+    )
+  })
+
+  test('the function refuses a scope, bounds the visited hints and share-locks before writing', () => {
+    expect(migration).toContain(
+      "nullif(current_setting('app.organization_id', true), '') IS NOT NULL"
+    )
+    expect(migration).toContain("ERRCODE = 'insufficient_privilege'")
+    expect(migration).toContain('v_limit integer := least(v_batch * 4, 2000)')
+    expect(migration).toContain('EXIT WHEN cardinality(v_ids) >= v_batch OR v_visited >= v_limit')
+    const note = migration.slice(migration.indexOf('CREATE FUNCTION "playbook"."note_work"'))
+    expect(note.indexOf('FOR SHARE')).toBeLessThan(
+      note.indexOf('INSERT INTO "playbook"."work_hints"')
+    )
+  })
+
+  test('discoveredOrganizations drops the marker row and returns where to continue', () => {
+    expect(discoveredOrganizations([])).toEqual({ organizations: [], resumeAfter: null })
+    expect(discoveredOrganizations([{ organization_id: null, resume_after: 'org_z' }])).toEqual({
+      organizations: [],
+      resumeAfter: 'org_z',
+    })
+    expect(
+      discoveredOrganizations([
+        { organization_id: 'org_a', resume_after: 'org_c' },
+        { organization_id: 'org_b', resume_after: 'org_c' },
+      ])
+    ).toEqual({ organizations: ['org_a', 'org_b'], resumeAfter: 'org_c' })
   })
 })
