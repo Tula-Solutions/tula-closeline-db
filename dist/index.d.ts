@@ -3667,7 +3667,7 @@ declare const proposals: PgTableWithColumns_a5zn0g19<{
 			name: "target_id";
 			tableName: "proposals";
 			dataType: "string";
-			columnType: "PgUUID";
+			columnType: "PgText";
 			data: string;
 			driverParam: string;
 			notNull: true;
@@ -3675,7 +3675,7 @@ declare const proposals: PgTableWithColumns_a5zn0g19<{
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: undefined;
+			enumValues: [string, ...string[]];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -6553,6 +6553,14 @@ declare function createDb(connectionString: string, options?: DbOptions): DbHand
 */
 declare const ENVIRONMENT_SETTING = "tula.environment_id";
 /**
+* The policy expression of the `auth` tables as Postgres stores and prints it in `pg_policies`
+* (parenthesised, `::text` casts, the `::uuid` cast on the setting). It is the one place this
+* text is derived: the tenant isolation check compares every environment-scoped table's policy
+* against it, and an integration test pins it against the live catalog, so a Postgres version
+* that deparses differently fails loudly instead of passing or failing every table.
+*/
+declare const ENVIRONMENT_POLICY_EXPRESSION = "(environment_id = (NULLIF(current_setting('tula.environment_id'::text, true), ''::text))::uuid)";
+/**
 * Run `fn` in a transaction scoped to one auth environment.
 *
 * Sets {@link ENVIRONMENT_SETTING} for this transaction only (`set_config(..., true)`), so every
@@ -6576,12 +6584,28 @@ declare function withEnvironment<T>(db: Database, environmentId: string, fn: (tx
 */
 declare const TENANT_SCHEMAS: readonly ["auth", "core", "playbook"];
 /**
-* Tables that deliberately have no `organization_id` and are not under the Organization policy,
-* as `schema.table`, each with the one-line reason. Every entry needs a decision record: today
-* these are all `auth` tables, which come from tula-auth (ADR 0005). Auth users are global within
-* a Region and Organization membership lives in core, so no auth table is per-Organization data.
-* Most are scoped to an auth environment by their own forced row-level security
-* (`src/schema/auth`); the rest are control plane, below.
+* The `auth` tables scoped to an auth environment, as `schema.table`. Each has no `organization_id`
+* (users are global within a Region, ADR 0005) and is instead bound by its own forced row-level
+* security: exactly one permissive policy, for all commands, with {@link ENVIRONMENT_POLICY_EXPRESSION}
+* as both its USING and WITH CHECK. A restrictive policy may be added to it, never a second
+* permissive one. {@link findTenantIsolationGaps} verifies every one against the live catalog.
+*/
+declare const ENVIRONMENT_SCOPED_TABLES: readonly string[];
+/**
+* The `auth` control-plane tables, as `schema.table`, each with the one-line reason it is not
+* under environment row-level security. They sit above or beside the environments, so the
+* environment cannot scope them; they still must not carry an `organization_id`
+* ({@link findTenantIsolationGaps} checks that). Their reach is held down by the service role's
+* grants (the `auth` integration suite pins them), not by a policy.
+*/
+declare const CONTROL_PLANE_TABLE_REASONS: Readonly<Record<string, string>>;
+/** The `schema.table` names of {@link CONTROL_PLANE_TABLE_REASONS}. */
+declare const CONTROL_PLANE_TABLES: readonly string[];
+/**
+* Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
+* one-line reason. Empty: the `auth` tables, which have no `organization_id`, are verified under
+* {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped.
+* An entry here needs a decision record in the hub.
 */
 declare const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>>;
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
@@ -6599,26 +6623,44 @@ interface TenantIsolationGap {
 	reason: string;
 }
 /**
-* Find everything that stops the database failing closed on `organization_id`.
+* The two named groups of `auth` tables, which {@link findTenantIsolationGaps} verifies instead of
+* skipping. Defaults to {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES}.
+*/
+interface AuthTableCategories {
+	/** `schema.table` names that must be fail-closed on `environment_id`. */
+	environmentScoped: readonly string[];
+	/** `schema.table` names that must have no `organization_id`. */
+	controlPlane: readonly string[];
+}
+/**
+* Find everything that stops the database failing closed.
 *
 * Every relation in every schema except drizzle's own, Postgres's and any {@link EXTENSION_SCHEMAS} is
-* checked, `public` included: nothing belongs there, so any table, view or foreign table in it is a gap. A
-* table passes when it is in a {@link TENANT_SCHEMAS} schema, has an `organization_id` column,
-* row-level security enabled and forced, and at least one permissive policy, where every
-* permissive policy covers all commands and has exactly the USING and WITH CHECK expression
-* `tenantRlsStatements` writes (any weaker or wider one could open the table across
-* Organizations, so there is no other way to pass than the allowlist). Any other relation (a view,
-* a materialized view, a foreign table) is a gap, because it bypasses row-level security. Tables
-* on `allowlist` are skipped. A `closeline_*` role that is a superuser or has `BYPASSRLS` is a
-* gap too, because it ignores every policy.
+* checked, `public` included: nothing belongs there, so any table, view or foreign table in it is a gap. Any
+* relation that is not a table (a view, a materialized view, a foreign table) is a gap, because it
+* bypasses row-level security. A table in a {@link TENANT_SCHEMAS} schema then passes one of three ways:
+*
+* - It is in {@link ENVIRONMENT_SCOPED_TABLES}: no `organization_id`, row-level security enabled
+*   and forced, and exactly one permissive policy, for all commands, whose USING and WITH CHECK
+*   are both {@link ENVIRONMENT_POLICY_EXPRESSION}. Restrictive policies may be added.
+* - It is in {@link CONTROL_PLANE_TABLES}: no `organization_id`.
+* - Otherwise, a table in `auth` is a gap (it is in neither category), and any other table must
+*   have an `organization_id` column, row-level security enabled and forced, and at least one
+*   permissive policy, where every permissive policy covers all commands and has exactly the
+*   USING and WITH CHECK expression `tenantRlsStatements` writes (any weaker or wider one could
+*   open the table across Organizations).
+*
+* Tables on `allowlist` are skipped. A `closeline_*` role that is a superuser or has `BYPASSRLS` is
+* a gap too, because it ignores every policy.
 *
 * @param db - A database handle connected as any role; the catalogs are readable by all.
 * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
 * @param extensionSchemas - Schemas owned by extensions, skipped; defaults to {@link EXTENSION_SCHEMAS}.
+* @param categories - The `auth` table categories; defaults to the exported lists.
 * @returns The offending relations, ordered by schema and name, then the offending roles; empty
 *   when all are protected.
 */
-declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlist?: readonly string[], extensionSchemas?: readonly string[]): Promise<TenantIsolationGap[]>;
+declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlist?: readonly string[], extensionSchemas?: readonly string[], categories?: AuthTableCategories): Promise<TenantIsolationGap[]>;
 /**
 * Throw unless {@link findTenantIsolationGaps} finds nothing: every table fail-closed, no role bypassing it.
 *
@@ -6664,4 +6706,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_SETTING, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

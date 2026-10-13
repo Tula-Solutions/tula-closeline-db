@@ -9,6 +9,15 @@ import { TENANT_SETTING } from './schema/auth/tenant-columns'
  */
 export const ENVIRONMENT_SETTING = TENANT_SETTING
 
+/**
+ * The policy expression of the `auth` tables as Postgres stores and prints it in `pg_policies`
+ * (parenthesised, `::text` casts, the `::uuid` cast on the setting). It is the one place this
+ * text is derived: the tenant isolation check compares every environment-scoped table's policy
+ * against it, and an integration test pins it against the live catalog, so a Postgres version
+ * that deparses differently fails loudly instead of passing or failing every table.
+ */
+export const ENVIRONMENT_POLICY_EXPRESSION = `(environment_id = (NULLIF(current_setting('${ENVIRONMENT_SETTING}'::text, true), ''::text))::uuid)`
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**

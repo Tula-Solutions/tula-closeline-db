@@ -3663,7 +3663,7 @@ declare const proposals: PgTableWithColumns_a5zn0g19<{
 			name: "target_id";
 			tableName: "proposals";
 			dataType: "string";
-			columnType: "PgUUID";
+			columnType: "PgText";
 			data: string;
 			driverParam: string;
 			notNull: true;
@@ -3671,7 +3671,7 @@ declare const proposals: PgTableWithColumns_a5zn0g19<{
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: undefined;
+			enumValues: [string, ...string[]];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

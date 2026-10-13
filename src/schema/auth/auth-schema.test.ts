@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { is } from 'drizzle-orm'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
-import { NON_TENANT_TABLE_REASONS, NON_TENANT_TABLES } from '../../isolation'
+import { CONTROL_PLANE_TABLES, ENVIRONMENT_SCOPED_TABLES } from '../../isolation'
 import * as schemas from '../index'
 import { TENANT_PREDICATE, TENANT_SETTING } from './tenant-columns'
 
@@ -11,9 +11,6 @@ const authTables = Object.values<unknown>(schemas)
   .filter((config) => config.schema === 'auth')
 
 const names = authTables.map((config) => config.name).sort()
-
-/** Control-plane tables: no environment of their own to scope by (see their JSDoc in source). */
-const CONTROL_PLANE = ['api_keys', 'environments', 'instance_audit_logs', 'projects', 'workspaces']
 
 describe('the auth schema', () => {
   test('has exactly the tables tula-auth has, in the auth Postgres schema', () => {
@@ -82,7 +79,7 @@ describe('the auth schema', () => {
       .filter((config) => config.policies.length === 0)
       .map((config) => config.name)
       .sort()
-    expect(withoutPolicy).toEqual(CONTROL_PLANE)
+    expect(withoutPolicy.map((name) => `auth.${name}`)).toEqual([...CONTROL_PLANE_TABLES].sort())
   })
 
   test("the policy setting is tula-auth's, which the copied service sets", () => {
@@ -90,19 +87,16 @@ describe('the auth schema', () => {
   })
 })
 
-describe('the non-tenant allowlist', () => {
-  test('names every auth table and nothing else, so a new one must be added on purpose', () => {
+describe('the isolation categories', () => {
+  test('together name every auth table and nothing else, so a new one must be placed on purpose', () => {
     const qualified = authTables.map((config) => `auth.${config.name}`)
-    expect([...NON_TENANT_TABLES].sort()).toEqual(qualified.sort())
+    expect([...ENVIRONMENT_SCOPED_TABLES, ...CONTROL_PLANE_TABLES].sort()).toEqual(qualified.sort())
   })
 
-  test('gives every entry a reason on one line', () => {
-    for (const name of NON_TENANT_TABLES) {
-      const reason = NON_TENANT_TABLE_REASONS[name]
-      expect(typeof reason).toBe('string')
-      expect(reason?.trim().length).toBeGreaterThan(20)
-      expect(reason).not.toContain('\n')
-    }
-    expect(Object.keys(NON_TENANT_TABLE_REASONS).sort()).toEqual([...NON_TENANT_TABLES].sort())
+  test('environment-scoped tables are the ones with the environment policy', () => {
+    const withPolicy = authTables
+      .filter((config) => config.policies.some((policy) => policy.using))
+      .map((config) => `auth.${config.name}`)
+    expect([...ENVIRONMENT_SCOPED_TABLES].sort()).toEqual(withPolicy.sort())
   })
 })

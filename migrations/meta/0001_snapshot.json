@@ -1,5 +1,5 @@
 {
-  "id": "e1dbbf31-814c-4f55-9373-9d640212193d",
+  "id": "9749dc7c-279c-41ed-9448-4c4ab6751bfd",
   "prevId": "65e9f0bd-191a-48d2-a18a-ee23f73e70ec",
   "version": "7",
   "dialect": "postgresql",
@@ -3079,7 +3079,7 @@
         },
         "target_id": {
           "name": "target_id",
-          "type": "uuid",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -3251,6 +3251,10 @@
         "proposals_target_type_shape": {
           "name": "proposals_target_type_shape",
           "value": "\"auth\".\"proposals\".\"target_type\" ~ '^[a-z_]{1,64}$'"
+        },
+        "proposals_target_id_shape": {
+          "name": "proposals_target_id_shape",
+          "value": "\"auth\".\"proposals\".\"target_id\" ~ '^[a-z0-9_-]{1,64}$'"
         },
         "proposals_approval_whole": {
           "name": "proposals_approval_whole",

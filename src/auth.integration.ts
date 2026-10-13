@@ -2,9 +2,14 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Pool, type PoolClient } from 'pg'
 import { createDb, type DbHandle } from './client'
-import { ENVIRONMENT_SETTING, withEnvironment } from './environment'
+import { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING, withEnvironment } from './environment'
 import { dropStaleTestObjects, integrationEnv, migrateUp, rejectionOf } from './integration-support'
-import { findTenantIsolationGaps, NON_TENANT_TABLES } from './isolation'
+import {
+  CONTROL_PLANE_TABLES,
+  ENVIRONMENT_SCOPED_TABLES,
+  findTenantIsolationGaps,
+  NON_TENANT_TABLES,
+} from './isolation'
 import { environments, projects, users, workspaces } from './schema'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
@@ -202,6 +207,75 @@ describe('the auth schema, against Postgres', () => {
       expect(direct).toContain('permission denied for schema drizzle')
     })
 
+    test('closeline_core and closeline_playbook hold no privilege on any auth relation, schema denial aside', async () => {
+      // The catalog functions below ignore schema USAGE, so a stray grant (or one on PUBLIC) is
+      // seen even while "permission denied for schema auth" would still hide it from a query.
+      const held = await owner.query<{ role: string; relation: string; privilege: string }>(
+        `select r.role, c.relname as relation, p.privilege
+           from pg_class c
+           join pg_namespace n on n.oid = c.relnamespace
+           cross join (values ('closeline_core'), ('closeline_playbook')) as r(role)
+           cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'),
+                              ('REFERENCES'), ('TRIGGER')) as p(privilege)
+          where n.nspname = 'auth' and c.relkind in ('r', 'p', 'v', 'm', 'f')
+            and (has_table_privilege(r.role, c.oid, p.privilege)
+                 or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+                     and has_any_column_privilege(r.role, c.oid, p.privilege)))
+          order by 1, 2, 3`
+      )
+      expect(held.rows).toEqual([])
+      const sequences = await owner.query(
+        `select r.role, c.relname
+           from pg_class c
+           join pg_namespace n on n.oid = c.relnamespace
+           cross join (values ('closeline_core'), ('closeline_playbook')) as r(role)
+           cross join (values ('USAGE'), ('SELECT'), ('UPDATE')) as p(privilege)
+          where n.nspname = 'auth' and c.relkind = 'S'
+            and has_sequence_privilege(r.role, c.oid, p.privilege)`
+      )
+      expect(sequences.rows).toEqual([])
+      const schema = await owner.query(
+        `select r.role from (values ('closeline_core'), ('closeline_playbook')) as r(role)
+          where has_schema_privilege(r.role, 'auth', 'USAGE')
+             or has_function_privilege(r.role, 'auth.applied_migrations()', 'EXECUTE')`
+      )
+      expect(schema.rows).toEqual([])
+    })
+
+    test('a future auth table grants closeline_auth nothing until its migration says so', async () => {
+      const defaults = await owner.query<{ object: string; role: string }>(
+        `select d.defaclobjtype as object, a.grantee::regrole::text as role
+           from pg_default_acl d
+           join pg_namespace n on n.oid = d.defaclnamespace
+           cross join lateral aclexplode(d.defaclacl) a
+          where n.nspname = 'auth' and a.grantee::regrole::text = 'closeline_auth'`
+      )
+      expect(defaults.rows).toEqual([])
+      // The other services keep theirs: this is auth's rule, not a change to core or playbook.
+      const others = await owner.query<{ schema: string; objects: string }>(
+        `select n.nspname as schema, string_agg(d.defaclobjtype::text, ',' order by d.defaclobjtype) as objects
+           from pg_default_acl d join pg_namespace n on n.oid = d.defaclnamespace
+          where n.nspname in ('core', 'playbook') group by n.nspname order by n.nspname`
+      )
+      expect(others.rows).toEqual([
+        { schema: 'core', objects: 'S,r' },
+        { schema: 'playbook', objects: 'S,r' },
+      ])
+      try {
+        await owner.query('create table auth.it_probe (id serial primary key, note text)')
+        const read = await rejectionOf(authPool.query('select * from auth.it_probe'))
+        expect(read).toContain('permission denied for table it_probe')
+        const write = await rejectionOf(
+          authPool.query(`insert into auth.it_probe (note) values ('x')`)
+        )
+        expect(write).toContain('permission denied for table it_probe')
+        const sequence = await rejectionOf(authPool.query(`select nextval('auth.it_probe_id_seq')`))
+        expect(sequence).toContain('permission denied for sequence it_probe_id_seq')
+      } finally {
+        await owner.query('drop table if exists auth.it_probe')
+      }
+    })
+
     test('closeline_auth holds exactly the table privileges tula-auth grants its runtime role', async () => {
       const found = await owner.query<{ table: string; privileges: string }>(
         `select table_name as table, string_agg(privilege_type, ',' order by privilege_type) as privileges
@@ -248,12 +322,29 @@ describe('the auth schema, against Postgres', () => {
       expect(found.rows).toEqual([])
     })
 
-    test('every auth table is on the allowlist, and the isolation check still passes', async () => {
-      expect([...NON_TENANT_TABLES].sort()).toEqual(tables.map((table) => `auth.${table}`))
+    test('every auth table is in exactly one category, and the isolation check verifies it', async () => {
+      const categorised = [...ENVIRONMENT_SCOPED_TABLES, ...CONTROL_PLANE_TABLES].sort()
+      expect(categorised).toEqual(tables.map((table) => `auth.${table}`))
+      // Nothing is exempt any more: the check passes with an empty allowlist.
+      expect(NON_TENANT_TABLES).toEqual([])
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
-      // The allowlist only skips auth tables: with it emptied, the check reports every one.
-      const without = await findTenantIsolationGaps(handle.db, [])
-      expect(without.map((gap) => gap.table).sort()).toEqual(tables)
+      expect(await findTenantIsolationGaps(handle.db, [])).toEqual([])
+    })
+
+    test('the environment policy text is the one the check compares against, on every scoped table', async () => {
+      // Pins how this Postgres deparses the policy, as the Organization one is pinned in
+      // isolation.integration.ts: a version that words it differently fails here first.
+      const found = await owner.query<{ table: string; qual: string; check: string }>(
+        `select tablename as table, qual, with_check as check from pg_policies
+          where schemaname = 'auth' and policyname like '%\\_tenant\\_isolation' order by tablename`
+      )
+      expect(found.rows.map((row) => `auth.${row.table}`)).toEqual(
+        [...ENVIRONMENT_SCOPED_TABLES].sort()
+      )
+      for (const row of found.rows) {
+        expect(row.qual, `${row.table} using`).toBe(ENVIRONMENT_POLICY_EXPRESSION)
+        expect(row.check, `${row.table} check`).toBe(ENVIRONMENT_POLICY_EXPRESSION)
+      }
     })
 
     test('every table with environment_id is fail-closed on it, except api_keys', async () => {
@@ -276,15 +367,16 @@ describe('the auth schema, against Postgres', () => {
                           and a.attname = 'environment_id' and not a.attisdropped)
           order by c.relname`
       )
-      const predicate = `(environment_id = (NULLIF(current_setting('${ENVIRONMENT_SETTING}'::text, true), ''::text))::uuid)`
       const scoped = found.rows.filter((row) => row.table !== 'api_keys')
-      expect(scoped.length).toBe(25)
+      expect(scoped.map((row) => `auth.${row.table}`)).toEqual(
+        [...ENVIRONMENT_SCOPED_TABLES].sort()
+      )
       for (const row of scoped) {
         expect(row.enabled, `${row.table} enabled`).toBe(true)
         expect(row.forced, `${row.table} forced`).toBe(true)
         expect(row.policy, `${row.table} policy`).toBe(`${row.table}_tenant_isolation`)
-        expect(row.qual, `${row.table} using`).toBe(predicate)
-        expect(row.check, `${row.table} check`).toBe(predicate)
+        expect(row.qual, `${row.table} using`).toBe(ENVIRONMENT_POLICY_EXPRESSION)
+        expect(row.check, `${row.table} check`).toBe(ENVIRONMENT_POLICY_EXPRESSION)
       }
       const apiKeys = found.rows.find((row) => row.table === 'api_keys')
       expect(apiKeys?.enabled).toBe(false)
@@ -403,6 +495,98 @@ describe('the auth schema, against Postgres', () => {
     })
   })
 
+  describe('one environment cannot reach another, table by table', () => {
+    interface Case {
+      table: string
+      /** Columns after id, project_id and environment_id, and their values. */
+      columns: string
+      values: string
+      /** A `set` clause the service role may run on the table, or none if it holds no UPDATE. */
+      update?: string
+    }
+    const cases: Case[] = [
+      {
+        table: 'webhook_endpoints',
+        columns: 'url, event_types, secret',
+        values: `'https://x.example.test', '{}', 'sealed'`,
+        update: `url = 'https://hacked.example.test'`,
+      },
+      {
+        table: 'hooks',
+        columns: 'point, url, secret',
+        values: `'before_sign_up', 'https://h.example.test', 'sealed'`,
+        update: 'enabled = false',
+      },
+      {
+        table: 'events',
+        columns: 'type, payload, occurred_at, delivered_at',
+        values: `'it.cross', '{}', now() - interval '2 days', now()`,
+        update: 'delivered_at = null',
+      },
+      {
+        table: 'audit_logs',
+        columns: 'actor_type, action, occurred_at',
+        values: `'system', 'it.cross', now() - interval '2 days'`,
+      },
+      {
+        table: 'sms_code_counts',
+        columns: 'day, prefix, sent',
+        values: `(now() at time zone 'utc')::date - 30, '+9', 1`,
+        update: 'sent = 5',
+      },
+    ]
+
+    test.each(cases)(
+      '$table: not readable, writable, updatable or deletable from another environment',
+      async (spec) => {
+        const id = uuid()
+        await inEnv(region.b.environmentId, (client) =>
+          client.query(
+            `insert into auth.${spec.table} (id, project_id, environment_id, ${spec.columns})
+           values ($1, $2, $3, ${spec.values})`,
+            [id, region.b.projectId, region.b.environmentId]
+          )
+        )
+        const seenByB = await inEnv(region.b.environmentId, (client) =>
+          client.query(`select id from auth.${spec.table} where id = $1`, [id])
+        )
+        expect(seenByB.rowCount, 'the row exists for its own environment').toBe(1)
+
+        const seenByA = await inEnv(region.a.environmentId, (client) =>
+          client.query(`select id from auth.${spec.table} where id = $1`, [id])
+        )
+        expect(seenByA.rowCount, 'read from another environment').toBe(0)
+
+        if (spec.update) {
+          const updated = await inEnv(region.a.environmentId, (client) =>
+            client.query(`update auth.${spec.table} set ${spec.update} where id = $1`, [id])
+          )
+          expect(updated.rowCount, 'update from another environment').toBe(0)
+        }
+        const removed = await inEnv(region.a.environmentId, (client) =>
+          client.query(`delete from auth.${spec.table} where id = $1`, [id])
+        )
+        expect(removed.rowCount, 'removal from another environment').toBe(0)
+
+        const smuggled = await rejectionOf(
+          inEnv(region.a.environmentId, (client) =>
+            client.query(
+              `insert into auth.${spec.table} (id, project_id, environment_id, ${spec.columns})
+             values ($1, $2, $3, ${spec.values})`,
+              [uuid(), region.b.projectId, region.b.environmentId]
+            )
+          )
+        )
+        expect(smuggled, 'write into another environment').toContain('row-level security')
+
+        const still = await inEnv(region.b.environmentId, (client) =>
+          client.query(`select id from auth.${spec.table} where id = $1`, [id])
+        )
+        expect(still.rowCount, 'the row is untouched').toBe(1)
+      }
+    )
+  })
+
   describe('the database holds the rules the code relies on', () => {
     const session = async (target: Region['a'], userId: string, thumbprint: string | null) => {
       const id = uuid()
@@ -498,6 +682,91 @@ describe('the auth schema, against Postgres', () => {
         )
       )
       expect(message).toContain('proposals_lifetime_bounds')
+    })
+
+    test('a proposal can target a user, a session or an OAuth provider by name, and nothing else', async () => {
+      const add = (targetId: string) =>
+        inEnv(region.a.environmentId, (client) =>
+          client.query(
+            `insert into auth.proposals (id, project_id, environment_id, operation, target_type, target_id,
+                                         proposed_by, expires_at)
+             values ($1, $2, $3, 'disable_provider', 'oauth_provider', $4, $5, now() + interval '10 minutes')`,
+            [uuid(), region.a.projectId, region.a.environmentId, targetId, uuid()]
+          )
+        )
+      await add('google')
+      await add(uuid())
+      for (const bad of ['Bad Target!', 'Google', 'a'.repeat(65), '']) {
+        const message = await rejectionOf(add(bad))
+        expect(message, JSON.stringify(bad)).toContain('proposals_target_id_shape')
+      }
+      const column = await owner.query<{ type: string }>(
+        `select data_type as type from information_schema.columns
+          where table_schema = 'auth' and table_name = 'proposals' and column_name = 'target_id'`
+      )
+      expect(column.rows).toEqual([{ type: 'text' }])
+    })
+
+    test('a count of texted codes is never removed until its day is a week old', async () => {
+      const insert = (client: PoolClient, prefix: string, daysAgo: number) =>
+        client.query(
+          `insert into auth.sms_code_counts (id, project_id, environment_id, day, prefix, sent)
+           values ($1, $2, $3, (now() at time zone 'utc')::date - $4::int, $5, 1)`,
+          [uuid(), region.a.projectId, region.a.environmentId, daysAgo, prefix]
+        )
+      await inEnv(region.a.environmentId, async (client) => {
+        await insert(client, '+11', 0)
+        await insert(client, '+12', 7)
+        await insert(client, '+13', 8)
+        await insert(client, '+14', 40)
+      })
+      const removed = await inEnv(region.a.environmentId, (client) =>
+        client.query(
+          `delete from auth.sms_code_counts where prefix in ('+11', '+12', '+13', '+14') returning prefix`
+        )
+      )
+      expect(removed.rows.map((row) => row.prefix).sort()).toEqual(['+13', '+14'])
+      const left = await inEnv(region.a.environmentId, (client) =>
+        client.query(
+          `select prefix from auth.sms_code_counts where prefix in ('+11', '+12', '+13', '+14')`
+        )
+      )
+      expect(left.rows.map((row) => row.prefix).sort()).toEqual(['+11', '+12'])
+    })
+
+    test('a settled webhook delivery is removed only after a week, and a pending one never', async () => {
+      const endpointId = uuid()
+      await inEnv(region.a.environmentId, (client) =>
+        client.query(
+          `insert into auth.webhook_endpoints (id, project_id, environment_id, url, event_types, secret)
+           values ($1, $2, $3, 'https://floor.example.test', '{}', 'sealed')`,
+          [endpointId, region.a.projectId, region.a.environmentId]
+        )
+      )
+      const rows: Record<string, string> = {}
+      const insert = (client: PoolClient, name: string, state: string, age: string) => {
+        rows[name] = uuid()
+        return client.query(
+          `insert into auth.webhook_deliveries (id, project_id, environment_id, endpoint_id, event_type, state, created_at)
+           values ($1, $2, $3, $4, 'it.floor', $5, now() - $6::interval)`,
+          [rows[name], region.a.projectId, region.a.environmentId, endpointId, state, age]
+        )
+      }
+      await inEnv(region.a.environmentId, async (client) => {
+        await insert(client, 'youngSettled', 'delivered', '1 hour')
+        await insert(client, 'edgeSettled', 'failed', '6 days')
+        await insert(client, 'oldDelivered', 'delivered', '8 days')
+        await insert(client, 'oldFailed', 'failed', '9 days')
+        await insert(client, 'oldPending', 'pending', '30 days')
+      })
+      const removed = await inEnv(region.a.environmentId, (client) =>
+        client.query(
+          `delete from auth.webhook_deliveries where event_type = 'it.floor' returning id`
+        )
+      )
+      expect(removed.rows.map((row) => row.id).sort()).toEqual(
+        [rows.oldDelivered, rows.oldFailed].sort()
+      )
     })
 
     test('an environment has at most one active signing key', async () => {

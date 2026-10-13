@@ -277,7 +277,7 @@ CREATE TABLE "auth"."proposals" (
 	"environment_id" uuid NOT NULL,
 	"operation" text NOT NULL,
 	"target_type" text NOT NULL,
-	"target_id" uuid NOT NULL,
+	"target_id" text NOT NULL,
 	"proposed_by" uuid NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
@@ -290,6 +290,7 @@ CREATE TABLE "auth"."proposals" (
 	CONSTRAINT "proposals_status_known" CHECK ("auth"."proposals"."status" in ('pending', 'approved', 'executed', 'failed')),
 	CONSTRAINT "proposals_operation_shape" CHECK ("auth"."proposals"."operation" ~ '^[a-z_]{1,64}$'),
 	CONSTRAINT "proposals_target_type_shape" CHECK ("auth"."proposals"."target_type" ~ '^[a-z_]{1,64}$'),
+	CONSTRAINT "proposals_target_id_shape" CHECK ("auth"."proposals"."target_id" ~ '^[a-z0-9_-]{1,64}$'),
 	CONSTRAINT "proposals_approval_whole" CHECK (("auth"."proposals"."status" = 'pending') = ("auth"."proposals"."approved_at" is null) and ("auth"."proposals"."status" = 'pending') = ("auth"."proposals"."approved_by_type" is null) and ("auth"."proposals"."approved_by_type" is null or "auth"."proposals"."approved_by_type" in ('admin', 'instance_admin')) and ("auth"."proposals"."approved_by_id" is null or ("auth"."proposals"."approved_by_type" is not null and char_length("auth"."proposals"."approved_by_id") between 1 and 128))),
 	CONSTRAINT "proposals_failure_whole" CHECK (("auth"."proposals"."status" = 'failed') = ("auth"."proposals"."failure_reason" is not null) and ("auth"."proposals"."failure_reason" is null or "auth"."proposals"."failure_reason" ~ '^[a-z_]{1,64}$')),
 	CONSTRAINT "proposals_lifetime_bounds" CHECK ("auth"."proposals"."expires_at" <= "auth"."proposals"."created_at" + interval '1 hour')
@@ -676,9 +677,10 @@ CREATE POLICY "webhook_delivery_attempts_tenant_isolation" ON "auth"."webhook_de
 CREATE POLICY "webhook_endpoints_tenant_isolation" ON "auth"."webhook_endpoints" AS PERMISSIVE FOR ALL TO public USING (environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid) WITH CHECK (environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid);
 --> statement-breakpoint
 -- Everything below is written by hand: drizzle-kit cannot declare any of it. It is the end state
--- of what tula-auth's migrations 0001 to 0034 added by hand, with `tula` renamed `auth` and its
--- runtime role `tula_app` renamed `closeline_auth` (ADR 0005). Order is not significant except
--- that FORCE comes after the tables and the grants after the REVOKE.
+-- of what the hand-written statements in tula-auth's 36 migrations (0000 to 0035) added; 0035,
+-- `proposals.target_id` as text, is a plain schema change and is in the generated part above. `tula`
+-- is renamed `auth` and its runtime role `tula_app` `closeline_auth` (ADR 0005). Order is not
+-- significant except that FORCE comes after the tables and the grants after the REVOKE.
 --
 -- FORCE ROW LEVEL SECURITY binds the table owner too, so a connection as `closeline_owner` still
 -- cannot read across environments. Every table with `environment_id` is listed except `api_keys`,
@@ -762,11 +764,12 @@ CREATE TRIGGER "sessions_device_thumbprint_immutable"
 -- The service role has no access to the `drizzle` schema and keeps none: this function, owned by
 -- the owner role, answers the one thing the service needs (when each applied migration was
 -- generated) and nothing else from that schema. A fixed search path, because a SECURITY DEFINER
--- function must not resolve names through the caller's. The history is the whole database's, not
+-- function must not resolve names through the caller's: `pg_temp` is searched last, after
+-- `pg_catalog`, so a temporary object can never shadow a catalog name. The history is the whole database's, not
 -- the auth schema's: the caller must compare only the migrations that are its own.
 CREATE FUNCTION "auth"."applied_migrations"() RETURNS TABLE (created_at bigint)
   LANGUAGE sql STABLE SECURITY DEFINER
-  SET search_path = pg_catalog
+  SET search_path = pg_catalog, pg_temp
   AS $$ SELECT m.created_at FROM drizzle.__drizzle_migrations m ORDER BY m.created_at $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION "auth"."applied_migrations"() FROM PUBLIC;
@@ -776,11 +779,19 @@ GRANT EXECUTE ON FUNCTION "auth"."applied_migrations"() TO closeline_auth;
 -- Least privilege for the service role (tula-auth migration 0003 and every grant after it).
 --
 -- Migration 0000's default privileges gave `closeline_auth` SELECT, INSERT, UPDATE and DELETE on
--- every table created here. Take them back, then grant each table exactly what the code path
--- that uses it needs. Why this matters: foreign-key cascades run as the table owner, so row-level
+-- every table created here (and USAGE and SELECT on every sequence). Take the defaults back, so a
+-- future auth table or sequence grants nothing until its own migration says so, as in tula-auth,
+-- then take back what they already gave, then grant each table exactly what the code path
+-- that uses it needs. The defaults of `core` and `playbook` are left as 0000 set them. Why this matters: foreign-key cascades run as the table owner, so row-level
 -- security cannot stop a runtime `DELETE FROM auth.workspaces` from wiping every environment's
 -- data. Destructive control-plane operations belong to admin tooling running as the owner.
+ALTER DEFAULT PRIVILEGES IN SCHEMA "auth" REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM closeline_auth;
+--> statement-breakpoint
+ALTER DEFAULT PRIVILEGES IN SCHEMA "auth" REVOKE USAGE, SELECT ON SEQUENCES FROM closeline_auth;
+--> statement-breakpoint
 REVOKE ALL ON ALL TABLES IN SCHEMA "auth" FROM closeline_auth;
+--> statement-breakpoint
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA "auth" FROM closeline_auth;
 --> statement-breakpoint
 -- Control plane: read, create, update. API keys are revoked via revoked_at, not deleted, and an
 -- environment's settings are replaced, never removed (the row goes with its environment).
@@ -798,7 +809,8 @@ TO closeline_auth;
 -- Audit logs are append-only plus the retention job's delete. No UPDATE, so an entry cannot be
 -- changed or backdated past `audit_logs_retention_floor` (no entry younger than one day goes).
 -- `instance_audit_logs` has no row-level security: it records the operator's actions outside any
--- one environment.
+-- one environment. Its DELETE is for the retention job and, unlike `audit_logs`, no floor bounds
+-- it, so it is append-and-delete, not append-only.
 GRANT SELECT, INSERT, DELETE ON "auth"."audit_logs", "auth"."instance_audit_logs" TO closeline_auth;
 --> statement-breakpoint
 -- Outbox: append, mark delivered (the one column it may update), and the retention job's delete,

@@ -34,7 +34,12 @@ export const proposals = authSchema.table(
     operation: text('operation').notNull(),
     /** One of the contract's `PROPOSAL_TARGET_TYPES`. */
     targetType: text('target_type').notNull(),
-    targetId: uuid('target_id').notNull(),
+    /**
+     * What the proposal is about: a user's or a session's id (a UUID's text form), or an OAuth
+     * provider's name from the contract's closed list (`google`). Text, shaped by
+     * `proposals_target_id_shape`; never a sentence.
+     */
+    targetId: text('target_id').notNull(),
     /** The agent key that asked. */
     proposedBy: uuid('proposed_by').notNull(),
     status: text('status', { enum: ['pending', 'approved', 'executed', 'failed'] })
@@ -57,6 +62,8 @@ export const proposals = authSchema.table(
     ),
     check('proposals_operation_shape', sql`${t.operation} ~ '^[a-z_]{1,64}$'`),
     check('proposals_target_type_shape', sql`${t.targetType} ~ '^[a-z_]{1,64}$'`),
+    // A UUID's text form passes (lower-case hex and hyphens), and so does a provider's name.
+    check('proposals_target_id_shape', sql`${t.targetId} ~ '^[a-z0-9_-]{1,64}$'`),
     // Pending means nobody approved; anything else means somebody did, at a known time.
     check(
       'proposals_approval_whole',

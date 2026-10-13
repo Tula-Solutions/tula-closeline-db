@@ -2,8 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import { isPgSchema } from 'drizzle-orm/pg-core'
 import {
   assertTenantIsolation,
+  CONTROL_PLANE_TABLE_REASONS,
+  CONTROL_PLANE_TABLES,
+  ENVIRONMENT_SCOPED_TABLES,
   EXTENSION_SCHEMAS,
   findTenantIsolationGaps,
+  NON_TENANT_TABLES,
   TENANT_SCHEMAS,
 } from './isolation'
 import * as schemas from './schema'
@@ -17,6 +21,7 @@ interface Row {
   forced: boolean
   permissive: number
   weak_permissive: number
+  weak_environment_permissive: number
 }
 
 const GOOD: Row = {
@@ -27,6 +32,29 @@ const GOOD: Row = {
   enabled: true,
   forced: true,
   permissive: 1,
+  weak_permissive: 0,
+  weak_environment_permissive: 1,
+}
+
+/** An environment-scoped auth table that is fail-closed on environment_id. */
+const GOOD_ENVIRONMENT: Row = {
+  ...GOOD,
+  schema: 'auth',
+  table: 'users',
+  has_org: false,
+  weak_permissive: 1,
+  weak_environment_permissive: 0,
+}
+
+/** A control-plane auth table: no organization_id, and no row-level security of its own. */
+const GOOD_CONTROL_PLANE: Row = {
+  ...GOOD,
+  schema: 'auth',
+  table: 'workspaces',
+  has_org: false,
+  enabled: false,
+  forced: false,
+  permissive: 0,
   weak_permissive: 0,
 }
 
@@ -83,6 +111,88 @@ describe('findTenantIsolationGaps', () => {
   test('an allowlisted table is skipped', async () => {
     const row = { ...GOOD, has_org: false }
     expect(await findTenantIsolationGaps(dbWith([row]), ['core.prospects'])).toEqual([])
+  })
+})
+
+describe('findTenantIsolationGaps on the auth schema', () => {
+  test('an environment-scoped table fail-closed on environment_id is not a gap', async () => {
+    expect(await findTenantIsolationGaps(dbWith([GOOD_ENVIRONMENT]))).toEqual([])
+  })
+
+  test('a control-plane table with no organization_id is not a gap', async () => {
+    expect(await findTenantIsolationGaps(dbWith([GOOD_CONTROL_PLANE]))).toEqual([])
+  })
+
+  test.each([
+    ['an organization_id column', { has_org: true }, 'organization_id'],
+    ['row-level security off', { enabled: false }, 'enabled'],
+    ['row-level security not forced', { forced: false }, 'forced'],
+    ['no policy', { permissive: 0, weak_environment_permissive: 0 }, 'no permissive policy'],
+    ['a second permissive policy', { permissive: 2 }, 'exactly one'],
+    [
+      'a permissive policy that is not the environment expression',
+      { weak_environment_permissive: 1 },
+      'canonical',
+    ],
+  ])('an environment-scoped table with %s is a gap', async (_name, change, reason) => {
+    const gaps = await findTenantIsolationGaps(dbWith([{ ...GOOD_ENVIRONMENT, ...change }]))
+    expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['auth.users'])
+    expect(gaps[0]?.reason).toContain(reason)
+  })
+
+  test('a control-plane table with an organization_id column is a gap', async () => {
+    const gaps = await findTenantIsolationGaps(dbWith([{ ...GOOD_CONTROL_PLANE, has_org: true }]))
+    expect(gaps.map((gap) => gap.table)).toEqual(['workspaces'])
+    expect(gaps[0]?.reason).toContain('organization_id')
+  })
+
+  test('an auth table in neither category is a gap, even if it looks protected', async () => {
+    for (const row of [GOOD_ENVIRONMENT, GOOD, GOOD_CONTROL_PLANE]) {
+      const gaps = await findTenantIsolationGaps(dbWith([{ ...row, schema: 'auth', table: 'new' }]))
+      expect(gaps.map((gap) => gap.table)).toEqual(['new'])
+      expect(gaps[0]?.reason).toContain('ENVIRONMENT_SCOPED_TABLES')
+      expect(gaps[0]?.reason).toContain('CONTROL_PLANE_TABLES')
+    }
+  })
+
+  test('a view in the auth schema is a gap whatever its name', async () => {
+    const gaps = await findTenantIsolationGaps(dbWith([{ ...GOOD_ENVIRONMENT, kind: 'v' }]))
+    expect(gaps[0]?.reason).toContain('not a table')
+  })
+
+  test('the organization rule still applies to core and playbook', async () => {
+    const gaps = await findTenantIsolationGaps(
+      dbWith([
+        { ...GOOD, table: 'a', has_org: false },
+        { ...GOOD_ENVIRONMENT, schema: 'core' },
+      ])
+    )
+    expect(gaps.map((gap) => gap.table)).toEqual(['a', 'users'])
+    expect(gaps.every((gap) => gap.reason.includes('organization_id'))).toBe(true)
+  })
+})
+
+describe('the auth table categories', () => {
+  test('are disjoint, in the auth schema, and split 25 and 5', () => {
+    expect(ENVIRONMENT_SCOPED_TABLES).toHaveLength(25)
+    expect(CONTROL_PLANE_TABLES).toHaveLength(5)
+    const all = [...ENVIRONMENT_SCOPED_TABLES, ...CONTROL_PLANE_TABLES]
+    expect(new Set(all).size).toBe(all.length)
+    expect(all.every((name) => name.startsWith('auth.'))).toBe(true)
+  })
+
+  test('give every control-plane table a one-line reason', () => {
+    expect(Object.keys(CONTROL_PLANE_TABLE_REASONS).sort()).toEqual(
+      [...CONTROL_PLANE_TABLES].sort()
+    )
+    for (const reason of Object.values(CONTROL_PLANE_TABLE_REASONS)) {
+      expect(reason.trim().length).toBeGreaterThan(20)
+      expect(reason).not.toContain('\n')
+    }
+  })
+
+  test('replace the blanket allowlist: no auth table is exempt from the check', () => {
+    expect(NON_TENANT_TABLES).toEqual([])
   })
 })
 
