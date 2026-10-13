@@ -77,6 +77,10 @@ var ABANDON_RESOLVE = `update auth.abandon_cases
 set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
 where id = $1 and environment_id = $2 and resolved_at is null
 returning id`;
+var ABANDON_SETTLE = `update auth.abandon_cases
+set resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()
+where id = $1 and environment_id = $2 and resolved_at is null and attempts = 0
+returning id`;
 var ABANDON_GIVE_UP_SPENT = `with batch as (
   select id from auth.abandon_cases
   where environment_id = $1 and resolved_at is null and attempts >= ${ABANDON_CASE_MAX_ATTEMPTS2}
@@ -110,6 +114,7 @@ var AUTH_STATEMENTS = {
   ABANDON_RECORD,
   ABANDON_CLAIM,
   ABANDON_RESOLVE,
+  ABANDON_SETTLE,
   ABANDON_PURGE_BATCH,
   ABANDON_GIVE_UP_SPENT,
   ABANDON_LEARN
@@ -497,6 +502,7 @@ export {
   ABANDON_PURGE_BATCH,
   ABANDON_RECORD,
   ABANDON_RESOLVE,
+  ABANDON_SETTLE,
   AUTH_STATEMENTS,
   CONTROL_PLANE_TABLES,
   CONTROL_PLANE_TABLE_REASONS,

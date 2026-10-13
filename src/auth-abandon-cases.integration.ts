@@ -12,6 +12,7 @@ import {
   ABANDON_PURGE_BATCH,
   ABANDON_RECORD,
   ABANDON_RESOLVE,
+  ABANDON_SETTLE,
 } from './auth-statements'
 import {
   type AuthRegion,
@@ -47,6 +48,8 @@ describe('auth.abandon_cases', () => {
   let bulk: AuthRegion
   /** Holds the spent-case and grace tests, whose claims must see no other case. */
   let extra: AuthRegion
+  /** Holds the settle tests, whose claims and locks must not touch another test's cases. */
+  let settling: AuthRegion
 
   /**
    * Insert a case in an environment. By default it is due, its attempt long over: the attempt
@@ -95,11 +98,12 @@ describe('auth.abandon_cases', () => {
     region = await seedAuthRegion(authPool)
     bulk = await seedAuthRegion(authPool)
     extra = await seedAuthRegion(authPool)
+    settling = await seedAuthRegion(authPool)
   })
 
   afterAll(async () => {
     await owner.query('delete from auth.workspaces where id = any($1)', [
-      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId],
+      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId, settling?.workspaceId],
     ])
     await Promise.all([owner.end(), authPool.end(), corePool.end()])
   })
@@ -595,6 +599,168 @@ describe('auth.abandon_cases', () => {
         )
       )
       expect(message).toContain('abandon_cases_due_after_expiry')
+    })
+  })
+
+  describe('settling a case from the account transaction', () => {
+    const environmentId = () => settling.a.environmentId
+    const add = async (columns: Record<string, unknown> = {}): Promise<string> =>
+      (await addCase(environmentId(), columns, uuid(), settling.projectId)).rows[0]?.id as string
+    const settle = (id: string, environment: string = environmentId()) =>
+      inAuthEnvironment(authPool, environment, (client) =>
+        client.query(ABANDON_SETTLE, [id, environment])
+      )
+    const claimed = async (): Promise<string[]> =>
+      (
+        await inAuthEnvironment(authPool, environmentId(), (client) =>
+          client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        )
+      ).rows.map((row) => row.id as string)
+    const stored = async (id: string) =>
+      (
+        await inAuthEnvironment(authPool, environmentId(), (client) =>
+          client.query(
+            'select attempts, outcome, resolved_at, updated_at from auth.abandon_cases where id = $1',
+            [id]
+          )
+        )
+      ).rows[0]
+
+    /** Open a transaction on its own connection, scoped to the environment like the helper. */
+    const open = async () => {
+      const client = await authPool.connect()
+      await client.query('begin')
+      await client.query('select set_config($1, $2, true)', [
+        'tula.environment_id',
+        environmentId(),
+      ])
+      const pid = (await client.query('select pg_backend_pid() as pid')).rows[0]?.pid as number
+      return { client, pid }
+    }
+
+    /** Wait until the backend `pid` is waiting for a lock (bounded by tries, not by a clock). */
+    const untilBlocked = async (pid: number): Promise<void> => {
+      for (let tries = 0; tries < 2000; tries++) {
+        const waiting = await owner.query('select 1 from pg_locks where pid = $1 and not granted', [
+          pid,
+        ])
+        if (waiting.rowCount) {
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      throw new Error(`backend ${pid} never waited for a lock`)
+    }
+
+    test('settling an open case resolves it as refused, and the sweep never claims it', async () => {
+      const id = await add()
+      expect((await settle(id)).rows).toEqual([{ id }])
+      const row = await stored(id)
+      expect(row).toMatchObject({ attempts: 0, outcome: 'refused' })
+      expect(row.resolved_at).toBeInstanceOf(Date)
+      expect(await claimed()).not.toContain(id)
+      expect(await stored(id)).toMatchObject({ attempts: 0, outcome: 'refused' })
+    })
+
+    test('a case the sweep claimed is not settled, and nothing changes', async () => {
+      const id = await add()
+      expect(await claimed()).toContain(id)
+      const before = await stored(id)
+      expect((await settle(id)).rowCount).toBe(0)
+      expect(await stored(id)).toEqual(before)
+      expect(before).toMatchObject({ attempts: 1, outcome: null, resolved_at: null })
+    })
+
+    test('learning the Organization does not stop a settle', async () => {
+      const id = await add({ core_organization_id: null })
+      await inAuthEnvironment(authPool, environmentId(), (client) =>
+        client.query(ABANDON_LEARN, [id, environmentId(), uuid()])
+      )
+      expect((await settle(id)).rows).toEqual([{ id }])
+    })
+
+    test('a settle holding the row keeps a claim from it', async () => {
+      const id = await add()
+      const holder = await open()
+      const sweeper = await open()
+      try {
+        expect((await holder.client.query(ABANDON_SETTLE, [id, environmentId()])).rowCount).toBe(1)
+        // Skip locked: the claim does not wait, and it does not take the held case.
+        const taken = await sweeper.client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        expect(taken.rows.map((row) => row.id)).not.toContain(id)
+        await holder.client.query('commit')
+        await sweeper.client.query('commit')
+      } finally {
+        holder.client.release()
+        sweeper.client.release()
+      }
+      expect(await stored(id)).toMatchObject({ attempts: 0, outcome: 'refused' })
+      expect(await claimed()).not.toContain(id)
+    })
+
+    test('a settle that waits for a claim finds the case claimed and returns no row', async () => {
+      const id = await add()
+      const sweeper = await open()
+      const request = await open()
+      try {
+        const taken = await sweeper.client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        expect(taken.rows.map((row) => row.id)).toContain(id)
+        const waiting = request.client.query(ABANDON_SETTLE, [id, environmentId()])
+        await untilBlocked(request.pid)
+        await sweeper.client.query('commit')
+        // The predicate is checked again against the claimed row: attempts is now 1.
+        expect((await waiting).rowCount).toBe(0)
+        await request.client.query('commit')
+      } finally {
+        sweeper.client.release()
+        request.client.release()
+      }
+      expect(await stored(id)).toMatchObject({ attempts: 1, outcome: null, resolved_at: null })
+    })
+
+    test('a settle that waits for a claim that rolls back settles the case', async () => {
+      const id = await add()
+      const sweeper = await open()
+      const request = await open()
+      try {
+        await sweeper.client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        const waiting = request.client.query(ABANDON_SETTLE, [id, environmentId()])
+        await untilBlocked(request.pid)
+        await sweeper.client.query('rollback')
+        expect((await waiting).rows).toEqual([{ id }])
+        await request.client.query('commit')
+      } finally {
+        sweeper.client.release()
+        request.client.release()
+      }
+      expect(await stored(id)).toMatchObject({ attempts: 0, outcome: 'refused' })
+    })
+
+    test.each(['done', 'refused', 'gave_up'])(
+      'a case already resolved as %s is not settled, and keeps its outcome',
+      async (outcome) => {
+        const id = await add({ resolved_at: raw('now()'), outcome })
+        const before = await stored(id)
+        expect((await settle(id)).rowCount).toBe(0)
+        expect(await stored(id)).toEqual(before)
+      }
+    )
+
+    test('settling twice returns a row once', async () => {
+      const id = await add()
+      expect((await settle(id)).rowCount).toBe(1)
+      expect((await settle(id)).rowCount).toBe(0)
+    })
+
+    test('no case at all returns no row, the same as a lost race', async () => {
+      expect((await settle(uuid())).rowCount).toBe(0)
+    })
+
+    test('a case of another environment is not settled', async () => {
+      const id = (await addCase(settling.b.environmentId, {}, uuid(), settling.projectId)).rows[0]
+        ?.id as string
+      expect((await settle(id)).rowCount).toBe(0)
+      expect((await settle(id, settling.b.environmentId)).rowCount).toBe(1)
     })
   })
 

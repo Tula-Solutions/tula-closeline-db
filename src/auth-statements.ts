@@ -191,6 +191,45 @@ where id = $1 and environment_id = $2 and resolved_at is null
 returning id`
 
 /**
+ * Settle a case from inside the account transaction, as its last statement before the commit:
+ * the account is written only if this returns a row. `$1` case id, `$2` environment. It makes
+ * "account committed" and "case claimed by the sweep" mutually exclusive by a row lock, not by
+ * any clock. {@link ABANDON_CLAIM} takes the row `for update skip locked` and raises `attempts`
+ * from 0; this takes the same row lock, and only while `attempts = 0`:
+ *
+ * - **Settle locks first.** The claim skips the locked row. After the commit the case is
+ *   resolved, so it is never claimable (a claim that took its snapshot earlier re-checks the
+ *   row after the lock and drops it, `resolved_at` no longer being null).
+ * - **The claim commits first.** `attempts` is already 1 (or more), so this statement waits on
+ *   the claim's lock if it is still held, then re-evaluates its `where` against the new row
+ *   version and returns **no row**. The caller must roll back the account and tell the person to
+ *   sign up again: the sweep owns the case and will abandon the Organization.
+ *
+ * Under the default READ COMMITTED level (`withEnvironment` and the pool open plain
+ * transactions) that re-evaluation is what Postgres does for an updated row. Under REPEATABLE
+ * READ or SERIALIZABLE the same race is a serialization failure (SQLSTATE 40001) instead of no
+ * row; the caller treats it the same way and rolls back.
+ *
+ * **No row means one of four things, and the caller tells the first from the rest by only
+ * calling this when it recorded a case for the attempt.** The sweep claimed it (the race
+ * above), the in-request abandon already resolved it, the sweep gave up on it, or another settle
+ * won. In every one the account must not be written. If no case was recorded there is nothing to
+ * settle and this must not be called: it would return no row and look like a lost race.
+ * {@link ABANDON_LEARN} changes only `core_organization_id` and the lease update only
+ * `next_attempt_at`, so neither disturbs `attempts = 0`.
+ *
+ * The case is closed as `refused`, the outcome that leaves the Organization in place; `done`
+ * would mean core removed it. A distinct value such as `settled` needs a migration for the
+ * `abandon_cases_outcome_known` check. It runs on the existing column grants (select, and update
+ * of `resolved_at`, `outcome` and `updated_at`) under forced row-level security. Run it inside
+ * `withEnvironment`, in the same transaction as the account.
+ */
+export const ABANDON_SETTLE = `update auth.abandon_cases
+set resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()
+where id = $1 and environment_id = $2 and resolved_at is null and attempts = 0
+returning id`
+
+/**
  * Resolve spent cases as `gave_up`, one bounded batch: open cases that have used every attempt
  * and whose lease has ended, so no worker holds them. It is the safety net behind the service's
  * own limit (which is lower, so in normal operation this finds nothing). The sweep runs it once
@@ -252,6 +291,7 @@ export const AUTH_STATEMENTS = {
   ABANDON_RECORD,
   ABANDON_CLAIM,
   ABANDON_RESOLVE,
+  ABANDON_SETTLE,
   ABANDON_PURGE_BATCH,
   ABANDON_GIVE_UP_SPENT,
   ABANDON_LEARN,

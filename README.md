@@ -215,6 +215,22 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     returning id
     ```
 
+    Settle the case, the last statement of the account transaction (`$1` case id, `$2`
+    environment): **the account transaction runs this last; no row means roll back the account and
+    tell the person to sign up again.** It locks the same row the claim does and only while
+    `attempts = 0`, so "account committed" and "case claimed by the sweep" cannot both happen,
+    whatever the clocks say. If it locks first the claim skips the row and the case is never
+    claimable; if the claim committed first it returns no row. Call it only when the request
+    recorded a case for the attempt: no case at all also returns no row. The case ends as
+    `refused` (the Organization is kept); a distinct outcome would need a migration:
+
+    ```sql
+    update auth.abandon_cases
+    set resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()
+    where id = $1 and environment_id = $2 and resolved_at is null and attempts = 0
+    returning id
+    ```
+
     The safety net for spent cases:
 
     ```sql
