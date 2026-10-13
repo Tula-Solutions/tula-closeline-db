@@ -20,5 +20,5 @@
     "noUnusedParameters": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "scripts/**/*.ts", "drizzle.config.ts"]
 }
