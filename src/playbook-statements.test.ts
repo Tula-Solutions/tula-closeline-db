@@ -17,6 +17,7 @@ import {
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
   DOCUMENT_LIST_DELETED,
+  DOCUMENT_LIST_PENDING_CLEANUP,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
@@ -40,17 +41,27 @@ import {
   ORGANIZATION_REMOVAL_STATUS,
   ORGANIZATION_REMOVE_REST,
   ORGANIZATIONS_WITH_WORK,
+  ORPHAN_SWEEP_AGE_MS,
+  ORPHAN_SWEEP_DONE,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
 } from './playbook-statements'
 import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schema/playbook-tables'
+import { WORK_KINDS } from './schema/playbook-work-hints'
 
 const readme = readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8')
 
 /** The statements that take a point in time from the caller, each for one named reason. */
-const TAKES_A_TIME = ['CONSUMED_PURGE', 'DOCUMENT_LIST', 'DOCUMENT_LIST_DELETED']
+const TAKES_A_TIME = [
+  'CONSUMED_PURGE',
+  'DOCUMENT_LIST',
+  'DOCUMENT_LIST_DELETED',
+  'DOCUMENT_LIST_FILTERED',
+  'DOCUMENT_LIST_PENDING_CLEANUP',
+  'ORPHAN_SWEEP_DONE',
+]
 
 describe('the documented playbook statements', () => {
   test.each(Object.entries(PLAYBOOK_STATEMENTS))(
@@ -383,5 +394,69 @@ describe('review round 1 of the work discovery', () => {
         { organization_id: 'org_b', resume_after: 'org_c' },
       ])
     ).toEqual({ organizations: ['org_a', 'org_b'], resumeAfter: 'org_c' })
+  })
+})
+
+describe('pending cleanups and the orphan sweep', () => {
+  const read = (name: string) =>
+    readFileSync(fileURLToPath(new URL(`../migrations/${name}`, import.meta.url)), 'utf8')
+  const migration = read('0014_playbook_pending_cleanup_orphans.sql')
+  /** Drop quotes, the schema and the `d.` alias, and case, so predicates in different spellings compare. */
+  const normal = (text: string) =>
+    text
+      .replaceAll('"', '')
+      .replaceAll(/\b(?:playbook\.documents|d)\./g, '')
+      .replaceAll(/\s+/g, ' ')
+      .toLowerCase()
+
+  test('the list, the index and the discovery verification share one predicate', async () => {
+    const { PENDING_CLEANUP_PREDICATE } = await import('./schema/playbook-tables')
+    expect(DOCUMENT_LIST_PENDING_CLEANUP).toContain(PENDING_CLEANUP_PREDICATE)
+    expect(normal(migration)).toContain(
+      `(organization_id,deleted_at,id) where ${normal(PENDING_CLEANUP_PREDICATE)};`
+    )
+    const branch = migration.slice(migration.indexOf("p_kind = 'cleanup_pending' THEN"))
+    expect(normal(branch.slice(0, 400))).toContain(normal(PENDING_CLEANUP_PREDICATE))
+  })
+
+  test('the pending list is a clamped keyset on deleted_at then id', () => {
+    expect(DOCUMENT_LIST_PENDING_CLEANUP).toContain('order by deleted_at, id')
+    expect(DOCUMENT_LIST_PENDING_CLEANUP).toContain(
+      '(deleted_at, id) > ($2::timestamptz, $3::text)'
+    )
+    expect(DOCUMENT_LIST_PENDING_CLEANUP).toContain(
+      `limit least(greatest(coalesce($4::int, 1), 1), ${PLAYBOOK_MAX_BATCH})`
+    )
+  })
+
+  test('the orphan age is 25 hours, in the constant and in the migration, and the kind is known', () => {
+    expect(ORPHAN_SWEEP_AGE_MS).toBe(25 * 3_600_000)
+    // the backfill hint, the trigger and the verification
+    expect(migration.split("interval '25 hours'").length - 1).toBe(3)
+    expect(WORK_KINDS).toContain('orphan_sweep')
+    expect(migration).toContain("'purge_spent', 'orphan_sweep') THEN")
+  })
+
+  test('the function keeps its signature, scope refusal, visit bound and grants', () => {
+    expect(migration).toContain(
+      'CREATE OR REPLACE FUNCTION "playbook"."organizations_with_work"(p_kind text, p_after_id text, p_batch integer)'
+    )
+    expect(migration).toContain("ERRCODE = 'insufficient_privilege'")
+    expect(migration).toContain('v_limit integer := least(v_batch * 4, 2000)')
+    expect(migration).toContain('RETURNS TABLE ("organization_id" text, "resume_after" text)')
+    expect(migration).toContain(
+      'GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text) TO closeline_playbook;'
+    )
+  })
+
+  test('the marker is a tenant table the role may only read and update in two columns', () => {
+    expect(migration).toContain('ALTER TABLE "playbook"."orphan_sweeps" FORCE ROW LEVEL SECURITY;')
+    expect(migration).toContain(
+      'REVOKE INSERT, UPDATE, DELETE ON "playbook"."orphan_sweeps" FROM closeline_playbook;'
+    )
+    expect(migration).toContain(
+      'GRANT UPDATE ("pending_since", "swept_through") ON "playbook"."orphan_sweeps" TO closeline_playbook;'
+    )
+    expect(ORPHAN_SWEEP_DONE).toContain('update playbook.orphan_sweeps')
   })
 })

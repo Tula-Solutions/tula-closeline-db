@@ -52,6 +52,7 @@ export {
   DOCUMENT_LIST_DELETED,
   DOCUMENT_LIST_FILTERED,
   DOCUMENT_LIST_MAX_PAGE,
+  DOCUMENT_LIST_PENDING_CLEANUP,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
@@ -84,6 +85,8 @@ export {
   ORGANIZATION_REMOVAL_STATUS,
   ORGANIZATION_REMOVE_REST,
   ORGANIZATIONS_WITH_WORK,
+  ORPHAN_SWEEP_AGE_MS,
+  ORPHAN_SWEEP_DONE,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
@@ -93,6 +96,7 @@ export {
   type WorkDiscoveryRow,
 } from './playbook-statements'
 export { OWNER_ROLE } from './roles'
+export { PENDING_CLEANUP_PREDICATE } from './schema/playbook-tables'
 export { WORK_KINDS } from './schema/playbook-work-hints'
 export { ORGANIZATION_SETTING, tenantRlsStatements, withOrganization } from './tenant'
 

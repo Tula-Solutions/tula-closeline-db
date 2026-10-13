@@ -359,6 +359,7 @@ describe('the playbook schema', () => {
         'consumed_message',
         'index_settings',
         'organization_usage',
+        'orphan_sweeps',
         'idempotency_keys',
       ]) {
         const none = await scoped(playbook, null, (c) => c.query(`select 1 from playbook.${table}`))
@@ -2391,6 +2392,7 @@ describe('the playbook schema', () => {
     test.each([
       'documents',
       'organization_usage',
+      'orphan_sweeps',
       'ingestion_jobs',
       'index_settings',
       'idempotency_keys',
@@ -2399,6 +2401,7 @@ describe('the playbook schema', () => {
         documents: `insert into playbook.documents (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)
                     values ('${newDoc()}', '${ZERO_ORG}', 'a', '\\x${'00'.repeat(32)}', 1, 'a/b', 'pdf', '${newUser()}', 'k')`,
         organization_usage: `insert into playbook.organization_usage (organization_id) values ('${ZERO_ORG}')`,
+        orphan_sweeps: `insert into playbook.orphan_sweeps (organization_id, last_attempt_at) values ('${ZERO_ORG}', now())`,
         ingestion_jobs: `insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
                          values ('${newJob()}', '${ZERO_ORG}', '${newDoc()}', 0, now())`,
         index_settings: `insert into playbook.index_settings (organization_id, embedding_model, embedding_dimension) values ('${ZERO_ORG}', 'm', 8)`,
@@ -2635,6 +2638,7 @@ describe('the playbook schema', () => {
       'index_settings',
       'idempotency_keys',
       'organization_usage',
+      'orphan_sweeps',
     ]
     /** Every row of every playbook table of one Organization, as text, read as the owner in its scope. */
     const snapshot = (org: string) =>
@@ -3188,7 +3192,7 @@ describe('the playbook schema', () => {
       rmSync(folder, { recursive: true, force: true })
     })
 
-    test('0009 through 0013 apply on a database at 0008 holding auth rows, and change nothing there', async () => {
+    test('0009 through 0014 apply on a database at 0008 holding auth rows, and change nothing there', async () => {
       const name = `it_migrate_playbook_${suffix}`
       await admin.query(`create database "${name}" owner closeline_owner`)
       databases.push(name)
@@ -3220,6 +3224,7 @@ describe('the playbook schema', () => {
             'index_settings',
             'ingestion_jobs',
             'organization_usage',
+            'orphan_sweeps',
           ]
             .map((relname) => ({ relname, forced: true, policies: 1 }))
             .concat([{ relname: 'work_hints', forced: false, policies: 0 }])
@@ -3227,8 +3232,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        // 0000 to 0013: the nine before the playbook (0000 to 0008) plus 0009 to 0013.
-        expect(applied.rows[0].n).toBe(14)
+        // 0000 to 0014: the nine before the playbook (0000 to 0008) plus 0009 to 0014.
+        expect(applied.rows[0].n).toBe(15)
         await runMigrations(url.toString())
       } finally {
         await pool.end()

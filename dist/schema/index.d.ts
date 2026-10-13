@@ -8401,6 +8401,95 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 /**
+* The marker behind the `orphan_sweep` work kind, one row per Organization that has ever attempted
+* an upload. A **tenant table** (row-level security, fail-closed). The idempotency-key insert
+* trigger (every upload attempt writes a key) writes it as `SECURITY DEFINER`: `last_attempt_at` is
+* the newest attempt, `pending_since` a lower bound on the oldest attempt whose stored object the
+* service has not yet examined (null when none is pending). The service moves it with
+* `ORPHAN_SWEEP_DONE`, which sets `swept_through` (the time through which objects were examined) and
+* clears or advances `pending_since`; it can update those two columns and nothing else. The
+* discovery function reports an Organization as having work when `pending_since` is set, due
+* `pending_since + ORPHAN_SWEEP_AGE_MS`. It outlives the work hint and the idempotency keys (which
+* are purged earlier than the orphan age), which is why it is a table and not a hint column.
+*/
+declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
+	name: "orphan_sweeps";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp36<{
+			name: "organization_id";
+			tableName: "orphan_sweeps";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		pendingSince: PgColumn_ffrhhp36<{
+			name: "pending_since";
+			tableName: "orphan_sweeps";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		lastAttemptAt: PgColumn_ffrhhp36<{
+			name: "last_attempt_at";
+			tableName: "orphan_sweeps";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sweptThrough: PgColumn_ffrhhp36<{
+			name: "swept_through";
+			tableName: "orphan_sweeps";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
+/**
 * The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
 * `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
 * `deleted` is soft-deleted and awaiting purge. A purged document is a removed row, not a state.
@@ -8430,6 +8519,13 @@ declare const CONSUMED_MESSAGE_STATES: readonly ["claimed", "done"];
 /** The all-zero Organization id is the global scope of consumed messages only (ADR 0016 notes). */
 declare const GLOBAL_SCOPE_ORGANIZATION_ID = "org_00000000000000000000000000000000";
 /**
+* The rows whose vector cleanup is pending: deleted, and the cleanup recorded for an older
+* deletion than the current one (or never). One text, used by `documents_cleanup_idx` (its
+* predicate), the `DOCUMENT_LIST_PENDING_CLEANUP` statement, and, with the alias `d.`, the
+* `cleanup_pending` verification in `playbook.organizations_with_work`, so the three cannot differ.
+*/
+declare const PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)";
+/**
 * A document of an Organization's Playbook: the record of an uploaded file, never its content or
 * its text (the file is in object storage under `object_key`, the chunks in the vector store).
 *
@@ -8457,11 +8553,11 @@ declare const GLOBAL_SCOPE_ORGANIZATION_ID = "org_000000000000000000000000000000
 * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
 * - Quota counts: `organization_usage`, one row, kept by triggers.
 */
-declare const documents: PgTableWithColumns_a5zn0g36<{
+declare const documents: PgTableWithColumns_a5zn0g37<{
 	name: "documents";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp36<{
+		id: PgColumn_ffrhhp37<{
 			name: "id";
 			tableName: "documents";
 			dataType: "string";
@@ -8478,7 +8574,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp36<{
+		organizationId: PgColumn_ffrhhp37<{
 			name: "organization_id";
 			tableName: "documents";
 			dataType: "string";
@@ -8495,7 +8591,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp36<{
+		name: PgColumn_ffrhhp37<{
 			name: "name";
 			tableName: "documents";
 			dataType: "string";
@@ -8512,7 +8608,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp36<{
+		state: PgColumn_ffrhhp37<{
 			name: "state";
 			tableName: "documents";
 			dataType: "string";
@@ -8529,7 +8625,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp36<{
+		contentHash: PgColumn_ffrhhp37<{
 			name: "content_hash";
 			tableName: "documents";
 			dataType: "custom";
@@ -8548,7 +8644,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		sizeBytes: PgColumn_ffrhhp36<{
+		sizeBytes: PgColumn_ffrhhp37<{
 			name: "size_bytes";
 			tableName: "documents";
 			dataType: "number";
@@ -8565,7 +8661,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		declaredType: PgColumn_ffrhhp36<{
+		declaredType: PgColumn_ffrhhp37<{
 			name: "declared_type";
 			tableName: "documents";
 			dataType: "string";
@@ -8582,7 +8678,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		detectedType: PgColumn_ffrhhp36<{
+		detectedType: PgColumn_ffrhhp37<{
 			name: "detected_type";
 			tableName: "documents";
 			dataType: "string";
@@ -8599,7 +8695,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp36<{
+		uploadedBy: PgColumn_ffrhhp37<{
 			name: "uploaded_by";
 			tableName: "documents";
 			dataType: "string";
@@ -8616,7 +8712,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp36<{
+		objectKey: PgColumn_ffrhhp37<{
 			name: "object_key";
 			tableName: "documents";
 			dataType: "string";
@@ -8633,7 +8729,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp36<{
+		failureReason: PgColumn_ffrhhp37<{
 			name: "failure_reason";
 			tableName: "documents";
 			dataType: "string";
@@ -8650,7 +8746,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp36<{
+		pageCount: PgColumn_ffrhhp37<{
 			name: "page_count";
 			tableName: "documents";
 			dataType: "number";
@@ -8667,7 +8763,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp36<{
+		epoch: PgColumn_ffrhhp37<{
 			name: "epoch";
 			tableName: "documents";
 			dataType: "number";
@@ -8684,7 +8780,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletionSeq: PgColumn_ffrhhp36<{
+		deletionSeq: PgColumn_ffrhhp37<{
 			name: "deletion_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -8701,7 +8797,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsRemovedSeq: PgColumn_ffrhhp36<{
+		vectorsRemovedSeq: PgColumn_ffrhhp37<{
 			name: "vectors_removed_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -8718,7 +8814,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp36<{
+		deletedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8735,7 +8831,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedBy: PgColumn_ffrhhp36<{
+		deletedBy: PgColumn_ffrhhp37<{
 			name: "deleted_by";
 			tableName: "documents";
 			dataType: "string";
@@ -8752,7 +8848,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp36<{
+		purgeDueAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8769,7 +8865,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeStartedAt: PgColumn_ffrhhp36<{
+		purgeStartedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8786,7 +8882,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeLeaseUntil: PgColumn_ffrhhp36<{
+		purgeLeaseUntil: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8803,7 +8899,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeAttempts: PgColumn_ffrhhp36<{
+		purgeAttempts: PgColumn_ffrhhp37<{
 			name: "purge_attempts";
 			tableName: "documents";
 			dataType: "number";
@@ -8820,7 +8916,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		restoreBarredAt: PgColumn_ffrhhp36<{
+		restoreBarredAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8837,7 +8933,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp36<{
+		createdAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8854,7 +8950,7 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp36<{
+		updatedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -8880,11 +8976,11 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 * own transaction, so it cannot drift from the table; the service role can only read it. A row
 * stays, at zero, once an Organization has had a document.
 */
-declare const organizationUsage: PgTableWithColumns_a5zn0g36<{
+declare const organizationUsage: PgTableWithColumns_a5zn0g37<{
 	name: "organization_usage";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp36<{
+		organizationId: PgColumn_ffrhhp37<{
 			name: "organization_id";
 			tableName: "organization_usage";
 			dataType: "string";
@@ -8901,7 +8997,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentCount: PgColumn_ffrhhp36<{
+		documentCount: PgColumn_ffrhhp37<{
 			name: "document_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -8918,7 +9014,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		byteCount: PgColumn_ffrhhp36<{
+		byteCount: PgColumn_ffrhhp37<{
 			name: "byte_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -8935,7 +9031,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp36<{
+		updatedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "organization_usage";
 			dataType: "date";
@@ -8964,11 +9060,11 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g36<{
 * spent job and the give-up statement fails it. One active job per document
 * (`ingestion_jobs_active_document_key`).
 */
-declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
+declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 	name: "ingestion_jobs";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp36<{
+		id: PgColumn_ffrhhp37<{
 			name: "id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -8985,7 +9081,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp36<{
+		organizationId: PgColumn_ffrhhp37<{
 			name: "organization_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9002,7 +9098,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentId: PgColumn_ffrhhp36<{
+		documentId: PgColumn_ffrhhp37<{
 			name: "document_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9019,7 +9115,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp36<{
+		epoch: PgColumn_ffrhhp37<{
 			name: "epoch";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9036,7 +9132,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp36<{
+		state: PgColumn_ffrhhp37<{
 			name: "state";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9053,7 +9149,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		step: PgColumn_ffrhhp36<{
+		step: PgColumn_ffrhhp37<{
 			name: "step";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9070,7 +9166,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp36<{
+		attempts: PgColumn_ffrhhp37<{
 			name: "attempts";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9087,7 +9183,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp36<{
+		nextAttemptAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9104,7 +9200,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp36<{
+		claimToken: PgColumn_ffrhhp37<{
 			name: "claim_token";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9121,7 +9217,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		artifactKey: PgColumn_ffrhhp36<{
+		artifactKey: PgColumn_ffrhhp37<{
 			name: "artifact_key";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9138,7 +9234,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp36<{
+		pageCount: PgColumn_ffrhhp37<{
 			name: "page_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9155,7 +9251,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunkCount: PgColumn_ffrhhp36<{
+		chunkCount: PgColumn_ffrhhp37<{
 			name: "chunk_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9172,7 +9268,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunksDone: PgColumn_ffrhhp36<{
+		chunksDone: PgColumn_ffrhhp37<{
 			name: "chunks_done";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9189,7 +9285,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp36<{
+		failureReason: PgColumn_ffrhhp37<{
 			name: "failure_reason";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9206,7 +9302,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp36<{
+		finishedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9223,7 +9319,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp36<{
+		createdAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9240,7 +9336,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp36<{
+		updatedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9266,11 +9362,11 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
 * service role cannot delete the row: changing the model is a deliberate re-index, done by an
 * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
 */
-declare const indexSettings: PgTableWithColumns_a5zn0g36<{
+declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 	name: "index_settings";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp36<{
+		organizationId: PgColumn_ffrhhp37<{
 			name: "organization_id";
 			tableName: "index_settings";
 			dataType: "string";
@@ -9287,7 +9383,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingModel: PgColumn_ffrhhp36<{
+		embeddingModel: PgColumn_ffrhhp37<{
 			name: "embedding_model";
 			tableName: "index_settings";
 			dataType: "string";
@@ -9304,7 +9400,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingDimension: PgColumn_ffrhhp36<{
+		embeddingDimension: PgColumn_ffrhhp37<{
 			name: "embedding_dimension";
 			tableName: "index_settings";
 			dataType: "number";
@@ -9321,7 +9417,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsWrittenAt: PgColumn_ffrhhp36<{
+		vectorsWrittenAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -9338,7 +9434,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp36<{
+		createdAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -9355,7 +9451,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp36<{
+		updatedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -9375,15 +9471,16 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
 /**
 * The kinds of due work `playbook.organizations_with_work` finds: documents due for purge, ingestion
 * jobs due or with a lapsed lease, deleted documents whose vector cleanup is not recorded, consumed
-* messages old enough to purge, idempotency keys old enough to purge, and documents whose purge
-* reached the attempt bound.
+* messages old enough to purge, idempotency keys old enough to purge, documents whose purge
+* reached the attempt bound, and Organizations with an upload attempt whose stored objects have not
+* been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`).
 */
-declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent"];
+declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep"];
 /**
 * One row per kind of work and Organization that may have work from `due_at` on: the registry the
 * discovery function reads, because row-level security hides every tenant table from any role
@@ -9395,28 +9492,28 @@ declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", 
 * privilege on it; the function and the triggers are the only way in. The all-zero global scope
 * appears only for `consumed_purge`.
 */
-declare const playbookWorkHints: PgTableWithColumns_a5zn0g37<{
+declare const playbookWorkHints: PgTableWithColumns_a5zn0g38<{
 	name: "work_hints";
 	schema: "playbook";
 	columns: {
-		kind: PgColumn_ffrhhp37<{
+		kind: PgColumn_ffrhhp38<{
 			name: "kind";
 			tableName: "work_hints";
 			dataType: "string";
 			columnType: "PgText";
-			data: "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "jobs_due" | "purge_due" | "purge_spent";
+			data: "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "jobs_due" | "orphan_sweep" | "purge_due" | "purge_spent";
 			driverParam: string;
 			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent"];
+			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "work_hints";
 			dataType: "string";
@@ -9433,7 +9530,7 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dueAt: PgColumn_ffrhhp37<{
+		dueAt: PgColumn_ffrhhp38<{
 			name: "due_at";
 			tableName: "work_hints";
 			dataType: "date";
@@ -9453,4 +9550,4 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g37<{
 	};
 	dialect: "pg";
 }>;
-export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };

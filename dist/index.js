@@ -4,9 +4,10 @@ import {
   DOCUMENT_PURGE_MAX_ATTEMPTS2,
   INGESTION_STEPS2,
   INGESTION_JOB_MAX_ATTEMPTS2,
+  PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-2f7ttmtz.js";
+} from "./shared/chunk-15e7rcss.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -648,6 +649,12 @@ var DOCUMENT_CLEANUP_BEGIN = `select d.id, d.epoch,
       and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear
 from playbook.documents d
 where d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int`;
+var DOCUMENT_LIST_PENDING_CLEANUP = `select id, epoch, deletion_seq, deleted_at
+from playbook.documents
+where organization_id = $1 and ${PENDING_CLEANUP_PREDICATE2}
+  and (deleted_at, id) > ($2::timestamptz, $3::text)
+order by deleted_at, id
+limit ${BATCH("$4")}`;
 var DOCUMENT_CLEANUP_DONE = `update playbook.documents
 set vectors_removed_seq = $3::int, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int
@@ -868,6 +875,7 @@ using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`;
 var CONSUMED_PURGE_AGE_MS = 15 * 24 * 60 * 60 * 1000;
 var IDEMPOTENCY_PURGE_AGE_MS = 24 * 60 * 60 * 1000;
+var ORPHAN_SWEEP_AGE_MS = 25 * 60 * 60 * 1000;
 var REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
 var DOCUMENT_ERASE_BATCH = `with t as (select clock_timestamp() as now),
 cand as (
@@ -929,6 +937,14 @@ set purge_attempts = 0, purge_started_at = null, purge_lease_until = null,
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS2}
 returning id, purge_attempts`;
 var ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
+var ORPHAN_SWEEP_DONE = `with s as (select least($2::timestamptz, clock_timestamp()) as t)
+update playbook.orphan_sweeps o
+set swept_through = greatest(coalesce(o.swept_through, '-infinity'), (select t from s)),
+    pending_since = case
+      when o.last_attempt_at <= greatest(coalesce(o.swept_through, '-infinity'), (select t from s)) then null
+      else greatest(coalesce(o.pending_since, '-infinity'), greatest(coalesce(o.swept_through, '-infinity'), (select t from s))) end
+where o.organization_id = $1
+returning o.swept_through, (o.pending_since is not null) as more`;
 function discoveredOrganizations(rows) {
   const organizations = rows.flatMap((row) => row.organization_id === null ? [] : [row.organization_id]);
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null };
@@ -945,6 +961,7 @@ var PLAYBOOK_STATEMENTS = {
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_REQUEUE,
+  DOCUMENT_LIST_PENDING_CLEANUP,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
   DOCUMENT_PURGE_CLAIM,
@@ -973,6 +990,7 @@ var PLAYBOOK_STATEMENTS = {
   ORGANIZATION_REMOVAL_STATUS,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_RESET,
+  ORPHAN_SWEEP_DONE,
   ORGANIZATIONS_WITH_WORK
 };
 
@@ -1010,6 +1028,7 @@ export {
   DOCUMENT_LIST_DELETED,
   DOCUMENT_LIST_FILTERED,
   DOCUMENT_LIST_MAX_PAGE,
+  DOCUMENT_LIST_PENDING_CLEANUP,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
@@ -1049,8 +1068,11 @@ export {
   ORGANIZATION_REMOVAL_STATUS,
   ORGANIZATION_REMOVE_REST,
   ORGANIZATION_SETTING,
+  ORPHAN_SWEEP_AGE_MS,
+  ORPHAN_SWEEP_DONE,
   OWNER_ROLE,
   PACKAGE,
+  PENDING_CLEANUP_PREDICATE2 as PENDING_CLEANUP_PREDICATE,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
