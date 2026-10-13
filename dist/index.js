@@ -240,7 +240,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
               from pg_roles r
              where r.rolname like 'closeline\\_%' and r.rolname <> ${OWNER_ROLE}
                and (has_table_privilege(r.oid, c.oid,
-                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN')
                     or has_any_column_privilege(r.oid, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
            ) as reachable_by
       from pg_class c
@@ -259,7 +259,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
         gaps.push({
           schema: row.schema,
           table: row.table,
-          reason: `is exempt from row-level security but ${row.reachable_by.join(", ")} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`
+          reason: `is exempt from row-level security but ${row.reachable_by.join(", ")} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`
         });
       }
       continue;
@@ -278,6 +278,20 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       schema: "pg_roles",
       table: role,
       reason: "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
+    });
+  }
+  const memberships = await db.execute(sql4`
+    select m.rolname as role, g.rolname as granted
+      from pg_auth_members am
+      join pg_roles m on m.oid = am.member
+      join pg_roles g on g.oid = am.roleid
+     where m.rolname like 'closeline\\_%' and g.rolname not like 'pg\\_%'
+     order by m.rolname, g.rolname`);
+  for (const { role, granted } of memberships.rows) {
+    gaps.push({
+      schema: "pg_roles",
+      table: role,
+      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role`
     });
   }
   return gaps;

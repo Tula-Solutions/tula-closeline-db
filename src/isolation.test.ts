@@ -65,10 +65,15 @@ interface RoleRow {
   role: string
 }
 
+interface MembershipRow {
+  role: string
+  granted: string
+}
+
 // The catalog queries themselves are exercised against Postgres in isolation.integration.ts; here
 // the verdict on each row is. The first query lists relations, the second the risky roles.
-const dbWith = (rows: Row[], roles: RoleRow[] = []) => {
-  const results = [rows, roles]
+const dbWith = (rows: Row[], roles: RoleRow[] = [], memberships: MembershipRow[] = []) => {
+  const results = [rows, roles, memberships]
   return { execute: async () => ({ rows: results.shift() ?? [] }) } as never
 }
 
@@ -132,6 +137,16 @@ describe('findTenantIsolationGaps', () => {
   test('a protected table that a service role can reach is not a gap: row-level security governs it', async () => {
     const row = { ...GOOD, reachable_by: ['closeline_core'] }
     expect(await findTenantIsolationGaps(dbWith([row]))).toEqual([])
+  })
+})
+
+describe('findTenantIsolationGaps on role membership', () => {
+  test('a service role in a role that is not predefined is a gap, naming both', async () => {
+    const gaps = await findTenantIsolationGaps(
+      dbWith([GOOD], [], [{ role: 'closeline_core', granted: 'ops_admin' }])
+    )
+    expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['pg_roles.closeline_core'])
+    expect(gaps[0]?.reason).toContain('ops_admin')
   })
 })
 

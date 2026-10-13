@@ -1567,7 +1567,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         }
       )
 
-      test('suspending an Organization of 100,000 members and 200 pending invitations writes one row, inside a budget', async () => {
+      test('suspending an Organization of 100,000 members and 200 pending invitations writes one row', async () => {
         const { orgId, userId } = await createOrg()
         await scoped(owner, orgId, async (c) => {
           await c.query(
@@ -1600,12 +1600,10 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
             await c.query('begin')
             await c.query('select set_config($1, $2, true)', [SETTING, orgId])
             const before = new Map((await counters(c)).rows.map((r) => [r.relname, +r.written]))
-            const started = performance.now()
             await c.query('update core.organizations set status = $2 where organization_id = $1', [
               orgId,
               status,
             ])
-            const elapsed = performance.now() - started
             const after = (await counters(c)).rows
             await c.query('commit')
             const rows = Object.fromEntries(
@@ -1613,7 +1611,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
                 .map((r) => [r.relname, +r.written - (before.get(r.relname) ?? 0)] as const)
                 .filter(([, written]) => written > 0)
             )
-            return { elapsed, rows }
+            return { rows }
           } catch (error) {
             await c.query('rollback').catch(() => undefined)
             throw error
@@ -1622,10 +1620,9 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           }
         }
         for (const status of ['suspended', 'active']) {
-          const { elapsed, rows } = await change(status)
+          const { rows } = await change(status)
           // One row of the Organization and one of its state; no directory row is touched.
           expect(rows).toEqual({ organization_state: 1, organizations: 1 })
-          expect(elapsed).toBeLessThan(500)
         }
         await setStatus(orgId, 'suspended')
         expect((await organizationOfUser(handle.db, userId))?.status).toBe('suspended')

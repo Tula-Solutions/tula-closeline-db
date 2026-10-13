@@ -62,13 +62,15 @@ forced row-level security, or exactly the policy `tenantRlsStatements` writes, u
 `NON_TENANT_TABLES` (the two `core` directories and `core.organization_state` today, each with
 its reason in `NON_TENANT_TABLE_REASONS`; an entry needs a decision record in the hub), and then
 fails if any service role or `PUBLIC` holds any of `SELECT`, `INSERT`, `UPDATE`, `DELETE`,
-`TRUNCATE`, `REFERENCES` or `TRIGGER` on such a table, at table or column level, since only a
+`TRUNCATE`, `REFERENCES`, `TRIGGER` or `MAINTAIN` on such a table, at table or column level, since only a
 `SECURITY DEFINER` function may reach it (a read would list every Organization, a write could forge
 a user-to-Organization mapping or free a user). The `auth` tables are not
 skipped: each is verified under `ENVIRONMENT_SCOPED_TABLES` or `CONTROL_PLANE_TABLES` (see below),
 and an `auth` table in neither is a gap. It scans every schema except `public` and drizzle's own, so a table in a schema that is not `auth`,
 `core` or `playbook` is a gap, and so is a `closeline_*` role that is a superuser or has
-`BYPASSRLS`. The integration suite runs the same check, so a migration that
+`BYPASSRLS`, or is a member of any role that is not one of Postgres's predefined ones (the service
+roles are `NOINHERIT`, so a privilege reached through such a role would not show in the table
+checks). The integration suite runs the same check, so a migration that
 forgets `tenantRlsStatements` fails CI. The tests that change role attributes connect as the
 compose superuser, or as `DATABASE_URL_ADMIN` when you point at another Postgres.
 
@@ -203,10 +205,9 @@ not copied into the directories. A trigger on `organizations` writes `organizati
 insert creates the row, a change of `status` updates it, deleting the Organization cascades) in the
 same transaction, and an update that leaves the status as it was writes nothing. Suspending an
 Organization of 100,000 members therefore writes two rows (the Organization and its state), takes
-milliseconds, and blocks no membership or invitation write for that Organization; the integration
-suite seeds such an Organization and asserts the rows written and a 500 ms budget for the statement. There
-is no `bench/` suite in this repo yet, and a benchmark that needs Postgres would need Docker inside
-`bun run verify`, so the budget lives in the integration suite. Nothing about the directories goes
+milliseconds, and holds no per-member lock; the integration suite seeds such an Organization and
+asserts the rows written, which is the proof (a return to a per-member fan-out would write 100,000).
+Nothing about the directories goes
 stale when a member is written concurrently with a suspension, at any isolation level
 (`READ COMMITTED`, `REPEATABLE READ` or `SERIALIZABLE`): the member's directory row and the
 suspended state row are separate facts, both visible to every lookup after both commit.
@@ -229,12 +230,16 @@ though both end with one Owner; promote in one statement and demote in the next.
 Lock order: a change to an Owner takes the Organization's row (a write lock) first, then the
 directory row. The `track_owner_count` trigger is named to sort before the directory trigger
 (`memberships_a_track_owner_count`, then `memberships_b_sync_directory`) so that holds, and writing
-a member or an invitation otherwise takes no lock on the Organization at all. Two Owner inserts
-into one Organization therefore queue on the row, and an Owner's removal queues behind a status
-change on it, with no deadlock (both are tested). Two cases can still deadlock: transactions that
-update the same rows in opposite orders around the Organization's Owner lock, and one that accepts
-an invitation (which share-locks the Organization row to read its status) and then changes an Owner
-while another does the same. Callers retry a transaction on SQLSTATE `40001` (serialization
+a member or an invitation otherwise takes only the foreign key's key-share lock on the
+Organization row, which a status change does not conflict with. So non-Owner member writes and
+invitation creation do not wait for a status change; an accept (which share-locks the row to read
+its status) and any Owner change do. Two Owner inserts into one Organization queue on the row, and
+an Owner's removal queues behind a status change on it, with no deadlock (both are tested). Three
+cases can still deadlock: transactions that update the same rows in opposite orders around the
+Organization's Owner lock; one that accepts an invitation and then changes an Owner while another
+does the same; and an accept racing the Organization's deletion (the accept holds the invitation
+row and waits for the Organization row, the delete holds the Organization row and cascades into the
+invitation). Callers retry a transaction on SQLSTATE `40001` (serialization
 failure, which `REPEATABLE READ` and `SERIALIZABLE` raise) and `40P01` (deadlock), with a bounded,
 jittered retry.
 

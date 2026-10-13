@@ -7571,7 +7571,7 @@ declare const CONTROL_PLANE_TABLES: readonly string[];
 * before an Organization is known. An entry here needs a decision record in the hub. An exempt
 * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
 * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
-* UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER), at table or column level: a read leaks every
+* UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN), at table or column level: a read leaks every
 * Organization, and a write could forge a user-to-Organization mapping or free a user. It may be
 * reached only through a `SECURITY DEFINER` function.
 */
@@ -7619,8 +7619,8 @@ interface AuthTableCategories {
 *   open the table across Organizations).
 *
 * Tables on `allowlist` are skipped, except that one on which any `closeline_*` role other than
-* the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` or `TRIGGER`
-* privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
+* the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` or
+* `MAINTAIN` privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
 * security a read would show every Organization's rows, and a write could forge or erase the
 * mapping the lookups rest on. A `closeline_*` role
 * that is a superuser or has `BYPASSRLS` is a gap too, because it ignores every policy.

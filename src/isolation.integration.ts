@@ -117,6 +117,7 @@ describe('the tenant isolation catalog check', () => {
       (t: string) => `grant references (id) on ${t} to closeline_core`,
     ],
     ['a TRIGGER', (t: string) => `grant trigger on ${t} to closeline_core`],
+    ['a MAINTAIN (LOCK TABLE, VACUUM)', (t: string) => `grant maintain on ${t} to closeline_core`],
   ])(
     'an allowlisted table a service role holds a privilege on is reported: %s',
     async (_name, grant) => {
@@ -392,6 +393,32 @@ describe('the role check', () => {
       await admin.query('alter role closeline_core nobypassrls')
     }
     expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role that is a member of a role that is not predefined is reported', async () => {
+    // Named closeline_it_super_* so resetTestRoles drops it if this run is killed first.
+    const group = `closeline_it_super_group_${suffix}`
+    await admin.query(`create role "${group}" nologin`)
+    await admin.query(`grant "${group}" to closeline_core`)
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+      expect(gaps[0]?.reason).toContain(group)
+      const failure = await assertTenantIsolation(handle.db).catch((error: Error) => error)
+      expect((failure as Error).message).toContain('closeline_core')
+    } finally {
+      await admin.query(`drop role "${group}"`)
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role that is a member of a predefined role is not reported here', async () => {
+    await admin.query('grant pg_monitor to closeline_core')
+    try {
+      expect(await roleGaps()).toEqual([])
+    } finally {
+      await admin.query('revoke pg_monitor from closeline_core')
+    }
   })
 
   test('a closeline role that is a superuser is reported', async () => {

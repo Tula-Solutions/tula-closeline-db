@@ -77,7 +77,7 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * before an Organization is known. An entry here needs a decision record in the hub. An exempt
  * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
  * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
- * UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER), at table or column level: a read leaks every
+ * UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN), at table or column level: a read leaks every
  * Organization, and a write could forge a user-to-Organization mapping or free a user. It may be
  * reached only through a `SECURITY DEFINER` function.
  */
@@ -129,6 +129,11 @@ interface RoleRow extends Record<string, unknown> {
   role: string
 }
 
+interface MembershipRow extends Record<string, unknown> {
+  role: string
+  granted: string
+}
+
 /**
  * The two named groups of `auth` tables, which {@link findTenantIsolationGaps} verifies instead of
  * skipping. Defaults to {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES}.
@@ -159,8 +164,8 @@ export interface AuthTableCategories {
  *   open the table across Organizations).
  *
  * Tables on `allowlist` are skipped, except that one on which any `closeline_*` role other than
- * the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` or `TRIGGER`
- * privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
+ * the owner holds a `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` or
+ * `MAINTAIN` privilege (the check counts column grants and grants to PUBLIC) is a gap: with no row-level
  * security a read would show every Organization's rows, and a write could forge or erase the
  * mapping the lookups rest on. A `closeline_*` role
  * that is a superuser or has `BYPASSRLS` is a gap too, because it ignores every policy.
@@ -211,7 +216,7 @@ export async function findTenantIsolationGaps(
               from pg_roles r
              where r.rolname like 'closeline\\_%' and r.rolname <> ${OWNER_ROLE}
                and (has_table_privilege(r.oid, c.oid,
-                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+                      'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN')
                     or has_any_column_privilege(r.oid, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
            ) as reachable_by
       from pg_class c
@@ -231,7 +236,7 @@ export async function findTenantIsolationGaps(
         gaps.push({
           schema: row.schema,
           table: row.table,
-          reason: `is exempt from row-level security but ${row.reachable_by.join(', ')} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`,
+          reason: `is exempt from row-level security but ${row.reachable_by.join(', ')} hold a privilege on it (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN; on the table, a column or as PUBLIC); only a SECURITY DEFINER function may reach it`,
         })
       }
       continue
@@ -251,6 +256,24 @@ export async function findTenantIsolationGaps(
       schema: 'pg_roles',
       table: role,
       reason: 'is a superuser or has BYPASSRLS, so it ignores every row-level security policy',
+    })
+  }
+
+  // The service roles are NOINHERIT, so a privilege reached through a role they belong to is
+  // invisible to the privilege check above (it applies after SET ROLE). Any membership of a role
+  // that is not one of Postgres's predefined ones is therefore a gap.
+  const memberships = await db.execute<MembershipRow>(sql`
+    select m.rolname as role, g.rolname as granted
+      from pg_auth_members am
+      join pg_roles m on m.oid = am.member
+      join pg_roles g on g.oid = am.roleid
+     where m.rolname like 'closeline\\_%' and g.rolname not like 'pg\\_%'
+     order by m.rolname, g.rolname`)
+  for (const { role, granted } of memberships.rows) {
+    gaps.push({
+      schema: 'pg_roles',
+      table: role,
+      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role`,
     })
   }
   return gaps
