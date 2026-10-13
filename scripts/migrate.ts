@@ -1,7 +1,4 @@
-import { fileURLToPath } from 'node:url'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { Pool } from 'pg'
+import { runMigrations } from '../src/migrate'
 
 // Applies pending migrations as the owner role named by DATABASE_URL. Run it from this repo only
 // (ADR 0007); always as the same owner role, because default privileges are per creating role.
@@ -11,12 +8,10 @@ if (!url) {
   process.exit(1)
 }
 
-const pool = new Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 10_000 })
 try {
-  await migrate(drizzle(pool), {
-    migrationsFolder: fileURLToPath(new URL('../migrations', import.meta.url)),
-  })
+  await runMigrations(url)
   process.stdout.write('db:migrate: up to date\n')
-} finally {
-  await pool.end()
+} catch (error) {
+  process.stderr.write(`db:migrate: ${error instanceof Error ? error.message : 'failed'}\n`)
+  process.exit(1)
 }

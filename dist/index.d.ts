@@ -25,7 +25,13 @@ interface DbOptions {
 	statementTimeoutMs?: number;
 	/** Longest to wait for a connection (new or from the pool) before failing, in milliseconds. */
 	connectionTimeoutMs?: number;
-	/** Called with an error from an idle pooled connection, which would otherwise crash the process. */
+	/** Longest `close` waits for in-flight work before giving up, in milliseconds. */
+	closeTimeoutMs?: number;
+	/**
+	* Called with an error on any pooled connection, idle or checked out (a server restart, a
+	* failover, an idle-in-transaction timeout). Without a listener such an error would crash the
+	* process. The default writes one line to stderr with the error code or name, never the message.
+	*/
 	onError?: (error: Error) => void;
 }
 /** The defaults {@link createDb} uses for any option left out. */
@@ -33,12 +39,22 @@ declare const DEFAULT_POOL_OPTIONS: {
 	readonly max: 10;
 	readonly statementTimeoutMs: 30000;
 	readonly connectionTimeoutMs: 5000;
+	readonly closeTimeoutMs: 10000;
 };
+/**
+* The default `onError`: one line on stderr naming only the error code (or, without one, its
+* name). The message is left out because a driver message can carry connection details.
+*/
+declare function reportConnectionError(error: Error): void;
 /** A database handle plus the function that releases its connections. */
 interface DbHandle {
 	/** The Drizzle database. Reach tenant tables only through `withOrganization`. */
 	db: Database;
-	/** Waits for in-flight queries, then closes every pooled connection. */
+	/**
+	* Waits for in-flight queries, then closes every pooled connection. Safe to call more than
+	* once. Rejects if work is still in flight after `closeTimeoutMs`, after asking the remaining
+	* connections to end, so a hung transaction cannot hold shutdown.
+	*/
 	close: () => Promise<void>;
 }
 /**
@@ -51,6 +67,47 @@ interface DbHandle {
 * @throws If the connection string is empty or an option is out of bounds.
 */
 declare function createDb(connectionString: string, options?: DbOptions): DbHandle;
+/** The Postgres schemas owned by services; every relation in them must be tenant-isolated. */
+declare const TENANT_SCHEMAS: readonly ["auth", "core", "playbook"];
+/**
+* Tables that deliberately have no `organization_id` and no row-level security, as
+* `schema.table`. Empty today: add an entry only with a decision record that says why the table
+* holds no tenant data.
+*/
+declare const NON_TENANT_TABLES: readonly string[];
+/** One relation that does not fail closed on `organization_id`, and why. */
+interface TenantIsolationGap {
+	/** The Postgres schema. */
+	schema: string;
+	/** The table (or view) name. */
+	table: string;
+	/** What is missing, in one sentence. */
+	reason: string;
+}
+/**
+* Find every table in the service schemas that is not fail-closed on `organization_id`.
+*
+* A table passes when it has an `organization_id` column, row-level security enabled and forced,
+* and at least one permissive policy, with every permissive policy covering all commands and
+* naming `app.organization_id` in both USING and WITH CHECK (so none can open the table). Any
+* other relation (a view, a materialized view, a foreign table) is a gap, because it bypasses
+* row-level security. Tables on `allowlist` are skipped.
+*
+* @param db - A database handle connected as any role; the catalogs are readable by all.
+* @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
+* @returns The offending relations, ordered by schema and name; empty when all are protected.
+*/
+declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<TenantIsolationGap[]>;
+/**
+* Throw unless every table in the service schemas is fail-closed on `organization_id`.
+*
+* @param db - A database handle; see {@link findTenantIsolationGaps}.
+* @param allowlist - `schema.table` names exempt from the check.
+* @throws An error naming each offending table and why.
+*/
+declare function assertTenantIsolation(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<void>;
+/** The one database role that owns every schema and table and runs every migration. */
+declare const OWNER_ROLE = "closeline_owner";
 /** The transaction-local Postgres setting every row-level-security policy compares against. */
 declare const ORGANIZATION_SETTING = "app.organization_id";
 /**
@@ -86,4 +143,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ORGANIZATION_SETTING, PACKAGE, Schema, Transaction, createDb, tenantRlsStatements, withOrganization };
+export { DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, NON_TENANT_TABLES, ORGANIZATION_SETTING, OWNER_ROLE, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, reportConnectionError, tenantRlsStatements, withOrganization };

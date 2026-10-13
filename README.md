@@ -32,14 +32,37 @@ The first start runs `docker/postgres/init.sh`, which creates the owner and serv
 `docker/postgres/init.sql` (local passwords only, set in `docker-compose.yml`). To run it again,
 `docker compose down -v`.
 
-Integration tests need Postgres and the four connection strings in `.env.example` (export them,
-adjusting the port):
+Integration tests need Postgres from the compose file. With none of the four connection
+variables in `.env.example` set they use the compose defaults (port 5432, or `POSTGRES_PORT`), so
+this is the whole of what CI runs:
 
 ```bash
-bun run test:integration            # *.integration.ts: role confinement and tenant isolation
+docker compose up -d --wait && bun run test:integration
 ```
 
+Set all four variables to test against another Postgres; explicit values win. The suites cover
+role confinement, tenant isolation, the client's handling of lost connections, the migration
+runner and the catalog check below.
+
+`bun run db:migrate` fails unless it connects as `closeline_owner` (default privileges belong to
+the role that creates a table), and gives its session a 10 second `lock_timeout`, so `ENABLE` or
+`FORCE ROW LEVEL SECURITY` fails instead of queueing behind a long transaction. Retry it when the
+database is quiet.
+
+A data backfill on a table with forced row-level security must set the Organization for every
+batch (`withOrganization`, or `select set_config('app.organization_id', ..., true)` in the
+batch's transaction). Without it the policy matches nothing, and the `UPDATE` or `DELETE` reports
+success with zero rows changed.
+
+`bun run db:check:rls` (with `DATABASE_URL` set) fails when any table in `auth`, `core` or
+`playbook` lacks `organization_id`, forced row-level security, or a policy on
+`app.organization_id`, unless it is on `NON_TENANT_TABLES` (empty). The integration suite runs the
+same check, so a migration that forgets `tenantRlsStatements` fails CI.
+
 Changing the schema: edit `src/schema/`, run `bun run db:generate`, read the SQL, commit it.
-`bun run db:check` (part of `verify`) fails when the schema and the migrations disagree. A new
+`bun run db:check` (part of `verify`) fails when the schema and the migrations disagree, when a
+migration that exists on `origin/develop` (or `MIGRATIONS_BASE_REF`) was edited or deleted, or when
+the journal's `when` values do not strictly increase. Without that ref it warns locally and fails
+when `CI` is set. A new
 tenant table carries `organization_id` and runs the statements from `tenantRlsStatements` in its
 migration; tenant data is read and written only inside `withOrganization(db, organizationId, fn)`.

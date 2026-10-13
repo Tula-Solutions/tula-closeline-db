@@ -33,7 +33,8 @@
     "verify": "bun run check && bun run typecheck && bun run test:coverage && bun run db:check && bun run dist:check && bun run shared:check",
     "verify:changed": "biome check --changed --no-errors-on-unmatched src scripts drizzle.config.ts && bun run typecheck && bun run test",
     "db:generate": "drizzle-kit generate",
-    "db:check": "bun run scripts/check-drift.ts",
+    "db:check": "bun run scripts/check-drift.ts && bun run scripts/check-migrations.ts",
+    "db:check:rls": "bun run scripts/check-rls.ts",
     "db:migrate": "bun run scripts/migrate.ts",
     "test:integration": "bun test --timeout 30000 ./src/*.integration.ts"
   },

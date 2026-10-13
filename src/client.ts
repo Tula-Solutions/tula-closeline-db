@@ -1,5 +1,5 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
+import { Pool, type PoolClient } from 'pg'
 import * as schema from './schema'
 
 /** The Drizzle schema object: every Postgres schema the services own. */
@@ -19,7 +19,13 @@ export interface DbOptions {
   statementTimeoutMs?: number
   /** Longest to wait for a connection (new or from the pool) before failing, in milliseconds. */
   connectionTimeoutMs?: number
-  /** Called with an error from an idle pooled connection, which would otherwise crash the process. */
+  /** Longest `close` waits for in-flight work before giving up, in milliseconds. */
+  closeTimeoutMs?: number
+  /**
+   * Called with an error on any pooled connection, idle or checked out (a server restart, a
+   * failover, an idle-in-transaction timeout). Without a listener such an error would crash the
+   * process. The default writes one line to stderr with the error code or name, never the message.
+   */
   onError?: (error: Error) => void
 }
 
@@ -28,6 +34,7 @@ export const DEFAULT_POOL_OPTIONS = {
   max: 10,
   statementTimeoutMs: 30_000,
   connectionTimeoutMs: 5_000,
+  closeTimeoutMs: 10_000,
 } as const
 
 const MAX_POOL = 100
@@ -42,11 +49,25 @@ function positiveInteger(name: string, value: number, upTo = Number.MAX_SAFE_INT
   return value
 }
 
+/**
+ * The default `onError`: one line on stderr naming only the error code (or, without one, its
+ * name). The message is left out because a driver message can carry connection details.
+ */
+export function reportConnectionError(error: Error): void {
+  const code = (error as { code?: unknown }).code
+  const label = typeof code === 'string' && code !== '' ? code : error.name
+  process.stderr.write(`closeline-db: database connection error (${label})\n`)
+}
+
 /** A database handle plus the function that releases its connections. */
 export interface DbHandle {
   /** The Drizzle database. Reach tenant tables only through `withOrganization`. */
   db: Database
-  /** Waits for in-flight queries, then closes every pooled connection. */
+  /**
+   * Waits for in-flight queries, then closes every pooled connection. Safe to call more than
+   * once. Rejects if work is still in flight after `closeTimeoutMs`, after asking the remaining
+   * connections to end, so a hung transaction cannot hold shutdown.
+   */
   close: () => Promise<void>
 }
 
@@ -73,6 +94,12 @@ export function createDb(connectionString: string, options: DbOptions = {}): DbH
     options.connectionTimeoutMs ?? DEFAULT_POOL_OPTIONS.connectionTimeoutMs
   )
 
+  const closeTimeoutMs = positiveInteger(
+    'closeTimeoutMs',
+    options.closeTimeoutMs ?? DEFAULT_POOL_OPTIONS.closeTimeoutMs
+  )
+  const onError = options.onError ?? reportConnectionError
+
   const pool = new Pool({
     connectionString,
     max,
@@ -81,8 +108,44 @@ export function createDb(connectionString: string, options: DbOptions = {}): DbH
     statement_timeout: statementTimeout,
     idle_in_transaction_session_timeout: IDLE_IN_TRANSACTION_TIMEOUT_MS,
   })
-  // An error on an idle connection is emitted on the pool; with no listener it would throw.
-  pool.on('error', options.onError ?? (() => undefined))
+  // pg-pool listens for errors on a connection only while it is idle and removes that listener
+  // on checkout, so an error on a checked-out connection (which a transaction holds) would be an
+  // uncaught exception. A listener on every client from the moment it connects covers both.
+  const clients = new Set<PoolClient>()
+  pool.on('connect', (client) => {
+    client.on('error', onError)
+    clients.add(client)
+  })
+  pool.on('remove', (client) => {
+    clients.delete(client)
+  })
+  // An idle-connection error is also emitted on the pool, which throws with no listener. The
+  // client listener above already reported it, so this one only keeps it from throwing.
+  pool.on('error', () => undefined)
 
-  return { db: drizzle(pool, { schema }), close: () => pool.end() }
+  let closing: Promise<void> | undefined
+  const close = (): Promise<void> => {
+    closing ??= closePool(pool, clients, closeTimeoutMs)
+    return closing
+  }
+
+  return { db: drizzle(pool, { schema }), close }
+}
+
+async function closePool(pool: Pool, clients: Set<PoolClient>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      // Work is still in flight: ask each remaining connection to end, without waiting for it.
+      for (const client of clients) {
+        client.end().catch(() => undefined)
+      }
+      reject(new Error('createDb: close timed out'))
+    }, timeoutMs)
+  })
+  try {
+    await Promise.race([pool.end(), deadline])
+  } finally {
+    clearTimeout(timer)
+  }
 }
