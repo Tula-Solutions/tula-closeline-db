@@ -17,7 +17,9 @@ const env = integrationEnv()
 
 /** What `closeline_auth` may do to each table: tula-auth's runtime grants, at its latest migration. */
 const TABLE_GRANTS: Record<string, string> = {
+  abandon_cases: 'DELETE,INSERT,SELECT',
   api_keys: 'INSERT,SELECT,UPDATE',
+  attempt_counters: 'DELETE,INSERT,SELECT',
   audit_logs: 'DELETE,INSERT,SELECT',
   backup_codes: 'DELETE,INSERT,SELECT,UPDATE',
   credentials: 'DELETE,INSERT,SELECT,UPDATE',
@@ -51,6 +53,8 @@ const TABLE_GRANTS: Record<string, string> = {
 
 /** The columns `closeline_auth` may UPDATE on a table where it holds no table-wide UPDATE. */
 const COLUMN_GRANTS: Record<string, string> = {
+  abandon_cases: 'attempts,core_organization_id,next_attempt_at,outcome,resolved_at,updated_at',
+  attempt_counters: 'expires_at,hits,locked_until,started_at',
   events: 'delivered_at',
   hook_call_counts: 'calls,last_at,updated_at',
   hooks: 'deadline_ms,enabled,failure_mode,last_failed_at,last_failure_reason,updated_at,url',
@@ -349,7 +353,7 @@ describe('the auth schema, against Postgres', () => {
       }
     })
 
-    test('every table with environment_id is fail-closed on it, except api_keys', async () => {
+    test('every table with environment_id is fail-closed on it, except api_keys and attempt_counters', async () => {
       const found = await owner.query<{
         table: string
         enabled: boolean
@@ -369,7 +373,9 @@ describe('the auth schema, against Postgres', () => {
                           and a.attname = 'environment_id' and not a.attisdropped)
           order by c.relname`
       )
-      const scoped = found.rows.filter((row) => row.table !== 'api_keys')
+      const scoped = found.rows.filter(
+        (row) => row.table !== 'api_keys' && row.table !== 'attempt_counters'
+      )
       expect(scoped.map((row) => `auth.${row.table}`)).toEqual(
         [...ENVIRONMENT_SCOPED_TABLES].sort()
       )
@@ -535,6 +541,14 @@ describe('the auth schema, against Postgres', () => {
         columns: 'day, prefix, sent',
         values: `(now() at time zone 'utc')::date - 30, '+9', 1`,
         update: 'sent = 5',
+      },
+      {
+        // Deleted rows must be resolved, so the case is written resolved to reach the delete check.
+        table: 'abandon_cases',
+        columns:
+          'core_organization_id, user_id, attempt_id, attempt_expires_at, next_attempt_at, resolved_at, outcome',
+        values: `gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), now(), now(), now(), 'done'`,
+        update: 'attempts = 5',
       },
     ]
 

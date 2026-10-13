@@ -219,9 +219,9 @@ describe('findTenantIsolationGaps on the auth schema', () => {
 })
 
 describe('the auth table categories', () => {
-  test('are disjoint, in the auth schema, and split 25 and 5', () => {
-    expect(ENVIRONMENT_SCOPED_TABLES).toHaveLength(25)
-    expect(CONTROL_PLANE_TABLES).toHaveLength(5)
+  test('are disjoint, in the auth schema, and split 26 and 6', () => {
+    expect(ENVIRONMENT_SCOPED_TABLES).toHaveLength(26)
+    expect(CONTROL_PLANE_TABLES).toHaveLength(6)
     const all = [...ENVIRONMENT_SCOPED_TABLES, ...CONTROL_PLANE_TABLES]
     expect(new Set(all).size).toBe(all.length)
     expect(all.every((name) => name.startsWith('auth.'))).toBe(true)

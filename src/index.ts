@@ -1,3 +1,20 @@
+export {
+  ABANDON_CLAIM,
+  ABANDON_GIVE_UP_SPENT,
+  ABANDON_LEARN,
+  ABANDON_MIN_GRACE_MS,
+  ABANDON_PURGE_BATCH,
+  ABANDON_RECORD,
+  ABANDON_RESOLVE,
+  AUTH_STATEMENTS,
+  COUNTER_MIN_PERIOD_MS,
+  COUNTER_PURGE_BATCH,
+  LOCKOUT_ATTEMPT,
+  LOCKOUT_CLEAR,
+  LOCKOUT_MIN_RETRY_AFTER_MS,
+  LOCKOUT_RETRY_AFTER,
+  RATE_HIT,
+} from './auth-statements'
 export type { Database, DbHandle, DbOptions, Schema, Transaction } from './client'
 export { createDb, DEFAULT_POOL_OPTIONS, reportConnectionError } from './client'
 export type { InvitationForToken, OrganizationOfUser, OrganizationStatus } from './core-lookups'

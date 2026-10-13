@@ -16,7 +16,9 @@ describe('the auth schema', () => {
   test('has exactly the tables tula-auth has, in the auth Postgres schema', () => {
     expect(names).toEqual(
       [
+        'abandon_cases',
         'api_keys',
+        'attempt_counters',
         'audit_logs',
         'backup_codes',
         'credentials',
@@ -63,9 +65,11 @@ describe('the auth schema', () => {
     )
     const unscoped = scoped.filter((config) => !config.policies.some((policy) => policy.using))
     // api_keys has the column but is deliberately outside row-level security (key lookup decides
-    // the tenant); every other table must carry the policy.
-    expect(unscoped.map((config) => config.name)).toEqual(['api_keys'])
-    for (const config of scoped.filter((c) => c.name !== 'api_keys')) {
+    // the tenant), and attempt_counters is counted before any account is known (ADR 0014); every
+    // other table must carry the policy.
+    const outside = ['api_keys', 'attempt_counters']
+    expect(unscoped.map((config) => config.name).sort()).toEqual(outside)
+    for (const config of scoped.filter((c) => !outside.includes(c.name))) {
       const policy = config.policies.find((p) => p.name === `${config.name}_tenant_isolation`)
       expect(policy?.as).toBe('permissive')
       expect(policy?.for).toBe('all')

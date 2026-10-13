@@ -32,6 +32,7 @@ export const ALLOWED_PREDEFINED_ROLES: readonly string[] = [
  * permissive one. {@link findTenantIsolationGaps} verifies every one against the live catalog.
  */
 export const ENVIRONMENT_SCOPED_TABLES: readonly string[] = [
+  'auth.abandon_cases',
   'auth.audit_logs',
   'auth.backup_codes',
   'auth.credentials',
@@ -69,6 +70,8 @@ export const ENVIRONMENT_SCOPED_TABLES: readonly string[] = [
 export const CONTROL_PLANE_TABLE_REASONS: Readonly<Record<string, string>> = {
   'auth.api_keys':
     'control plane: resolving a key is what determines the auth environment, so it cannot be under environment row-level security; stored as SHA-256 hashes only',
+  'auth.attempt_counters':
+    'control plane: sign-in lockout and rate-limit counters, counted before any account, user or Organization is known; keyed by a keyed hash of the address (the key never reaches the database), so it holds no address and no IP address, and no environment-scoped read is needed to count; the service role reads, inserts, deletes and updates only the four counter columns, nothing else (hub issue 30, ADR 0014)',
   'auth.environments':
     "control plane: the auth environment is itself the tenant boundary tula-auth scopes by, one per kind in the Region's fixed project",
   'auth.instance_audit_logs':
