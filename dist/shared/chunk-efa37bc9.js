@@ -906,7 +906,8 @@ var memberships2 = coreSchema2.table("memberships", {
         and ${t.email} collate "C" ~ '^[!-~]+$'`),
   check10("memberships_name_shape", sql15`${t.name} is null or char_length(btrim(${t.name})) between 1 and ${sql15.raw(String(MEMBER_NAME_MAX2))}`),
   unique21("memberships_organization_user_key").on(t.organizationId, t.userId),
-  unique21("memberships_organization_id_id_key").on(t.organizationId, t.id)
+  unique21("memberships_organization_id_id_key").on(t.organizationId, t.id),
+  index21("memberships_organization_email_idx").on(t.organizationId, t.email)
 ]);
 var teams2 = coreSchema2.table("teams", {
   id: text30("id").primaryKey(),

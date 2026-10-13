@@ -150,8 +150,11 @@ is `NOT NULL` with no default and the same check as `invitations.email` (`member
 lower-case ASCII, one `@`, printable ASCII, 3 to 320 characters). `name` is nullable (a person may
 have none) and, when present, 1 to 201 characters after trimming surrounding spaces
 (`memberships_name_shape`; 201 is auth's two optional 100-character names joined by one space, the
-contract's `MAX_PERSON_NAME_LENGTH`, one more than the 200 of Organization and Team names). There
-is no index on either: nothing searches or sorts by them yet. The existing row-level security and
+contract's `MAX_PERSON_NAME_LENGTH`, one more than the 200 of Organization and Team names). `memberships_organization_email_idx` on `(organization_id, email)` is
+plain, not unique, so "is this address already a member" does not scan an Organization's members
+(auth owns the address, and a stale copy must not make a later change fail); there is none on
+`name`. The database's name rule is the looser bound (it trims spaces only and does not reject
+control characters); core stores only the contract's trimmed output. The existing row-level security and
 table-wide grants cover both columns.
 
 **Migration `0005` refuses to run over existing memberships.** A membership without an email must
@@ -159,7 +162,8 @@ not exist, and the migration invents none, so it raises
 `core.memberships already has rows, and the new required column email has no value to give them`
 if any membership exists (checked on `membership_directory`, since row-level security hides the
 rows from the owner). No deployed environment has any; a developer's local database might. Reset
-it: `docker compose down -v`, `docker compose up -d --wait`, then `bun run db:migrate`.
+it: in this repo's compose, `docker compose down -v`, `docker compose up -d --wait`, then
+`bun run db:migrate`; in the hub dev stack, `bun run dev --down --volumes`.
 
 Rules held by the database:
 

@@ -303,9 +303,24 @@ describe('a member email and name', () => {
     )
   })
 
-  test('no index is added for either column', () => {
-    expect(config?.indexes).toEqual([])
-    expect(profileMigration).not.toContain('INDEX')
+  test('one plain index serves the "already a member" check, and none is on name', () => {
+    expect(config?.indexes.map((i) => i.config.name)).toEqual([
+      'memberships_organization_email_idx',
+    ])
+    const index = config?.indexes[0]
+    expect(index?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
+      'organization_id',
+      'email',
+    ])
+    expect(index?.config.unique).toBe(false)
+    expect(profileMigration).toContain(
+      'CREATE INDEX "memberships_organization_email_idx" ON "core"."memberships" USING btree ("organization_id","email")'
+    )
+  })
+
+  test('the guard message names both resets', () => {
+    expect(profileMigration).toContain('docker compose down -v')
+    expect(profileMigration).toContain('dev --down --volumes')
   })
 
   test('the migration guards existing memberships before it adds the required column', () => {

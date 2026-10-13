@@ -6666,8 +6666,13 @@ declare const organizations: PgTableWithColumns_a5zn0g31<{
 *   `memberships_organization_id_id_key`.
 * - One user's membership, for a role check: `memberships_organization_user_key`.
 *
-* Index decision: none on `email` or `name`. The member list reads them from the rows it pages on
-* `id`, and nothing searches or sorts by them yet; the release that does adds its own index.
+* - Is this address already a member, for an invitation: `WHERE organization_id = $1 AND email =
+*   $2`, on `memberships_organization_email_idx`.
+*
+* Index decision: `memberships_organization_email_idx` is plain, not unique: auth owns the address,
+* and a stale copy must not make a later change fail. There is none on `name`: nothing searches or
+* sorts by it. The database's name rule is the looser bound (it trims spaces only and does not
+* reject control characters); core stores only the contract's trimmed output.
 */
 declare const memberships: PgTableWithColumns_a5zn0g31<{
 	name: "memberships";

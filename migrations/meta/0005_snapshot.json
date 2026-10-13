@@ -1,5 +1,5 @@
 {
-  "id": "7bf4c148-8957-4c90-82f7-1d0e0c72df65",
+  "id": "81300ed8-211a-4d81-8f2d-273caca68a67",
   "prevId": "951b9813-98bb-4cab-a30c-2fe63f3e1188",
   "version": "7",
   "dialect": "postgresql",
@@ -5477,7 +5477,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "memberships_organization_email_idx": {
+          "name": "memberships_organization_email_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "memberships_organization_id_organizations_organization_id_fk": {
           "name": "memberships_organization_id_organizations_organization_id_fk",

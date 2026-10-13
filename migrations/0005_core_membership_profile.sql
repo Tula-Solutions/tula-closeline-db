@@ -6,7 +6,7 @@
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "core"."membership_directory") THEN
-    RAISE EXCEPTION 'core.memberships already has rows, and the new required column email has no value to give them. Reset the local database (docker compose down -v, then docker compose up -d --wait) and run the migrations again; no deployed environment has memberships.';
+    RAISE EXCEPTION 'core.memberships already has rows, and the new required column email has no value to give them. Reset the local database (the compose of this repo: docker compose down -v, then docker compose up -d --wait; the hub dev stack: bun run dev --down --volumes) and run the migrations again; no deployed environment has memberships.';
   END IF;
 END
 $$;--> statement-breakpoint
@@ -18,4 +18,5 @@ ALTER TABLE "core"."memberships" ADD CONSTRAINT "memberships_email_shape" CHECK 
         and position('@' in "core"."memberships"."email") between 2 and char_length("core"."memberships"."email") - 1
         and "core"."memberships"."email" collate "C" !~ '[[:space:][:cntrl:]]'
         and "core"."memberships"."email" collate "C" ~ '^[!-~]+$');--> statement-breakpoint
-ALTER TABLE "core"."memberships" ADD CONSTRAINT "memberships_name_shape" CHECK ("core"."memberships"."name" is null or char_length(btrim("core"."memberships"."name")) between 1 and 201);
+ALTER TABLE "core"."memberships" ADD CONSTRAINT "memberships_name_shape" CHECK ("core"."memberships"."name" is null or char_length(btrim("core"."memberships"."name")) between 1 and 201);--> statement-breakpoint
+CREATE INDEX "memberships_organization_email_idx" ON "core"."memberships" USING btree ("organization_id","email");

@@ -118,8 +118,16 @@ describe('core.memberships email and name', () => {
 
   test('an email of null, or one the invitations rule rejects, is refused', async () => {
     const orgId = await createOrg()
-    const nullEmail = await addRep(orgId, null, null)
-    expect(nullEmail).toBeDefined()
+    const nullEmail = await scoped(core, orgId, (c) =>
+      c.query(
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, 'rep', null)",
+        [newId('mem'), orgId, newId('usr')]
+      )
+    ).then(
+      () => undefined,
+      (error: { code?: string }) => error.code
+    )
+    expect(nullEmail).toBe('23502')
     for (const bad of [
       'Mixed@Example.test',
       'no-at.example.test',
@@ -129,9 +137,8 @@ describe('core.memberships email and name', () => {
       'user@',
       'sp ace@example.test',
       'tab\t@example.test',
-      'zero​@example.test',
+      'zero\u200b@example.test',
       'café@example.test',
-      'a@',
       `${'a'.repeat(320)}@example.test`,
     ]) {
       expect(await addRep(orgId, bad, null)).toBe('memberships_email_shape')
@@ -155,6 +162,12 @@ describe('core.memberships email and name', () => {
     ['one character', 'A', true],
     ['201 characters', 'x'.repeat(MEMBER_NAME_MAX), true],
     ['201 characters with surrounding spaces', `  ${'x'.repeat(MEMBER_NAME_MAX)}  `, true],
+    ['a tab only (the database trims spaces only)', '\t', true],
+    [
+      '201 astral characters (counted as characters, not bytes)',
+      '\u{1F600}'.repeat(MEMBER_NAME_MAX),
+      true,
+    ],
     ['202 characters', 'x'.repeat(MEMBER_NAME_MAX + 1), false],
     ['an empty string', '', false],
     ['only spaces', '   ', false],
@@ -186,6 +199,34 @@ describe('core.memberships email and name', () => {
     )
     expect(changed.rowCount).toBe(0)
     expect((await readAll(a)).rows[0]?.email).toBe('alice@example.test')
+  })
+
+  test('looking a member up by address in an Organization uses the index', async () => {
+    const orgId = await createOrg('first@example.test', null)
+    const other = await createOrg('other@example.test', null)
+    // Enough rows that a scan is clearly dearer, and fresh statistics, so the plan does not depend
+    // on when autovacuum ran.
+    for (const id of [orgId, other]) {
+      await scoped(core, id, (c) =>
+        c.query(
+          `insert into core.memberships (id, organization_id, user_id, role, email)
+           select 'mem_' || md5('m' || n || $1::text), $1::text, 'usr_' || md5('u' || n || $1::text),
+                  'rep', 'rep' || n || '@example.test'
+             from generate_series(1, 3000) n`,
+          [id]
+        )
+      )
+    }
+    await owner.query('vacuum analyze core.memberships')
+    const result = await scoped(core, orgId, (c) =>
+      c.query<{ 'QUERY PLAN': { Plan: object }[] }>(
+        'explain (format json) select id from core.memberships where organization_id = $1 and email = $2',
+        [orgId, 'rep1500@example.test']
+      )
+    )
+    const text = JSON.stringify(result.rows[0]?.['QUERY PLAN'])
+    expect(text).not.toContain('Seq Scan')
+    expect(text).toContain('memberships_organization_email_idx')
   })
 
   describe('the migration on its own database', () => {
@@ -288,6 +329,8 @@ describe('core.memberships email and name', () => {
       const message = await rejectionOf(runMigrations(url))
       expect(message).toContain('core.memberships already has rows')
       expect(message).toContain('Reset the local database')
+      expect(message).toContain('docker compose down -v')
+      expect(message).toContain('dev --down --volumes')
       expect(message).not.toContain('not-null')
       await withOwner(url, async (pool) => {
         expect(await hasColumn(pool, 'email')).toBe(false)
