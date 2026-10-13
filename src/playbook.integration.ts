@@ -1580,23 +1580,76 @@ describe('the playbook schema', () => {
       return doc
     }
 
-    test.each(['restore', 'requeue'])(
+    // A delete that starts while a restore is uncommitted does not wait: its snapshot still shows
+    // the document as `deleted`, so its UPDATE (state <> 'deleted') matches no row and takes no
+    // lock, and it answers the unchanged branch. It is ordered before the restore, which is correct:
+    // the document ends live with the restore's one queued job at its epoch.
+    test('a delete that starts during an uncommitted restore changes nothing and the restore stands', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      const jobId = newJob()
+      const first = await open(org)
+      const deleting = await open(org)
+      try {
+        expect((await first.client.query(DOCUMENT_RESTORE, [org, doc.id, jobId])).rowCount).toBe(1)
+        const result = await deleting.client.query(DOCUMENT_SOFT_DELETE, [
+          org,
+          doc.id,
+          newUser(),
+          HOUR,
+        ])
+        expect(result.rows[0]).toMatchObject({ state: 'deleted', changed: false })
+        await first.client.query('commit')
+        await deleting.client.query('commit')
+      } finally {
+        releaseAll(first, deleting)
+      }
+      expect(await row(org, doc.id)).toMatchObject({ state: 'processing' })
+      expect(await jobRow(org, jobId)).toMatchObject({ state: 'queued' })
+      expect(await activeJobs(org, doc.id)).toBe(1)
+      // The one job is live: the claim runs it and cancels nothing.
+      expect((await claimJobs(org)).rows.map((r) => r.id)).toEqual([jobId])
+    })
+
+    test('after that, a real delete cancels the job and a later restore needs no claim in between', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      const jobId = newJob()
+      const first = await open(org)
+      const deleting = await open(org)
+      try {
+        await first.client.query(DOCUMENT_RESTORE, [org, doc.id, jobId])
+        await deleting.client.query(DOCUMENT_SOFT_DELETE, [org, doc.id, newUser(), HOUR])
+        await first.client.query('commit')
+        await deleting.client.query('commit')
+      } finally {
+        releaseAll(first, deleting)
+      }
+      expect((await remove(org, doc.id)).rows[0]).toMatchObject({ state: 'deleted', changed: true })
+      expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled' })
+      expect(await activeJobs(org, doc.id)).toBe(0)
+      expect((await claimJobs(org)).rowCount).toBe(0)
+      expect((await restore(org, doc.id)).rows[0]).toMatchObject({
+        state: 'processing',
+        changed: true,
+      })
+      expect(await activeJobs(org, doc.id)).toBe(1)
+    })
+
+    test.each(['requeue'])(
       '%s commits a job while the delete waits for the document: the claim cancels it, a later restore works',
-      async (kind) => {
+      async () => {
         const org = newOrg()
-        let doc: Added
-        if (kind === 'restore') {
-          doc = await mustAdd(org)
-          await remove(org, doc.id)
-        } else {
-          doc = await failedDoc(org)
-        }
+        const doc = await failedDoc(org)
         const jobId = newJob()
         const first = await open(org)
         const deleting = await open(org)
         try {
-          const text = kind === 'restore' ? DOCUMENT_RESTORE : DOCUMENT_REQUEUE
-          expect((await first.client.query(text, [org, doc.id, jobId])).rowCount).toBe(1)
+          expect((await first.client.query(DOCUMENT_REQUEUE, [org, doc.id, jobId])).rowCount).toBe(
+            1
+          )
           const waiting = deleting.client.query(DOCUMENT_SOFT_DELETE, [
             org,
             doc.id,
@@ -1619,26 +1672,16 @@ describe('the playbook schema', () => {
       }
     )
 
-    test.each(['restore', 'requeue'])(
+    test.each(['requeue'])(
       'a later %s needs no claim in between: it cancels the stale job itself',
-      async (kind) => {
+      async () => {
         const org = newOrg()
-        let doc: Added
-        if (kind === 'restore') {
-          doc = await mustAdd(org)
-          await remove(org, doc.id)
-        } else {
-          doc = await failedDoc(org)
-        }
+        const doc = await failedDoc(org)
         const jobId = newJob()
         const first = await open(org)
         const deleting = await open(org)
         try {
-          await first.client.query(kind === 'restore' ? DOCUMENT_RESTORE : DOCUMENT_REQUEUE, [
-            org,
-            doc.id,
-            jobId,
-          ])
+          await first.client.query(DOCUMENT_REQUEUE, [org, doc.id, jobId])
           const waiting = deleting.client.query(DOCUMENT_SOFT_DELETE, [
             org,
             doc.id,
