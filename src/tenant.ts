@@ -38,6 +38,14 @@ export async function withOrganization<T>(
   })
 }
 
+/**
+ * The policy expression of {@link tenantRlsStatements} as Postgres stores and prints it in
+ * `pg_policies` (parenthesised, with `::text` casts). The tenant isolation check compares policies
+ * against this text, and an integration test pins it against the real server, so a Postgres
+ * version that deparses differently fails loudly instead of passing or failing every table.
+ */
+export const TENANT_POLICY_EXPRESSION = `(organization_id = NULLIF(current_setting('${ORGANIZATION_SETTING}'::text, true), ''::text))`
+
 function quote(identifier: string): string {
   if (!IDENTIFIER.test(identifier)) {
     throw new Error(`tenantRlsStatements: unsafe identifier ${JSON.stringify(identifier)}`)

@@ -25,6 +25,7 @@ export interface DbOptions {
    * Called with an error on any pooled connection, idle or checked out (a server restart, a
    * failover, an idle-in-transaction timeout). Without a listener such an error would crash the
    * process. The default writes one line to stderr with the error code or name, never the message.
+   * If it throws, the exception is swallowed and that same line is written instead.
    */
   onError?: (error: Error) => void
 }
@@ -98,7 +99,16 @@ export function createDb(connectionString: string, options: DbOptions = {}): DbH
     'closeTimeoutMs',
     options.closeTimeoutMs ?? DEFAULT_POOL_OPTIONS.closeTimeoutMs
   )
-  const onError = options.onError ?? reportConnectionError
+  const handler = options.onError ?? reportConnectionError
+  // A listener that throws inside an EventEmitter is an uncaught exception, the crash this
+  // handler exists to prevent. A handler that fails is noted the way the default reports.
+  const onError = (error: Error): void => {
+    try {
+      handler(error)
+    } catch {
+      reportConnectionError(error)
+    }
+  }
 
   const pool = new Pool({
     connectionString,

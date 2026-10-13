@@ -1,3 +1,4 @@
+import type { Pool } from 'pg'
 import { runMigrations } from './migrate'
 
 /** The connection strings the integration tests need; see `.env.example`. */
@@ -80,4 +81,48 @@ export async function rejectionOf(promise: PromiseLike<unknown>): Promise<string
     return errorChain(error)
   }
   throw new Error('expected the statement to be refused, but it succeeded')
+}
+
+/**
+ * The bootstrap superuser's connection string, for the few tests that must change a role's
+ * attributes. Reads `DATABASE_URL_ADMIN`; with none of the four service variables set, falls back
+ * to the compose superuser. Fails loudly otherwise, so no suite is silently skipped.
+ */
+export function adminUrl(): string {
+  const explicit = process.env.DATABASE_URL_ADMIN
+  if (explicit) {
+    return explicit
+  }
+  const names = ['DATABASE_URL', 'DATABASE_URL_AUTH', 'DATABASE_URL_CORE', 'DATABASE_URL_PLAYBOOK']
+  if (names.every((name) => !process.env[name])) {
+    return `postgres://postgres:postgres_local@127.0.0.1:${composePort()}/closeline`
+  }
+  throw new Error('Integration tests need DATABASE_URL_ADMIN, a superuser (see the README)')
+}
+
+/**
+ * Drop what a test run killed before its cleanup left behind: relations named `it_*` in the
+ * service schemas, and schemas named `it_*`. The tenant isolation check scans whole schemas, so a
+ * single stale table would fail every later run until someone dropped it by hand.
+ *
+ * @param owner - A pool connected as the owner role, which owns everything the tests create.
+ */
+export async function dropStaleTestObjects(owner: Pool): Promise<void> {
+  const stale = await owner.query<{ schema: string; name: string; kind: string }>(
+    `select n.nspname as schema, c.relname as name, c.relkind as kind
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname in ('auth', 'core', 'playbook') and c.relname like 'it\\_%'
+        and c.relkind in ('r', 'p', 'v', 'm', 'f')
+      order by (c.relkind in ('v', 'm')) desc`
+  )
+  for (const { schema, name, kind } of stale.rows) {
+    const what = kind === 'v' ? 'view' : kind === 'm' ? 'materialized view' : 'table'
+    await owner.query(`drop ${what} if exists "${schema}"."${name}" cascade`)
+  }
+  const schemas = await owner.query<{ name: string }>(
+    `select nspname as name from pg_namespace where nspname like 'it\\_%'`
+  )
+  for (const { name } of schemas.rows) {
+    await owner.query(`drop schema if exists "${name}" cascade`)
+  }
 }

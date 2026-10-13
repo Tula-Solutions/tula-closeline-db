@@ -31,6 +31,7 @@ interface DbOptions {
 	* Called with an error on any pooled connection, idle or checked out (a server restart, a
 	* failover, an idle-in-transaction timeout). Without a listener such an error would crash the
 	* process. The default writes one line to stderr with the error code or name, never the message.
+	* If it throws, the exception is swallowed and that same line is written instead.
 	*/
 	onError?: (error: Error) => void;
 }
@@ -67,7 +68,11 @@ interface DbHandle {
 * @throws If the connection string is empty or an option is out of bounds.
 */
 declare function createDb(connectionString: string, options?: DbOptions): DbHandle;
-/** The Postgres schemas owned by services; every relation in them must be tenant-isolated. */
+/**
+* The Postgres schemas owned by services; every relation in them must be tenant-isolated. A
+* relation in any other schema (bar `public` and drizzle's own) is itself a gap, and a unit test
+* keeps this list equal to the schemas exported from `src/schema`.
+*/
 declare const TENANT_SCHEMAS: readonly ["auth", "core", "playbook"];
 /**
 * Tables that deliberately have no `organization_id` and no row-level security, as
@@ -75,7 +80,10 @@ declare const TENANT_SCHEMAS: readonly ["auth", "core", "playbook"];
 * holds no tenant data.
 */
 declare const NON_TENANT_TABLES: readonly string[];
-/** One relation that does not fail closed on `organization_id`, and why. */
+/**
+* One thing that does not fail closed on `organization_id`, and why. A login role that bypasses
+* row-level security is reported with `schema` set to `pg_roles` and `table` set to the role name.
+*/
 interface TenantIsolationGap {
 	/** The Postgres schema. */
 	schema: string;
@@ -85,25 +93,30 @@ interface TenantIsolationGap {
 	reason: string;
 }
 /**
-* Find every table in the service schemas that is not fail-closed on `organization_id`.
+* Find everything that stops the database failing closed on `organization_id`.
 *
-* A table passes when it has an `organization_id` column, row-level security enabled and forced,
-* and at least one permissive policy, with every permissive policy covering all commands and
-* naming `app.organization_id` in both USING and WITH CHECK (so none can open the table). Any
-* other relation (a view, a materialized view, a foreign table) is a gap, because it bypasses
-* row-level security. Tables on `allowlist` are skipped.
+* Every relation in every schema except `public`, drizzle's own and Postgres's is checked. A
+* table passes when it is in a {@link TENANT_SCHEMAS} schema, has an `organization_id` column,
+* row-level security enabled and forced, and at least one permissive policy, where every
+* permissive policy covers all commands and has exactly the USING and WITH CHECK expression
+* `tenantRlsStatements` writes (any weaker or wider one could open the table across
+* Organizations, so there is no other way to pass than the allowlist). Any other relation (a view,
+* a materialized view, a foreign table) is a gap, because it bypasses row-level security. Tables
+* on `allowlist` are skipped. A `closeline_*` role that is a superuser or has `BYPASSRLS` is a
+* gap too, because it ignores every policy.
 *
 * @param db - A database handle connected as any role; the catalogs are readable by all.
 * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
-* @returns The offending relations, ordered by schema and name; empty when all are protected.
+* @returns The offending relations, ordered by schema and name, then the offending roles; empty
+*   when all are protected.
 */
 declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<TenantIsolationGap[]>;
 /**
-* Throw unless every table in the service schemas is fail-closed on `organization_id`.
+* Throw unless {@link findTenantIsolationGaps} finds nothing: every table fail-closed, no role bypassing it.
 *
 * @param db - A database handle; see {@link findTenantIsolationGaps}.
 * @param allowlist - `schema.table` names exempt from the check.
-* @throws An error naming each offending table and why.
+* @throws An error naming each offending table or role and why.
 */
 declare function assertTenantIsolation(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<void>;
 /** The one database role that owns every schema and table and runs every migration. */

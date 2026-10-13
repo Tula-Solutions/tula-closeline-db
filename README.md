@@ -40,7 +40,8 @@ this is the whole of what CI runs:
 docker compose up -d --wait && bun run test:integration
 ```
 
-Set all four variables to test against another Postgres; explicit values win. The suites cover
+Set all four variables (and `DATABASE_URL_ADMIN`, a superuser) to test against another Postgres;
+explicit values win. The suites cover
 role confinement, tenant isolation, the client's handling of lost connections, the migration
 runner and the catalog check below.
 
@@ -54,10 +55,13 @@ batch (`withOrganization`, or `select set_config('app.organization_id', ..., tru
 batch's transaction). Without it the policy matches nothing, and the `UPDATE` or `DELETE` reports
 success with zero rows changed.
 
-`bun run db:check:rls` (with `DATABASE_URL` set) fails when any table in `auth`, `core` or
-`playbook` lacks `organization_id`, forced row-level security, or a policy on
-`app.organization_id`, unless it is on `NON_TENANT_TABLES` (empty). The integration suite runs the
-same check, so a migration that forgets `tenantRlsStatements` fails CI.
+`bun run db:check:rls` (with `DATABASE_URL` set) fails when any table lacks `organization_id`,
+forced row-level security, or exactly the policy `tenantRlsStatements` writes, unless it is on
+`NON_TENANT_TABLES` (empty). It scans every schema except `public` and drizzle's own, so a table in
+a schema that is not `auth`, `core` or `playbook` is a gap, and so is a `closeline_*` role that is
+a superuser or has `BYPASSRLS`. The integration suite runs the same check, so a migration that
+forgets `tenantRlsStatements` fails CI. The tests that change role attributes connect as the
+compose superuser, or as `DATABASE_URL_ADMIN` when you point at another Postgres.
 
 Changing the schema: edit `src/schema/`, run `bun run db:generate`, read the SQL, commit it.
 `bun run db:check` (part of `verify`) fails when the schema and the migrations disagree, when a

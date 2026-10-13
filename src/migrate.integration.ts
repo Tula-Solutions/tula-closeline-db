@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Pool } from 'pg'
-import { integrationEnv, rejectionOf } from './integration-support'
+import { dropStaleTestObjects, integrationEnv, rejectionOf } from './integration-support'
 import { runMigrations } from './migrate'
 import { OWNER_ROLE } from './roles'
 
@@ -31,6 +31,7 @@ describe('the lock timeout of a migration session', () => {
 
   beforeAll(async () => {
     owner = new Pool({ connectionString: env.owner, max: 2 })
+    await dropStaleTestObjects(owner)
     await owner.query(`create table "core"."${lockTable}" (id int)`)
     // A migration newer than any applied one, so drizzle treats it as pending. It fails on the
     // lock below, which rolls it back and records nothing.
@@ -78,6 +79,64 @@ describe('the lock timeout of a migration session', () => {
     } finally {
       await holder.query('rollback')
       holder.release()
+    }
+  })
+})
+
+describe('a migration connection the server ends', () => {
+  let owner: Pool
+  let folder: string
+
+  beforeAll(async () => {
+    owner = new Pool({ connectionString: env.owner, max: 2 })
+    folder = mkdtempSync(join(tmpdir(), 'closeline-db-kill-'))
+    mkdirSync(join(folder, 'meta'))
+    // Two statements: the connection sits idle in the transaction between them, which is when a
+    // failover arrives as a bare client error and not as the error of a running query.
+    writeFileSync(
+      join(folder, '9998_slow.sql'),
+      `SELECT pg_sleep(0.2);--> statement-breakpoint\nSELECT pg_sleep(30);\n`
+    )
+    writeFileSync(
+      join(folder, 'meta', '_journal.json'),
+      JSON.stringify({
+        version: '7',
+        dialect: 'postgresql',
+        entries: [
+          { idx: 0, version: '7', when: 4_000_000_000_001, tag: '9998_slow', breakpoints: true },
+        ],
+      })
+    )
+  })
+
+  afterAll(async () => {
+    await owner.end()
+    rmSync(folder, { recursive: true, force: true })
+  })
+
+  test('rejects runMigrations and throws nothing uncaught', async () => {
+    const uncaught: unknown[] = []
+    const record = (error: unknown) => uncaught.push(error)
+    process.on('uncaughtException', record)
+    try {
+      const running = rejectionOf(runMigrations(env.owner, { migrationsFolder: folder }))
+      const deadline = Date.now() + 5000
+      let killed = 0
+      while (killed === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        const result = await owner.query(
+          `select pg_terminate_backend(pid) from pg_stat_activity
+            where usename = current_user and pid <> pg_backend_pid()
+              and query like '%pg_sleep(30)%'`
+        )
+        killed = result.rowCount ?? 0
+      }
+      expect(killed).toBeGreaterThan(0)
+      expect(await running).not.toBe('')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(uncaught).toEqual([])
+    } finally {
+      process.off('uncaughtException', record)
     }
   })
 })

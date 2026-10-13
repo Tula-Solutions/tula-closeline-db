@@ -1,7 +1,7 @@
 import { createDb } from '../src/client'
 import { assertTenantIsolation } from '../src/isolation'
 
-// Fails when any table in auth, core or playbook is not fail-closed on organization_id. Run it
+// Fails when any table is not fail-closed on organization_id, or a closeline role bypasses it. Run it
 // after `db:migrate`, against the same database.
 const url = process.env.DATABASE_URL
 if (!url) {
@@ -12,7 +12,9 @@ if (!url) {
 const { db, close } = createDb(url, { max: 1 })
 try {
   await assertTenantIsolation(db)
-  process.stdout.write('db:check:rls: every table in auth, core and playbook is fail-closed\n')
+  process.stdout.write(
+    'db:check:rls: every table is fail-closed and no closeline role bypasses row-level security\n'
+  )
 } catch (error) {
   process.stderr.write(`db:check:rls: ${error instanceof Error ? error.message : 'failed'}\n`)
   process.exitCode = 1

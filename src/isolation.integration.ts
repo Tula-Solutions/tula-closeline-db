@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { Pool } from 'pg'
 import { createDb, type DbHandle } from './client'
-import { integrationEnv, migrateUp } from './integration-support'
+import { adminUrl, dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
 import { assertTenantIsolation, findTenantIsolationGaps } from './isolation'
-import { tenantRlsStatements } from './tenant'
+import { TENANT_POLICY_EXPRESSION, tenantRlsStatements } from './tenant'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 const env = integrationEnv()
@@ -26,6 +26,7 @@ describe('the tenant isolation catalog check', () => {
   beforeAll(async () => {
     await migrateUp(env.owner)
     owner = new Pool({ connectionString: env.owner, max: 1 })
+    await dropStaleTestObjects(owner)
     handle = createDb(env.owner, { max: 1 })
   })
 
@@ -93,6 +94,51 @@ describe('the tenant isolation catalog check', () => {
       await owner.query(statement)
     }
     expect(await gapsFor()).toEqual([])
+    // Pins how this Postgres deparses the policy. If a version words it differently the check
+    // would report every protected table, and this fails first with the text in hand.
+    const policies = await owner.query<{ qual: string; with_check: string }>(
+      'select qual, with_check from pg_policies where schemaname = $1 and tablename = $2',
+      ['core', table]
+    )
+    expect(policies.rows).toEqual([
+      { qual: TENANT_POLICY_EXPRESSION, with_check: TENANT_POLICY_EXPRESSION },
+    ])
+  })
+
+  const setting = `current_setting('app.organization_id', true)`
+  test.each([
+    ['an OR true escape', `organization_id = ${setting} OR true`],
+    ['an OR on another column', `organization_id = ${setting} OR visibility = 'public'`],
+    ['a leading true', `true OR ${setting} IS NULL`],
+    ['the wrong column', `id = ${setting}`],
+    ['no NULLIF for the empty setting', `organization_id = ${setting}`],
+  ])('a policy with %s is reported', async (_name, expression) => {
+    await reset(`id text primary key, organization_id text not null, visibility text`)
+    await owner.query(`alter table "core"."${table}" enable row level security`)
+    await owner.query(`alter table "core"."${table}" force row level security`)
+    await owner.query(
+      `create policy weak on "core"."${table}" using (${expression}) with check (${expression})`
+    )
+    expect((await gapsFor())[0]?.reason).toContain('canonical')
+  })
+
+  test('a table in a schema that is not a service schema is reported', async () => {
+    const other = `it_schema_${suffix}`
+    await owner.query(`create schema "${other}"`)
+    try {
+      await owner.query(`create table "${other}"."things" (id text, organization_id text)`)
+      const gaps = await findTenantIsolationGaps(handle.db)
+      expect(gaps.filter((gap) => gap.schema === other).map((gap) => gap.table)).toEqual(['things'])
+    } finally {
+      await owner.query(`drop schema "${other}" cascade`)
+    }
+  })
+
+  test('a leftover test table from a killed run is dropped before the suite starts', async () => {
+    await owner.query(`create table "core"."it_gap_stale_${suffix}" (id text)`)
+    expect((await findTenantIsolationGaps(handle.db)).length).toBeGreaterThan(0)
+    await dropStaleTestObjects(owner)
+    expect(await findTenantIsolationGaps(handle.db)).toEqual([])
   })
 
   test('a view in a service schema is reported', async () => {
@@ -108,6 +154,53 @@ describe('the tenant isolation catalog check', () => {
       expect(gaps.length).toBe(1)
     } finally {
       await owner.query(`drop view "core"."${table}_view"`)
+    }
+  })
+})
+
+describe('the role check', () => {
+  let admin: Pool
+  let handle: DbHandle
+
+  beforeAll(async () => {
+    await migrateUp(env.owner)
+    admin = new Pool({ connectionString: adminUrl(), max: 1 })
+    handle = createDb(env.owner, { max: 1 })
+  })
+
+  afterAll(async () => {
+    await handle.close()
+    await admin.end()
+  })
+
+  const roleGaps = async () =>
+    (await findTenantIsolationGaps(handle.db)).filter((gap) => gap.schema === 'pg_roles')
+
+  test('the service roles are not superusers and do not bypass row-level security', async () => {
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role with BYPASSRLS is reported', async () => {
+    await admin.query('alter role closeline_core bypassrls')
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+      expect(gaps[0]?.reason).toContain('BYPASSRLS')
+      const failure = await assertTenantIsolation(handle.db).catch((error: Error) => error)
+      expect((failure as Error).message).toContain('closeline_core')
+    } finally {
+      await admin.query('alter role closeline_core nobypassrls')
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a closeline role that is a superuser is reported', async () => {
+    const role = `closeline_it_super_${suffix}`
+    await admin.query(`create role "${role}" superuser`)
+    try {
+      expect((await roleGaps()).map((gap) => gap.table)).toEqual([role])
+    } finally {
+      await admin.query(`drop role "${role}"`)
     }
   })
 })

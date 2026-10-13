@@ -34,7 +34,14 @@ function createDb(connectionString, options = {}) {
   const statementTimeout = positiveInteger("statementTimeoutMs", options.statementTimeoutMs ?? DEFAULT_POOL_OPTIONS.statementTimeoutMs);
   const connectionTimeoutMillis = positiveInteger("connectionTimeoutMs", options.connectionTimeoutMs ?? DEFAULT_POOL_OPTIONS.connectionTimeoutMs);
   const closeTimeoutMs = positiveInteger("closeTimeoutMs", options.closeTimeoutMs ?? DEFAULT_POOL_OPTIONS.closeTimeoutMs);
-  const onError = options.onError ?? reportConnectionError;
+  const handler = options.onError ?? reportConnectionError;
+  const onError = (error) => {
+    try {
+      handler(error);
+    } catch {
+      reportConnectionError(error);
+    }
+  };
   const pool = new Pool({
     connectionString,
     max,
@@ -96,6 +103,7 @@ async function withOrganization(db, organizationId, fn) {
     return fn(tx);
   });
 }
+var TENANT_POLICY_EXPRESSION = `(organization_id = NULLIF(current_setting('${ORGANIZATION_SETTING}'::text, true), ''::text))`;
 function quote(identifier) {
   if (!IDENTIFIER.test(identifier)) {
     throw new Error(`tenantRlsStatements: unsafe identifier ${JSON.stringify(identifier)}`);
@@ -116,9 +124,7 @@ function tenantRlsStatements(schemaName, tableName) {
 // src/isolation.ts
 var TENANT_SCHEMAS = ["auth", "core", "playbook"];
 var NON_TENANT_TABLES = [];
-var REFERENCES_SETTING = `'${ORGANIZATION_SETTING}'`;
 async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES) {
-  const schemas = sql2.join(TENANT_SCHEMAS.map((name) => sql2`${name}`), sql2`, `);
   const result = await db.execute(sql2`
     select n.nspname as schema,
            c.relname as "table",
@@ -135,12 +141,13 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES) {
              where p.schemaname = n.nspname and p.tablename = c.relname
                and p.permissive = 'PERMISSIVE'
                and not (p.cmd = 'ALL'
-                        and coalesce(p.qual, '') like ${`%${REFERENCES_SETTING}%`}
-                        and coalesce(p.with_check, '') like ${`%${REFERENCES_SETTING}%`})
+                        and p.qual = ${TENANT_POLICY_EXPRESSION}
+                        and p.with_check = ${TENANT_POLICY_EXPRESSION})
            ) as weak_permissive
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
-     where n.nspname in (${schemas})
+     where n.nspname not in ('public', 'drizzle', 'information_schema')
+       and n.nspname not like 'pg\\_%'
        and c.relkind in ('r', 'p', 'v', 'm', 'f')
      order by n.nspname, c.relname`);
   const gaps = [];
@@ -153,9 +160,23 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES) {
       gaps.push({ schema: row.schema, table: row.table, reason });
     }
   }
+  const roles = await db.execute(sql2`
+    select rolname as role from pg_roles
+     where rolname like 'closeline\\_%' and (rolsuper or rolbypassrls)
+     order by rolname`);
+  for (const { role } of roles.rows) {
+    gaps.push({
+      schema: "pg_roles",
+      table: role,
+      reason: "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
+    });
+  }
   return gaps;
 }
 function gapReason(row) {
+  if (!TENANT_SCHEMAS.includes(row.schema)) {
+    return "is in a schema that is not a service schema (add it to TENANT_SCHEMAS and src/schema)";
+  }
   if (row.kind !== "r" && row.kind !== "p") {
     return "is not a table, so it bypasses row-level security";
   }
@@ -172,7 +193,7 @@ function gapReason(row) {
     return "has no permissive policy, so no role can ever read it (or a later policy is missing)";
   }
   if (row.weak_permissive > 0) {
-    return `has a permissive policy that does not cover all commands with ${ORGANIZATION_SETTING} in USING and WITH CHECK`;
+    return `has a permissive policy that is not the canonical ${ORGANIZATION_SETTING} isolation (all commands, USING and WITH CHECK as tenantRlsStatements writes them)`;
   }
   return;
 }
@@ -180,7 +201,7 @@ async function assertTenantIsolation(db, allowlist = NON_TENANT_TABLES) {
   const gaps = await findTenantIsolationGaps(db, allowlist);
   if (gaps.length > 0) {
     const lines = gaps.map((gap) => `  ${gap.schema}.${gap.table} ${gap.reason}`);
-    throw new Error(`tenant isolation: ${gaps.length} table(s) are not fail-closed
+    throw new Error(`tenant isolation: ${gaps.length} gap(s) in fail-closed isolation
 ${lines.join(`
 `)}`);
   }

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { Pool } from 'pg'
 import { createDb } from './client'
@@ -48,6 +48,43 @@ describe('a connection the server ends while it is checked out', () => {
       process.off('uncaughtException', record)
       await core.close().catch(() => undefined)
     }
+  })
+
+  test('an onError that throws is swallowed and noted on stderr', async () => {
+    const uncaught: unknown[] = []
+    const record = (error: unknown) => uncaught.push(error)
+    process.on('uncaughtException', record)
+    const lines: string[] = []
+    const write = spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk))
+      return true
+    })
+    const core = createDb(env.core, {
+      max: 1,
+      onError: () => {
+        throw new Error('the handler itself failed')
+      },
+    })
+    try {
+      await rejectionOf(
+        withOrganization(core.db, A, async (tx) => {
+          const result = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`)
+          await killer.query('select pg_terminate_backend($1)', [result.rows[0]?.pid])
+          await pause(300)
+          await tx.execute(sql`select 1`)
+        })
+      )
+      await pause(100)
+    } finally {
+      write.mockRestore()
+      process.off('uncaughtException', record)
+      await core.close().catch(() => undefined)
+    }
+    expect(uncaught).toEqual([])
+    expect(lines.some((line) => line.includes('closeline-db: database connection error'))).toBe(
+      true
+    )
+    expect(lines.join('')).not.toContain('the handler itself failed')
   })
 
   test('the pool serves the next caller after a connection was lost', async () => {

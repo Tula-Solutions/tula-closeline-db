@@ -7,6 +7,7 @@ import { checkMigrations } from './migration-check'
 interface Entry {
   tag: string
   when: number
+  breakpoints?: boolean
 }
 
 function journal(entries: Entry[]): string {
@@ -99,6 +100,40 @@ describe('checkMigrations', () => {
       journal([BASE[0] as Entry, { tag: '0001_second', when: 2500 }])
     )
     expect(run().errors.join('\n')).toContain('0001_second')
+  })
+
+  test.each([
+    ['breakpoints', { breakpoints: false }],
+    ['version', { version: '8' }],
+    ['idx', { idx: 7 }],
+  ])('fails when %s of a journal entry already on the base ref is changed', (name, change) => {
+    const entries = BASE.map((entry, idx) => ({ idx, version: '7', breakpoints: true, ...entry }))
+    entries[1] = { ...entries[1], ...change } as (typeof entries)[number]
+    write(
+      'migrations/meta/_journal.json',
+      JSON.stringify({ version: '7', dialect: 'postgresql', entries })
+    )
+    const { errors } = run()
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toContain('0001_second')
+    expect(errors[0]).toContain(
+      name === 'idx' ? '"idx":7' : JSON.stringify(Object.values(change)[0])
+    )
+  })
+
+  test('passes when a journal entry lists the same fields in another order', () => {
+    const reordered = BASE.map((entry, idx) => ({
+      breakpoints: true,
+      when: entry.when,
+      tag: entry.tag,
+      version: '7',
+      idx,
+    }))
+    write(
+      'migrations/meta/_journal.json',
+      JSON.stringify({ version: '7', dialect: 'postgresql', entries: reordered })
+    )
+    expect(run().errors).toEqual([])
   })
 
   test('fails when a journal entry already on the base ref is removed', () => {

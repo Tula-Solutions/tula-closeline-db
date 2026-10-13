@@ -21,10 +21,7 @@ export interface MigrationCheckResult {
   warnings: string[]
 }
 
-interface JournalEntry {
-  tag: string
-  when: number
-}
+type JournalEntry = Record<string, unknown> & { tag: string; when: number }
 
 function git(repoDir: string, args: string[]): { ok: boolean; out: string } {
   // A git hook sets GIT_DIR and GIT_INDEX_FILE, which would point git at the wrong repository.
@@ -39,6 +36,11 @@ function git(repoDir: string, args: string[]): { ok: boolean; out: string } {
   return { ok: result.exitCode === 0, out: result.stdout.toString() }
 }
 
+// The entry as JSON with sorted keys, so two entries compare equal whatever order they list keys.
+function canonical(entry: JournalEntry): string {
+  return JSON.stringify(entry, Object.keys(entry).sort())
+}
+
 function parseJournal(text: string): JournalEntry[] | undefined {
   try {
     const parsed: unknown = JSON.parse(text)
@@ -46,7 +48,8 @@ function parseJournal(text: string): JournalEntry[] | undefined {
     if (!Array.isArray(entries)) {
       return undefined
     }
-    return entries.map((entry: { tag?: unknown; when?: unknown }) => ({
+    return entries.map((entry: Record<string, unknown>) => ({
+      ...entry,
       tag: String(entry.tag),
       when: Number(entry.when),
     }))
@@ -62,7 +65,8 @@ function parseJournal(text: string): JournalEntry[] | undefined {
  * Drizzle skips a migration it has already applied, so a hand edit to a file on `develop` changes
  * nothing in an existing database and silently differs from a fresh one. Every file under the
  * migrations folder at `baseRef` must be byte-identical in the working tree (the journal is
- * checked entry by entry instead, because it grows). When the ref cannot be resolved the
+ * checked entry by entry instead, because it grows, and each entry already on the base ref must
+ * be unchanged in every field, including `idx`, `version` and `breakpoints`). When the ref cannot be resolved the
  * comparison is skipped with a warning locally and is an error on CI; journal order is checked
  * either way.
  *
@@ -127,9 +131,9 @@ export function checkMigrations(options: MigrationCheckOptions): MigrationCheckR
       const actual = current[i]
       if (!actual) {
         errors.push(`${journalPath}: entry "${expected.tag}" exists on ${baseRef} but was removed`)
-      } else if (actual.tag !== expected.tag || actual.when !== expected.when) {
+      } else if (canonical(actual) !== canonical(expected)) {
         errors.push(
-          `${journalPath}: entry ${i} was "${expected.tag}" (${expected.when}) on ${baseRef} and is now "${actual.tag}" (${actual.when})`
+          `${journalPath}: entry ${i} ("${expected.tag}") was ${canonical(expected)} on ${baseRef} and is now ${canonical(actual)}`
         )
       }
     }

@@ -26,7 +26,8 @@ export const DEFAULT_LOCK_TIMEOUT_MS = 10_000
  *
  * @param ownerUrl - Connection string of the owner role.
  * @param options - Migrations folder and lock timeout.
- * @throws If the connection is not the owner role, or a migration fails (all roll back together).
+ * @throws If the connection is not the owner role, a migration fails (all roll back together), or
+ *   the server ends the connection partway.
  */
 export async function runMigrations(ownerUrl: string, options: MigrateOptions = {}): Promise<void> {
   const pool = new Pool({
@@ -35,6 +36,13 @@ export async function runMigrations(ownerUrl: string, options: MigrateOptions = 
     connectionTimeoutMillis: 10_000,
     lock_timeout: options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS,
   })
+  // A connection the server ends while a migration holds it would be an uncaught exception, which
+  // neither the caller's try/catch nor the `finally` below could see. The listeners keep that from
+  // crashing the process, so the next statement's rejection is what `runMigrations` reports.
+  pool.on('connect', (client) => {
+    client.on('error', () => undefined)
+  })
+  pool.on('error', () => undefined)
   try {
     const who = await pool.query<{ role: string }>('select current_user as role')
     const role = who.rows[0]?.role
