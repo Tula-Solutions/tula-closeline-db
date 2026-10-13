@@ -445,6 +445,8 @@ describe('auth.attempt_counters', () => {
             allowed: true,
             hits: 2,
           })
+          // A reading of the database clock taken while the first transaction still holds the row.
+          const held = (await first.query<{ t: Date }>('select clock_timestamp() as t')).rows[0]?.t
           const waiting = attempt(second, environmentId, hash)
           await untilBlocked(pid)
           await first.query('commit')
@@ -452,6 +454,11 @@ describe('auth.attempt_counters', () => {
           // the first's: it is counted, with no constraint violated.
           expect(await waiting).toMatchObject({ allowed: true, hits: 3 })
           await second.query('commit')
+          // Free failures lock until the instant they are counted, so the stored lock is the
+          // second statement's own clock reading. It cannot be earlier than `held`, which was
+          // taken while that statement waited for the lock; a clock read before the lock would be.
+          const stored = await rowOf(environmentId, hash)
+          expect(stored.locked_until.getTime()).toBeGreaterThanOrEqual(held?.getTime() ?? Infinity)
         } finally {
           first.release()
           second.release()

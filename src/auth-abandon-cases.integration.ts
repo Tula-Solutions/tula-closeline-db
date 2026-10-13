@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url'
 import { Pool } from 'pg'
 import {
   ABANDON_CLAIM,
+  ABANDON_GIVE_UP_SPENT,
+  ABANDON_LEARN,
+  ABANDON_MIN_GRACE_MS,
   ABANDON_PURGE_BATCH,
   ABANDON_RECORD,
   ABANDON_RESOLVE,
@@ -42,6 +45,8 @@ describe('auth.abandon_cases', () => {
   let region: AuthRegion
   /** Holds the bulk (environment a) and the lease tests (environment b), so counts are exact. */
   let bulk: AuthRegion
+  /** Holds the spent-case and grace tests, whose claims must see no other case. */
+  let extra: AuthRegion
 
   /**
    * Insert a case in an environment. By default it is due, its attempt long over: the attempt
@@ -89,11 +94,12 @@ describe('auth.abandon_cases', () => {
     corePool = new Pool({ connectionString: env.core, max: 1 })
     region = await seedAuthRegion(authPool)
     bulk = await seedAuthRegion(authPool)
+    extra = await seedAuthRegion(authPool)
   })
 
   afterAll(async () => {
     await owner.query('delete from auth.workspaces where id = any($1)', [
-      [region?.workspaceId, bulk?.workspaceId],
+      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId],
     ])
     await Promise.all([owner.end(), authPool.end(), corePool.end()])
   })
@@ -238,6 +244,7 @@ describe('auth.abandon_cases', () => {
             uuid(),
             attemptId,
             new Date(Date.UTC(2020, 0, 1)),
+            ABANDON_MIN_GRACE_MS,
           ])
         )
       const first = uuid()
@@ -480,6 +487,154 @@ describe('auth.abandon_cases', () => {
         )
       )
       expect(left.rows).toEqual([{ open: OPEN + 1, resolved: RESOLVED - 50 }])
+    })
+  })
+
+  describe('a case that has used every attempt', () => {
+    test('is never claimed, so it cannot wedge the batch, and ends gave_up through the safety-net statement', async () => {
+      const environmentId = extra.a.environmentId
+      const spent = (await addCase(environmentId, { attempts: 100 }, uuid(), extra.projectId))
+        .rows[0]?.id
+      const other = (await addCase(environmentId, {}, uuid(), extra.projectId)).rows[0]?.id
+      const claimed = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_CLAIM, [environmentId, 10, 60_000])
+      )
+      expect(claimed.rows.map((row) => ({ id: row.id, attempts: row.attempts }))).toEqual([
+        { id: other, attempts: 1 },
+      ])
+      const given = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_GIVE_UP_SPENT, [environmentId, 10])
+      )
+      expect(given.rows).toEqual([{ id: spent }])
+      const row = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(
+          'select outcome, resolved_at is not null as resolved from auth.abandon_cases where id = $1',
+          [spent]
+        )
+      )
+      expect(row.rows).toEqual([{ outcome: 'gave_up', resolved: true }])
+      // Nothing left to give up, and the leased case is not spent.
+      const again = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_GIVE_UP_SPENT, [environmentId, 10])
+      )
+      expect(again.rows).toEqual([])
+    })
+  })
+
+  describe('the grace after an attempt expires', () => {
+    const databaseNow = async (): Promise<Date> =>
+      (await owner.query<{ t: Date }>('select clock_timestamp() as t')).rows[0]?.t ?? new Date(0)
+
+    const record = async (expiresAt: Date, graceMs: number) => {
+      const environmentId = extra.b.environmentId
+      const added = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_RECORD, [
+          uuid(),
+          extra.projectId,
+          environmentId,
+          uuid(),
+          uuid(),
+          uuid(),
+          expiresAt,
+          graceMs,
+        ])
+      )
+      return added.rows[0]?.id as string
+    }
+
+    const claimIds = async (): Promise<string[]> => {
+      const environmentId = extra.b.environmentId
+      const claimed = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_CLAIM, [environmentId, 50, 600_000])
+      )
+      return claimed.rows.map((row) => row.id as string)
+    }
+
+    test('a grace below the floor is raised to it, and the case never precedes its expiry', async () => {
+      const now = await databaseNow()
+      const id = await record(new Date(now.getTime() - 3_600_000), 0)
+      const gap = await inAuthEnvironment(authPool, extra.b.environmentId, (client) =>
+        client.query(
+          `select extract(epoch from next_attempt_at - attempt_expires_at)::float8 as seconds
+             from auth.abandon_cases where id = $1`,
+          [id]
+        )
+      )
+      expect(gap.rows).toEqual([{ seconds: ABANDON_MIN_GRACE_MS / 1000 }])
+    })
+
+    test('a case is not claimable before expiry plus grace, and is after', async () => {
+      const now = await databaseNow()
+      const future = await record(new Date(now.getTime() + 3_600_000), 1)
+      const justExpired = await record(now, 1)
+      const longAgo = await record(new Date(now.getTime() - 3_600_000), 1)
+      // Only the case whose expiry and grace are both behind the database clock is claimable.
+      expect(await claimIds()).toEqual([longAgo])
+      // Let the grace of the second pass (move its due time to now, which the table allows
+      // because its expiry is past), and it is claimable; the future one still is not.
+      await inAuthEnvironment(authPool, extra.b.environmentId, (client) =>
+        client.query(
+          'update auth.abandon_cases set next_attempt_at = clock_timestamp() where id = $1',
+          [justExpired]
+        )
+      )
+      expect(await claimIds()).toEqual([justExpired])
+      expect(future).toBeDefined()
+    })
+
+    test('a time before the expiry cannot be made the due time', async () => {
+      const now = await databaseNow()
+      const future = await record(new Date(now.getTime() + 3_600_000), 1)
+      const message = await rejectionOf(
+        inAuthEnvironment(authPool, extra.b.environmentId, (client) =>
+          client.query(
+            'update auth.abandon_cases set next_attempt_at = clock_timestamp() where id = $1',
+            [future]
+          )
+        )
+      )
+      expect(message).toContain('abandon_cases_due_after_expiry')
+    })
+  })
+
+  describe('learning the Organization of a case', () => {
+    const learn = (id: string, organizationId: string) =>
+      inAuthEnvironment(authPool, region.a.environmentId, (client) =>
+        client.query(ABANDON_LEARN, [id, region.a.environmentId, organizationId])
+      )
+    const organizationOf = async (id: string) =>
+      (
+        await inAuthEnvironment(authPool, region.a.environmentId, (client) =>
+          client.query('select core_organization_id as org from auth.abandon_cases where id = $1', [
+            id,
+          ])
+        )
+      ).rows[0]?.org
+
+    test('fills a null once, and never overwrites an id', async () => {
+      const id = (await addCase(region.a.environmentId, {}, null)).rows[0]?.id
+      const first = uuid()
+      expect((await learn(id, first)).rows).toEqual([{ id }])
+      expect(await organizationOf(id)).toBe(first)
+      expect((await learn(id, uuid())).rowCount).toBe(0)
+      expect(await organizationOf(id)).toBe(first)
+    })
+
+    test('does not touch a resolved case', async () => {
+      const id = (
+        await addCase(region.a.environmentId, { resolved_at: raw('now()'), outcome: 'done' }, null)
+      ).rows[0]?.id
+      expect((await learn(id, uuid())).rowCount).toBe(0)
+      expect(await organizationOf(id)).toBeNull()
+    })
+
+    test('an Organization another case already holds is the unique violation, and the case stays without it', async () => {
+      const held = uuid()
+      await addCase(region.a.environmentId, {}, held)
+      const id = (await addCase(region.a.environmentId, {}, null)).rows[0]?.id
+      const message = await rejectionOf(learn(id, held))
+      expect(message).toContain('abandon_cases_environment_organization_key')
+      expect(await organizationOf(id)).toBeNull()
     })
   })
 

@@ -140,8 +140,26 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
       the `flow_attempts` row, which is purged seconds after it expires. The table keeps
       `next_attempt_at >= attempt_expires_at` (`abandon_cases_due_after_expiry`), and a case is due
       when `next_attempt_at` has passed by the database clock: so a case is never due while its
-      attempt can still write the account, and the claim needs no second condition. Record the
-      case with `next_attempt_at` equal to `attempt_expires_at`.
+      attempt can still write the account, and the claim needs no second condition.
+      **The grace.** An attempt's expiry is not yet proof that no account will be written: a
+      request that started before it can commit its account up to the call bound later, and an
+      abandon could then delete a working Owner's Organization. So `ABANDON_RECORD` takes a grace
+      in milliseconds and stores `next_attempt_at = attempt_expires_at + grace`. The service
+      passes its call bound plus a skew margin; a grace below `ABANDON_MIN_GRACE_MS` (10 s, the
+      retention floor) is raised to it, and that floor is the least safe value, not a good one.
+    - **A spent case cannot wedge the batch.** The claim counts an attempt, and the table bounds
+      `attempts` at 100, so a case at 100 would abort the statement for every sweeper. The claim
+      therefore skips cases with `attempts >= 100` (the bound is one shared constant,
+      `ABANDON_CASE_MAX_ATTEMPTS`). **Who sets `gave_up`**: the service, with `ABANDON_RESOLVE`,
+      when a claimed case reaches the service's own attempt limit (lower than the bound); and
+      `ABANDON_GIVE_UP_SPENT`, a safety net run now and then, for open cases that nevertheless
+      used all 100 and whose lease has ended.
+    - **How the statements are run.** Every `abandon_cases` statement runs inside
+      `withEnvironment` (the table has forced row-level security, so outside it nothing is visible
+      and nothing can be written). Run `ABANDON_PURGE_BATCH` there too, once per environment.
+      The strings are plain text, not type-checked against the schema: the integration suite is
+      their only guard, and a change to a column needs the statements and their tests changed
+      together.
     - **The batch is a lease, not one long transaction.** A short transaction claims due cases
       with `for update skip locked`, pushes `next_attempt_at` forward by the lease and counts the
       attempt, and commits; core is called outside any transaction; a second short transaction
@@ -160,7 +178,8 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     insert into auth.abandon_cases
       (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
        attempt_expires_at, next_attempt_at)
-    values ($1, $2, $3, $4, $5, $6, $7::timestamptz, $7::timestamptz)
+    values ($1, $2, $3, $4, $5, $6, $7::timestamptz,
+            $7::timestamptz + make_interval(secs => greatest($8::int, 10000)::float8 / 1000))
     on conflict do nothing
     returning id
     ```
@@ -170,7 +189,8 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     ```sql
     with due as (
       select id from auth.abandon_cases
-      where environment_id = $1 and resolved_at is null and next_attempt_at <= clock_timestamp()
+      where environment_id = $1 and resolved_at is null and attempts < 100
+        and next_attempt_at <= clock_timestamp()
       order by next_attempt_at
       limit $2
       for update skip locked)
@@ -183,12 +203,39 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     returning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts
     ```
 
-    Record the outcome:
+    Record the outcome (also how the service sets `gave_up` at its own limit):
 
     ```sql
     update auth.abandon_cases
     set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
     where id = $1 and environment_id = $2 and resolved_at is null
+    returning id
+    ```
+
+    The safety net for spent cases:
+
+    ```sql
+    update auth.abandon_cases
+    set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
+    where id in (
+      select id from auth.abandon_cases
+      where environment_id = $1 and resolved_at is null and attempts >= 100
+        and next_attempt_at <= clock_timestamp()
+      order by next_attempt_at
+      limit $2
+      for update skip locked)
+    returning id
+    ```
+
+    Fill in the Organization id once it is learned. Another case already holding that Organization
+    id is the unique violation `abandon_cases_environment_organization_key` (SQLSTATE 23505):
+    that Organization is already tracked, so the service resolves this case with `ABANDON_RESOLVE`
+    as `gave_up` and does nothing else:
+
+    ```sql
+    update auth.abandon_cases
+    set core_organization_id = $3, updated_at = clock_timestamp()
+    where id = $1 and environment_id = $2 and core_organization_id is null and resolved_at is null
     returning id
     ```
 
@@ -220,8 +267,14 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
       and every stored time. The service passes durations (the wait schedule, the window length),
       never a point in time, so instance clock skew and two sign-ins that read their clocks before
       waiting for a connection cannot make a stored time go backwards. Tests move time by
-      back-dating rows, never by sleeping. Several `clock_timestamp()` calls in one statement
-      differ by microseconds, which is why no check orders a lock against `started_at`.
+      back-dating rows, never by sleeping. **The clock is read once per statement** in the
+      `do update` branch (a `with ts as (select clock_timestamp() as tick)` read by every clause),
+      so a row cannot take its count from the old window and its times from the new one. That one
+      read is made only by the `do update` clauses, which Postgres evaluates after it has locked
+      the row (a common table expression runs when it is first read), never by the `values` row,
+      which is evaluated before the conflict is found. The `values` row reads the clock itself, so
+      a first failure's times differ by microseconds, which is why no check orders a lock against
+      `started_at`.
     - **Checks:** kind known; `key_hash` 32 bytes; `hits` 1 to 1,000,000; `expires_at >
       started_at`; a lock exactly on `lockout` rows (`lock_whole`); a lock no later than
       `expires_at` (`lock_before_expiry`). Dropped: `locked_until >= started_at`, which the
@@ -241,20 +294,28 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     period in milliseconds). A row back means the attempt goes ahead (`wait_ms` is the wait this
     failure imposes). No row back means the address is locked and the attempt was not counted; the
     retry time then comes from a second read, which can race (the row may be cleared or unlocked
-    in between, giving no row or 0), and the service just tries again.
+    in between, giving no row or 0). In that case the service runs the attempt statement again at
+    most once, and otherwise answers locked with a `Retry-After` of at least
+    `LOCKOUT_MIN_RETRY_AFTER_MS` (1 s).
+
+    **How they are run.** The attempt-counter statements run on the pool, each with an explicit
+    `environment_id` parameter (the table has no row-level security, so nothing scopes them
+    for you); `COUNTER_PURGE_BATCH` crosses environments on purpose. The strings are not
+    type-checked against the schema; the integration suite is their only guard.
 
     ```sql
+    with ts as (select clock_timestamp() as tick)
     insert into auth.attempt_counters as c
       (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
     values ($1, 'lockout', $2, 1, clock_timestamp(),
             clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),
             clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))
     on conflict (environment_id, kind, key_hash) do update set
-      hits = least(case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end, 1000000),
-      started_at = case when c.expires_at <= clock_timestamp() then clock_timestamp() else c.started_at end,
-      locked_until = clock_timestamp() + make_interval(secs => ($3::int[])[least(case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end, cardinality($3::int[]))]::float8 / 1000),
-      expires_at = clock_timestamp() + make_interval(secs => (($3::int[])[least(case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end, cardinality($3::int[]))] + $4::int)::float8 / 1000)
-    where c.locked_until <= clock_timestamp()
+      hits = least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, 1000000),
+      started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
+      locked_until = (select tick from ts) + make_interval(secs => ($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))]::float8 / 1000),
+      expires_at = (select tick from ts) + make_interval(secs => (($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))] + $4::int)::float8 / 1000)
+    where c.locked_until <= (select tick from ts)
     returning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms
     ```
 
@@ -277,15 +338,16 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     over the limit are counted too, as the memory adapter does):
 
     ```sql
+    with ts as (select clock_timestamp() as tick)
     insert into auth.attempt_counters as c
       (environment_id, kind, key_hash, hits, started_at, expires_at)
     values ($1, 'rate_limit', $2, 1, clock_timestamp(),
             clock_timestamp() + make_interval(secs => $3::float8 / 1000))
     on conflict (environment_id, kind, key_hash) do update set
-      hits = case when c.expires_at <= clock_timestamp() then 1 else least(c.hits + 1, 1000000) end,
-      started_at = case when c.expires_at <= clock_timestamp() then clock_timestamp() else c.started_at end,
-      expires_at = case when c.expires_at <= clock_timestamp()
-                        then clock_timestamp() + make_interval(secs => $3::float8 / 1000)
+      hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,
+      started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
+      expires_at = case when c.expires_at <= (select tick from ts)
+                        then (select tick from ts) + make_interval(secs => $3::float8 / 1000)
                         else c.expires_at end
     returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms
     ```
