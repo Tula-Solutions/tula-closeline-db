@@ -6504,7 +6504,7 @@ declare const IDEMPOTENCY_ROUTE_MAX = 64;
 declare const IDEMPOTENCY_KEY_MAX = 255;
 /** The length of an idempotency key's request hash, in bytes: a SHA-256 of the request body. */
 declare const IDEMPOTENCY_HASH_BYTES = 32;
-/** The largest stored response of an idempotency key, in bytes as Postgres sizes the jsonb value. */
+/** The largest stored response of an idempotency key, in bytes of its text form (`response::text`). */
 declare const IDEMPOTENCY_RESPONSE_MAX_BYTES = 16384;
 /**
 * An Organization (core.organizations). Its primary key is named `organization_id` so the one
@@ -7425,21 +7425,23 @@ declare const organizationState: PgTableWithColumns_a5zn0g31<{
 * The outcome of one public `POST`, kept so a retry with the same `Idempotency-Key` gets the same
 * answer instead of doing the work twice. One row per `(organization_id, user_id, route, key)`: the
 * key is the primary key in that order, so another Organization, user or route can reuse the same
-* client key. The row is inserted in flight (`status` and `response` both null) before the work
-* starts, and completed once, in the same transaction as the work or after it.
+* client key. The service inserts the row in flight (`status` and `response` both null), does its
+* write and completes the row in the same transaction, so an in-flight row is never committed and a
+* killed request strands no key; nothing recovers an in-flight row that was committed on its own.
 *
 * - `route` is a short route name such as `invitations.create` (1 to 64 of `a-z`, `0-9`, `.`, `_`).
 * - `key` is the client's key: 1 to 255 printable ASCII characters (`!` to `~`, no space).
 * - `request_hash` is the SHA-256 (32 bytes) of the request body, so the same key sent with a
 *   different body is told apart from a retry. The body itself is never stored.
 * - `status` is the HTTP status of the stored response (100 to 599), null while in flight.
-* - `response` is the stored body, null exactly when `status` is null, and at most 16 KiB as
-*   Postgres sizes the value, so no one row can be made large.
+* - `response` is the stored body, null exactly when `status` is null, and at most 16384
+*   bytes of its text form (`octet_length(response::text)`), so no one row can be made large.
 *
 * A row is completed once: a trigger refuses any update of a completed row, and any change to the
-* Organization, user, route, key, hash or creation time of a row, in flight or not. Complete with
-* `UPDATE ... WHERE <key> AND status IS NULL` and treat zero rows as already completed. Rows are
-* only ever removed by the purge or with their Organization. The service role has the schema's
+* Organization, user, route, key, hash or creation time of a row, in flight or not, so no `UPDATE`
+* can replace a stored answer. (A `DELETE` followed by an `INSERT` by the core role can, which the
+* purge relies on.) Complete with `UPDATE ... WHERE <key> AND status IS NULL` and treat zero rows
+* as already completed. Rows are only removed by the purge or with their Organization. The service role has the schema's
 * default `SELECT`, `INSERT`, `UPDATE` and `DELETE`, and no other service role can reach it.
 *
 * Lists served:
@@ -7447,7 +7449,9 @@ declare const organizationState: PgTableWithColumns_a5zn0g31<{
 * - The purge, per Organization and in batches: `DELETE ... WHERE ctid = ANY (ARRAY(SELECT ctid
 *   FROM core.idempotency_keys WHERE organization_id = $1 AND created_at < $2 ORDER BY created_at
 *   LIMIT $n))`, inside the Organization's scope, on `idempotency_keys_purge_idx` (no sort, and no
-*   cross-tenant function). Repeat until a batch removes fewer than `$n` rows.
+*   cross-tenant function). Repeat until a batch removes none: a short batch does not mean the
+*   backlog is empty, because a row another session is completing is skipped and goes with the next
+*   batch. The `ctid` form assumes the table is not partitioned.
 */
 declare const idempotencyKeys: PgTableWithColumns_a5zn0g31<{
 	name: "idempotency_keys";

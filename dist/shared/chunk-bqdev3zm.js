@@ -1028,7 +1028,7 @@ var idempotencyKeys2 = coreSchema2.table("idempotency_keys", {
   check10("idempotency_keys_request_hash_length", sql15`octet_length(${t.requestHash}) = ${sql15.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
   check10("idempotency_keys_status_range", sql15`${t.status} between 100 and 599`),
   check10("idempotency_keys_response_matches_status", sql15`(${t.status} is null) = (${t.response} is null)`),
-  check10("idempotency_keys_response_size", sql15`pg_column_size(${t.response}) <= ${sql15.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
+  check10("idempotency_keys_response_size", sql15`octet_length(${t.response}::text) <= ${sql15.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
   index21("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
 ]);
 // src/schema/playbook.ts

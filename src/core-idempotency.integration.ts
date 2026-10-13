@@ -395,18 +395,50 @@ describe('core.idempotency_keys', () => {
       expect(refused.code).toBe('23503')
     })
 
-    test('the largest response that fits is accepted and one byte more is not', async () => {
-      // The size of a jsonb string is its length plus a fixed overhead; measure the overhead.
-      const probe = await owner.query<{ size: number }>(
-        "select pg_column_size(to_jsonb(repeat('a', 1000))) as size"
-      )
-      const overhead = (probe.rows[0]?.size ?? 0) - 1000
-      const fits = 16_384 - overhead
-      await put({ orgId: a, key: freshKey(), status: 200, response: 'a'.repeat(fits) })
+    test('the bound is the length of the response as text: 16384 bytes fit and 16385 do not', async () => {
+      // A JSON string is its characters plus two quotes in text form.
+      await put({ orgId: a, key: freshKey(), status: 200, response: 'a'.repeat(16_382) })
       const refused = await failure(
-        put({ orgId: a, key: freshKey(), status: 200, response: 'a'.repeat(fits + 1) })
+        put({ orgId: a, key: freshKey(), status: 200, response: 'a'.repeat(16_383) })
       )
       expect(refused.constraint).toBe('idempotency_keys_response_size')
+    })
+
+    test('the bound counts bytes, not characters', async () => {
+      // An e with an acute accent is two bytes in UTF-8: 8191 of them and two quotes are 16384 bytes.
+      await put({ orgId: a, key: freshKey(), status: 200, response: 'é'.repeat(8191) })
+      const refused = await failure(
+        put({ orgId: a, key: freshKey(), status: 200, response: 'é'.repeat(8192) })
+      )
+      expect(refused.constraint).toBe('idempotency_keys_response_size')
+    })
+
+    test('a small body that is large as jsonb is accepted: 2,000 integers are 6,000 bytes of text', async () => {
+      await put({ orgId: a, key: freshKey(), status: 200, response: new Array(2000).fill(1) })
+    })
+
+    test('a stored, compressible jsonb over the bound is refused when it arrives by INSERT ... SELECT', async () => {
+      // Stored in a table, a 200 KB string compresses to about 2 KB, and the datum a select hands
+      // to the insert is that compressed one. The bound is on the text, not on that datum.
+      const key = freshKey()
+      const refused = await failure(
+        scoped(core, a, async (c) => {
+          await c.query('create temp table it_big (j jsonb) on commit drop')
+          await c.query("insert into it_big select to_jsonb(repeat('x', 200000))")
+          const stored = await c.query<{ size: number; len: number }>(
+            'select pg_column_size(j) as size, length(j::text) as len from it_big'
+          )
+          expect(stored.rows[0]?.size).toBeLessThan(16_384)
+          expect(stored.rows[0]?.len).toBeGreaterThan(200_000)
+          await c.query(
+            `insert into ${TABLE} (organization_id, user_id, route, key, request_hash, status, response)
+             select $1, 'usr_00000000000000000000000000000001', 'r', $2, $3, 200, j from it_big`,
+            [a, key, hashOf('big')]
+          )
+        })
+      )
+      expect(refused.constraint).toBe('idempotency_keys_response_size')
+      expect(await count(a, 'key = $1', [key])).toBe(0)
     })
 
     test.each([
@@ -574,6 +606,82 @@ describe('core.idempotency_keys', () => {
           (await c.query(`select status, response from ${TABLE} where key = $1`, [key])).rows[0]
       )
       expect(row).toEqual({ status: 200, response: { winner: 1 } })
+    })
+  })
+
+  describe('a purge batch skips a row another session is completing', () => {
+    /** One bounded batch of the purge, in the Organization's scope. */
+    const purge = (c: PoolClient, orgId: string, limit: number) =>
+      c.query(
+        `delete from ${TABLE}
+          where ctid = any(array(
+            select ctid from ${TABLE}
+             where organization_id = $1 and created_at < now() + interval '1 day'
+             order by created_at
+             limit $2))`,
+        [orgId, limit]
+      )
+
+    /** Begin a transaction scoped to `orgId` on a connection of the service role. */
+    async function begin(orgId: string): Promise<PoolClient> {
+      const c = await core.connect()
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      return c
+    }
+
+    test('a short batch is not an empty backlog: the skipped row goes with the next batch', async () => {
+      const orgId = await createOrg()
+      const keys = [1, 2, 3, 4, 5].map(() => freshKey())
+      await inOrg(orgId, async (c) => {
+        // Five requests an hour apart, the first key the oldest.
+        for (const [i, key] of keys.entries()) {
+          await c.query(
+            `insert into ${TABLE} (organization_id, user_id, route, key, request_hash, created_at)
+             values ($1, 'usr_00000000000000000000000000000001', 'r', $2, $3,
+                     now() - interval '1 day' + $4 * interval '1 hour')`,
+            [orgId, key, hashOf(key), i]
+          )
+        }
+      })
+      const completing = await begin(orgId)
+      const purging = await begin(orgId)
+      try {
+        // One session holds an uncommitted completion of the oldest row.
+        const first = await completing.query(
+          `update ${TABLE} set status = 200, response = '{}' where key = $1 and status is null`,
+          [keys[0]]
+        )
+        expect(first.rowCount).toBe(1)
+        // The purge of five reaches the other four, then waits on the row being completed.
+        const pid = (await purging.query<{ pid: number }>('select pg_backend_pid() as pid')).rows[0]
+          ?.pid
+        const batch = purge(purging, orgId, 5)
+        for (let i = 0; i < 100; i++) {
+          const blocked = await owner.query(
+            'select 1 from pg_locks where pid = $1 and not granted',
+            [pid]
+          )
+          if (blocked.rowCount) {
+            break
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        }
+        // When the completion commits, the row is a new version that is no longer the one the
+        // batch chose, so the batch skips it and removes four.
+        await completing.query('commit')
+        expect((await batch).rowCount).toBe(4)
+        await purging.query('commit')
+      } finally {
+        await completing.query('rollback').catch(() => undefined)
+        await purging.query('rollback').catch(() => undefined)
+        completing.release()
+        purging.release()
+      }
+      // The backlog was not empty: the next batch takes the last row, and the one after finds none.
+      expect(await inOrg(orgId, async (c) => (await purge(c, orgId, 5)).rowCount)).toBe(1)
+      expect(await inOrg(orgId, async (c) => (await purge(c, orgId, 5)).rowCount)).toBe(0)
+      expect(await count(orgId)).toBe(0)
     })
   })
 

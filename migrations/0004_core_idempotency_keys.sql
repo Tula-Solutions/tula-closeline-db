@@ -17,7 +17,7 @@ CREATE TABLE "core"."idempotency_keys" (
 	CONSTRAINT "idempotency_keys_request_hash_length" CHECK (octet_length("core"."idempotency_keys"."request_hash") = 32),
 	CONSTRAINT "idempotency_keys_status_range" CHECK ("core"."idempotency_keys"."status" between 100 and 599),
 	CONSTRAINT "idempotency_keys_response_matches_status" CHECK (("core"."idempotency_keys"."status" is null) = ("core"."idempotency_keys"."response" is null)),
-	CONSTRAINT "idempotency_keys_response_size" CHECK (pg_column_size("core"."idempotency_keys"."response") <= 16384)
+	CONSTRAINT "idempotency_keys_response_size" CHECK (octet_length("core"."idempotency_keys"."response"::text) <= 16384)
 );
 --> statement-breakpoint
 ALTER TABLE "core"."idempotency_keys" ADD CONSTRAINT "idempotency_keys_organization_id_organizations_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "core"."organizations"("organization_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

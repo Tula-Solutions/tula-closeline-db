@@ -148,6 +148,7 @@ describe('deleting a large Organization does a bounded amount of work per member
 interface PlanNode {
   'Node Type': string
   'Index Name'?: string
+  'Index Cond'?: string
   Plans?: PlanNode[]
 }
 
@@ -304,6 +305,7 @@ interface AnalysedPlan extends PlanNode {
   'Shared Hit Blocks'?: number
   'Shared Read Blocks'?: number
   'Actual Rows'?: number
+  'Index Cond'?: string
   Relation?: string
 }
 
@@ -447,6 +449,12 @@ describe('looking up and purging idempotency keys read one index each, in a boun
     )
     const nodes = planNodes(plan)
     expect(nodes.map((n) => n['Index Name']).filter(Boolean)).toEqual([PURGE_INDEX])
+    // The index is read by its leading column: the Organization comes first in the condition, so
+    // only that Organization's range is walked, oldest first. The same two columns the other way
+    // round would be read across every Organization's expired rows.
+    const condition = nodes.find((n) => n['Index Name'] === PURGE_INDEX)?.['Index Cond'] ?? ''
+    expect(condition).toMatch(/^\(\(?[\w.]*organization_id = /)
+    expect(condition.indexOf('organization_id')).toBeLessThan(condition.indexOf('created_at'))
     expect(nodes.map((n) => n['Node Type'])).not.toContain('Seq Scan')
     expect(nodes.map((n) => n['Node Type'])).not.toContain('Sort')
     expect(nodes.map((n) => n['Node Type'])).not.toContain('Incremental Sort')

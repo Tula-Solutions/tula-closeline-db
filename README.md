@@ -186,23 +186,42 @@ route can reuse a client key. `route` is a short name such as `invitations.creat
 `a-z`, `0-9`, `.`, `_`), `key` is 1 to 255 printable ASCII characters (no space), `request_hash` is
 the 32-byte SHA-256 of the request body (the body is never stored), `status` is the stored HTTP
 status (100 to 599) and `response` the stored body. A request is **in flight** while both are null;
-a check ties them together (null exactly together), and `response` is at most 16 KiB
-(`pg_column_size`; the exported constants are `IDEMPOTENCY_ROUTE_MAX`, `IDEMPOTENCY_KEY_MAX`,
-`IDEMPOTENCY_HASH_BYTES` and `IDEMPOTENCY_RESPONSE_MAX_BYTES`).
+a check ties them together (null exactly together), and `response` is at most 16384 bytes of its
+text form (`octet_length(response::text)`, the same however the value reaches the table, so a small
+body that is large as binary jsonb, such as an array of 2,000 integers, is accepted and a compressed
+stored value over the bound is refused; the exported constants are `IDEMPOTENCY_ROUTE_MAX`,
+`IDEMPOTENCY_KEY_MAX`, `IDEMPOTENCY_HASH_BYTES` and `IDEMPOTENCY_RESPONSE_MAX_BYTES`).
 
 - **A row is completed once.** The `idempotency_keys_final` trigger refuses any update of a row whose
   `status` is set, even one that repeats the values, and any change to the Organization, user,
-  route, key, hash or creation time of a row, completed or not. Complete with `UPDATE ... WHERE
-  <key> AND status IS NULL` and read zero rows as already completed (a second completion that
-  waited on the first one's lock re-reads the row, finds it completed, and writes nothing).
+  route, key, hash or creation time of a row, completed or not, so no `UPDATE` can replace a stored
+  answer. (A `DELETE` followed by an `INSERT` by the core role can, and the purge relies on
+  `DELETE`.) Complete with `UPDATE ... WHERE <key> AND status IS NULL` and read zero rows as already
+  completed (a second completion that waited on the first one's lock re-reads the row, finds it
+  completed, and writes nothing).
+- **The service inserts the row in flight, does its write and completes the row in the same
+  transaction.** An in-flight row is therefore never committed, and a request killed half way rolls
+  back and strands no key. A concurrent retry with the same key waits on the first transaction's
+  primary-key lock (the service bounds that wait with a lock timeout and answers
+  `request.idempotency_in_progress`, 409); a retry after the commit reads the completed row.
+  **Nothing recovers an in-flight row that was committed on its own** (the trigger forbids
+  refreshing its hash or creation time), so the service must never commit one.
 - **The purge is per Organization and bounded**, from inside the Organization's scope, so no
   cross-tenant function exists. Remove a batch with `DELETE ... WHERE ctid = ANY (ARRAY(SELECT ctid
   FROM core.idempotency_keys WHERE organization_id = $1 AND created_at < $2 ORDER BY created_at
-  LIMIT $n))`, repeated until a batch removes fewer than `$n` rows. It runs on
-  `idempotency_keys_purge_idx` on `(organization_id, created_at)` with no sort; the lookup of one
-  key runs on the primary key. `core-plans.integration.ts` asserts both plans and their buffer
-  counts (about two buffers per purged row, four for a lookup) on an Organization of 20,000 keys
-  among 44,000, never the time.
+  LIMIT $n))`, **repeated until a batch removes none**: a short batch does not mean the backlog is
+  empty, because a row another session is completing is skipped and goes with the next batch. The
+  `ctid` form assumes the table is not partitioned. It runs on `idempotency_keys_purge_idx` on
+  `(organization_id, created_at)` with no sort, reading the Organization's range by the leading
+  column; the lookup of one key runs on the primary key. `core-plans.integration.ts` asserts both
+  plans (including the index condition) and their buffer counts (about two buffers per purged row,
+  four for a lookup) on an Organization of 20,000 keys among 44,000, never the time. **The plan is
+  checked after `ANALYZE`.** On a table with no statistics the inner select can sort all of the
+  Organization's expired rows, so the service runs the purge with the limit in place and relies on autovacuum's analyze.
+- **Retention.** The purge runs from an Organization's own write path, so the service's 24 hours is
+  a ceiling only for an Organization that keeps writing: an idle Organization keeps its last rows
+  until its next write or until it is deleted. **The service must never store a response that
+  carries a secret** (an Invitation token, for example); store a redacted body.
 - `closeline_core` has the schema's default `SELECT`, `INSERT`, `UPDATE` and `DELETE` and no
   `TRUNCATE`; no other service role can reach the schema. The table is a tenant table, so the
   catalog check needs no allowlist entry.

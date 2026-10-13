@@ -5673,7 +5673,7 @@
         },
         "idempotency_keys_response_size": {
           "name": "idempotency_keys_response_size",
-          "value": "pg_column_size(\"core\".\"idempotency_keys\".\"response\") <= 16384"
+          "value": "octet_length(\"core\".\"idempotency_keys\".\"response\"::text) <= 16384"
         }
       },
       "isRLSEnabled": false
