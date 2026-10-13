@@ -1092,11 +1092,12 @@ describe('work discovery, erasure and spent purges', () => {
       )) {
         expect(await hintOf(kind, org)).toBeUndefined()
       }
-      // The upload attempt may have left an object only the sweep removes: its marker and hint stay.
+      // The upload attempt may have left an object only the sweep removes: its hint stays. An
+      // attempt writes no orphan_sweeps row any more (only orphan_sweep_done does), so there is none.
       expect(await hintOf('orphan_sweep', org)).toBeDefined()
       expect(
         (await asOwner(org, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
-      ).toBe(1)
+      ).toBe(0)
 
       // The second Organization: every row and its counter exactly as before.
       expect(await snapshot(other)).toEqual(otherBefore)

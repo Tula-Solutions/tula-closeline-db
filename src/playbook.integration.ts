@@ -2401,7 +2401,7 @@ describe('the playbook schema', () => {
         documents: `insert into playbook.documents (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)
                     values ('${newDoc()}', '${ZERO_ORG}', 'a', '\\x${'00'.repeat(32)}', 1, 'a/b', 'pdf', '${newUser()}', 'k')`,
         organization_usage: `insert into playbook.organization_usage (organization_id) values ('${ZERO_ORG}')`,
-        orphan_sweeps: `insert into playbook.orphan_sweeps (organization_id, last_attempt_at) values ('${ZERO_ORG}', now())`,
+        orphan_sweeps: `insert into playbook.orphan_sweeps (organization_id, swept_through) values ('${ZERO_ORG}', now())`,
         ingestion_jobs: `insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
                          values ('${newJob()}', '${ZERO_ORG}', '${newDoc()}', 0, now())`,
         index_settings: `insert into playbook.index_settings (organization_id, embedding_model, embedding_dimension) values ('${ZERO_ORG}', 'm', 8)`,
