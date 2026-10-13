@@ -130,7 +130,7 @@ Organizations and who belongs to them (tickets: hub issue 9), and the idempotenc
 | Table | Holds |
 | --- | --- |
 | `organizations` | the Organization; keyed by `organization_id`; Region fixed at creation; `owner_count` is trigger-kept |
-| `memberships` | a user (opaque `usr_` id, no cross-schema key) in an Organization with one of the four roles |
+| `memberships` | a user (opaque `usr_` id, no cross-schema key) in an Organization with one of the four roles, and core's copy of the member's `email` (required) and `name` (optional); see below |
 | `teams`, `team_members` | Teams; composite keys `(organization_id, id)` make a member and Team of different Organizations impossible |
 | `invitations` | email, role (never Owner), optional Team, SHA-256 of the token (never the token), expiry, `pending`/`accepted`/`revoked`; indexed by `invitations_state_list_idx` (below) |
 | `idempotency_keys` | the outcome of one public `POST`, per Organization, user, route and client key; see below |
@@ -143,6 +143,23 @@ three states, revoked included. Migration `0003` builds it under a write lock, b
 run in a transaction and cannot use `CONCURRENTLY`: apply it before core takes traffic or while
 `core.invitations` is small. A later index on a large table needs a separate step outside a
 transaction.
+
+**A member's email and name** (`memberships.email`, `memberships.name`, migration `0005`, ADR 0015).
+Core keeps a copy so the member list needs no second service; auth stays the source of truth. `email`
+is `NOT NULL` with no default and the same check as `invitations.email` (`memberships_email_shape`:
+lower-case ASCII, one `@`, printable ASCII, 3 to 320 characters). `name` is nullable (a person may
+have none) and, when present, 1 to 201 characters after trimming surrounding spaces
+(`memberships_name_shape`; 201 is auth's two optional 100-character names joined by one space, the
+contract's `MAX_PERSON_NAME_LENGTH`, one more than the 200 of Organization and Team names). There
+is no index on either: nothing searches or sorts by them yet. The existing row-level security and
+table-wide grants cover both columns.
+
+**Migration `0005` refuses to run over existing memberships.** A membership without an email must
+not exist, and the migration invents none, so it raises
+`core.memberships already has rows, and the new required column email has no value to give them`
+if any membership exists (checked on `membership_directory`, since row-level security hides the
+rows from the owner). No deployed environment has any; a developer's local database might. Reset
+it: `docker compose down -v`, `docker compose up -d --wait`, then `bun run db:migrate`.
 
 Rules held by the database:
 

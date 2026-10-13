@@ -98,7 +98,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     id = newId('mem')
   ) => {
     await c.query(
-      'insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+      "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, $4, 'member@example.test')",
       [id, orgId, userId, role]
     )
     return id
@@ -305,7 +305,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
             [orgId],
           ],
           memberships: [
-            'insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+            "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, $4, 'member@example.test')",
             [newId('mem'), orgId, newId('usr'), 'rep'],
           ],
           teams: [
@@ -432,17 +432,17 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     test.each([
       [
         'memberships_user_id_shape',
-        'insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, $4, 'member@example.test')",
         (o: string) => [newId('mem'), o, 'usr_1', 'rep'],
       ],
       [
         'memberships_id_shape',
-        'insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, $4, 'member@example.test')",
         (o: string) => ['mem_1', o, newId('usr'), 'rep'],
       ],
       [
         'memberships_role_known',
-        'insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, $4, 'member@example.test')",
         (o: string) => [newId('mem'), o, newId('usr'), 'boss'],
       ],
       [
@@ -1571,8 +1571,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         const { orgId, userId } = await createOrg()
         await scoped(owner, orgId, async (c) => {
           await c.query(
-            `insert into core.memberships (id, organization_id, user_id, role)
-               select 'mem_' || md5('m' || $1::text || n), $1::text, 'usr_' || md5('u' || $1::text || n), 'rep'
+            `insert into core.memberships (id, organization_id, user_id, role, email)
+               select 'mem_' || md5('m' || $1::text || n), $1::text, 'usr_' || md5('u' || $1::text || n), 'rep', 'member@example.test'
                  from generate_series(1, 100000) n`,
             [orgId]
           )
@@ -2263,8 +2263,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       // Enough rows, and fresh statistics, for the planner to choose on cost as it would in production.
       await scoped(owner, orgId, async (c) => {
         await c.query(
-          `insert into core.memberships (id, organization_id, user_id, role)
-           select 'mem_' || md5('m' || n || $1), $1, 'usr_' || md5('u' || n || $1), 'rep'
+          `insert into core.memberships (id, organization_id, user_id, role, email)
+           select 'mem_' || md5('m' || n || $1), $1, 'usr_' || md5('u' || n || $1), 'rep', 'member@example.test'
              from generate_series(1, 2000) n`,
           [orgId]
         )
@@ -2280,8 +2280,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         const other = await createOrg()
         await scoped(owner, other.orgId, (c) =>
           c.query(
-            `insert into core.memberships (id, organization_id, user_id, role)
-             select 'mem_' || md5('m' || n || $1), $1, 'usr_' || md5('u' || n || $1), 'rep'
+            `insert into core.memberships (id, organization_id, user_id, role, email)
+             select 'mem_' || md5('m' || n || $1), $1, 'usr_' || md5('u' || n || $1), 'rep', 'member@example.test'
                from generate_series(1, 100) n`,
             [other.orgId]
           )

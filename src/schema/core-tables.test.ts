@@ -10,6 +10,7 @@ import {
   IDEMPOTENCY_RESPONSE_MAX_BYTES,
   IDEMPOTENCY_ROUTE_MAX,
   INVITATION_ROLES,
+  MEMBER_NAME_MAX,
   MEMBERSHIP_ROLES,
 } from './core-tables'
 import * as schemas from './index'
@@ -263,5 +264,55 @@ describe('the hand-written SQL of the migration', () => {
         `CREATE TRIGGER "${table}_no_truncate" BEFORE TRUNCATE ON "core"."${table}"`
       )
     }
+  })
+})
+
+describe('a member email and name', () => {
+  const config = coreTables.find((table) => table.name === 'memberships')
+  const column = (name: string) => config?.columns.find((c) => c.name === name)
+  const profileMigration = readFileSync(
+    new URL('../../migrations/0005_core_membership_profile.sql', import.meta.url),
+    'utf8'
+  )
+
+  test('email is required text and name is optional text', () => {
+    expect(column('email')?.getSQLType()).toBe('text')
+    expect(column('email')?.notNull).toBe(true)
+    expect(column('email')?.hasDefault).toBe(false)
+    expect(column('name')?.getSQLType()).toBe('text')
+    expect(column('name')?.notNull).toBe(false)
+  })
+
+  test('the name bound is the contract MAX_PERSON_NAME_LENGTH, one more than a Team name', () => {
+    expect(MEMBER_NAME_MAX).toBe(201)
+  })
+
+  test('the email rule is the invitations rule, word for word', () => {
+    const body = (table: string, constraint: string) => {
+      const start = migration.indexOf(`CONSTRAINT "${constraint}" CHECK (`)
+      const text = start >= 0 ? migration : profileMigration
+      const from = text.indexOf(`"${constraint}" CHECK (`)
+      return text
+        .slice(from)
+        .split("'^[!-~]+$'")[0]
+        ?.replaceAll(`"core"."${table}"`, '<table>')
+        .replace(/^[^(]*\(/, '')
+    }
+    expect(body('memberships', 'memberships_email_shape')).toBe(
+      body('invitations', 'invitations_email_shape')
+    )
+  })
+
+  test('no index is added for either column', () => {
+    expect(config?.indexes).toEqual([])
+    expect(profileMigration).not.toContain('INDEX')
+  })
+
+  test('the migration guards existing memberships before it adds the required column', () => {
+    expect(profileMigration.indexOf('RAISE EXCEPTION')).toBeGreaterThan(-1)
+    expect(profileMigration.indexOf('RAISE EXCEPTION')).toBeLessThan(
+      profileMigration.indexOf('ADD COLUMN "email"')
+    )
+    expect(profileMigration).not.toMatch(/DEFAULT/i)
   })
 })
