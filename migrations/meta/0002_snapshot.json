@@ -1,5 +1,5 @@
 {
-  "id": "1d2c4038-5134-41b0-9432-bc4298e02dfd",
+  "id": "d699bb55-e99e-4a3d-9ca1-0cb23291bce8",
   "prevId": "9749dc7c-279c-41ed-9448-4c4ab6751bfd",
   "version": "7",
   "dialect": "postgresql",
@@ -5557,9 +5557,37 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_status": {
+          "name": "organization_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "invitation_directory_organization_idx": {
+          "name": "invitation_directory_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -5576,6 +5604,10 @@
         "invitation_directory_invitation_id_shape": {
           "name": "invitation_directory_invitation_id_shape",
           "value": "\"invitation_id\" ~ '^inv_[0-9a-f]{32}$'"
+        },
+        "invitation_directory_organization_status_known": {
+          "name": "invitation_directory_organization_status_known",
+          "value": "\"core\".\"invitation_directory\".\"organization_status\" in ('active', 'suspended', 'deleted')"
         }
       },
       "isRLSEnabled": false
@@ -5810,11 +5842,15 @@
         },
         "invitations_email_shape": {
           "name": "invitations_email_shape",
-          "value": "\"core\".\"invitations\".\"email\" = lower(btrim(\"core\".\"invitations\".\"email\")) and char_length(\"core\".\"invitations\".\"email\") between 3 and 320 and position('@' in \"core\".\"invitations\".\"email\") > 1"
+          "value": "\"core\".\"invitations\".\"email\" = lower(\"core\".\"invitations\".\"email\" collate \"C\")\n        and char_length(\"core\".\"invitations\".\"email\") between 3 and 320\n        and char_length(\"core\".\"invitations\".\"email\") - char_length(replace(\"core\".\"invitations\".\"email\", '@', '')) = 1\n        and position('@' in \"core\".\"invitations\".\"email\") between 2 and char_length(\"core\".\"invitations\".\"email\") - 1\n        and \"core\".\"invitations\".\"email\" collate \"C\" !~ '[[:space:][:cntrl:]]'"
         },
         "invitations_role_known": {
           "name": "invitations_role_known",
           "value": "\"core\".\"invitations\".\"role\" in ('owner', 'admin', 'manager', 'rep')"
+        },
+        "invitations_role_not_owner": {
+          "name": "invitations_role_not_owner",
+          "value": "\"core\".\"invitations\".\"role\" <> 'owner'"
         },
         "invitations_state_known": {
           "name": "invitations_state_known",
@@ -5850,9 +5886,31 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "organization_status": {
+          "name": "organization_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "membership_directory_organization_idx": {
+          "name": "membership_directory_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "membership_directory_pkey": {
@@ -5881,6 +5939,10 @@
         "membership_directory_organization_id_shape": {
           "name": "membership_directory_organization_id_shape",
           "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "membership_directory_organization_status_known": {
+          "name": "membership_directory_organization_status_known",
+          "value": "\"core\".\"membership_directory\".\"organization_status\" in ('active', 'suspended', 'deleted')"
         }
       },
       "isRLSEnabled": false
@@ -6206,7 +6268,7 @@
           "primaryKey": false,
           "notNull": false,
           "generated": {
-            "as": "lower(name)",
+            "as": "lower(name collate \"C\")",
             "type": "stored"
           }
         },

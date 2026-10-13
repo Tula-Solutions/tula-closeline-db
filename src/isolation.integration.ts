@@ -95,6 +95,35 @@ describe('the tenant isolation catalog check', () => {
   test('a table without organization_id is reported unless it is on the allowlist', async () => {
     await reset('id text primary key')
     expect((await gapsFor())[0]?.reason).toContain('organization_id')
+    // An allowlisted table has no row-level security, so no service role may be able to read it.
+    await owner.query(`revoke all on "core"."${table}" from closeline_core`)
+    expect(await gapsFor([qualified])).toEqual([])
+  })
+
+  test.each([
+    ['a table grant', (t: string) => `grant select on ${t} to closeline_core`],
+    ['a single-column grant', (t: string) => `grant select (id) on ${t} to closeline_core`],
+    ['a grant to PUBLIC', (t: string) => `grant select on ${t} to public`],
+  ])(
+    'an allowlisted table that a service role can select from is reported: %s',
+    async (_name, grant) => {
+      await reset('id text primary key')
+      await owner.query(`revoke all on "core"."${table}" from closeline_core`)
+      expect(await gapsFor([qualified])).toEqual([])
+      await owner.query(grant(qualified))
+      const gaps = await gapsFor([qualified])
+      expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual([qualified])
+      expect(gaps[0]?.reason).toContain('closeline_core')
+      expect(gaps[0]?.reason).toContain('SELECT')
+      const failure = await assertTenantIsolation(handle.db, [qualified]).catch((e: Error) => e)
+      expect((failure as Error).message).toContain(qualified)
+    }
+  )
+
+  test('the owner reading an allowlisted table is not a gap, and an insert-only grant is not a read', async () => {
+    await reset('id text primary key')
+    await owner.query(`revoke all on "core"."${table}" from closeline_core`)
+    await owner.query(`grant insert on "core"."${table}" to closeline_core`)
     expect(await gapsFor([qualified])).toEqual([])
   })
 

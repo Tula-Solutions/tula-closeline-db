@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { randomBytes } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { createDb, type DbHandle } from './client'
+import { invitationForToken, organizationOfUser } from './core-lookups'
 import { dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
 import { findTenantIsolationGaps, NON_TENANT_TABLES } from './isolation'
 import { organizations } from './schema'
@@ -14,6 +15,7 @@ const SETTING = 'app.organization_id'
 const TENANT_TABLES = ['organizations', 'memberships', 'teams', 'team_members', 'invitations']
 const DIRECTORIES = ['membership_directory', 'invitation_directory']
 const ONE_PER_USER = 'membership_directory_one_organization_per_user'
+const SERVICE_ROLES = ['closeline_auth', 'closeline_core', 'closeline_playbook']
 
 let seq = Math.floor(Math.random() * 1e9)
 const newId = (prefix: string): string => `${prefix}_${(++seq).toString(16).padStart(32, '0')}`
@@ -86,8 +88,13 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       region,
     ])
 
-  const insertMember = async (c: PoolClient, orgId: string, userId: string, role: string) => {
-    const id = newId('mem')
+  const insertMember = async (
+    c: PoolClient,
+    orgId: string,
+    userId: string,
+    role: string,
+    id = newId('mem')
+  ) => {
     await c.query(
       'insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
       [id, orgId, userId, role]
@@ -107,8 +114,26 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     return { orgId, userId, membershipId }
   }
 
-  const addMember = (orgId: string, role: string, userId = newId('usr')) =>
-    inOrg(orgId, async (c) => ({ id: await insertMember(c, orgId, userId, role), userId }))
+  const addMember = (orgId: string, role: string, userId = newId('usr'), id = newId('mem')) =>
+    inOrg(orgId, async (c) => ({ id: await insertMember(c, orgId, userId, role, id), userId }))
+
+  const setStatus = (orgId: string, status: string) =>
+    inOrg(orgId, (c) =>
+      c.query('update core.organizations set status = $2 where organization_id = $1', [
+        orgId,
+        status,
+      ])
+    )
+
+  /** Accept an invitation the way the service does: only while it is still pending. */
+  const accept = (orgId: string, invitationId: string, at = 'now()') =>
+    inOrg(orgId, (c) =>
+      c.query(
+        `update core.invitations set state = 'accepted', accepted_at = ${at}
+          where id = $1 and state = 'pending'`,
+        [invitationId]
+      )
+    )
 
   const addTeam = (orgId: string, name = `Team ${newId('t').slice(-8)}`) =>
     inOrg(orgId, async (c) => {
@@ -123,15 +148,24 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
 
   const invite = (
     orgId: string,
-    options: { email?: string; role?: string; teamId?: string | null; hash?: string } = {}
+    options: {
+      email?: string
+      role?: string
+      teamId?: string | null
+      hash?: string
+      expired?: boolean
+    } = {}
   ) =>
     inOrg(orgId, async (c) => {
       const id = newId('inv')
       const hash = options.hash ?? newHash()
+      const [createdAt, expiresAt] = options.expired
+        ? ["now() - interval '2 days'", "now() - interval '1 day'"]
+        : ['now()', "now() + interval '7 days'"]
       await c.query(
         `insert into core.invitations
-           (id, organization_id, email, role, team_id, invited_by_user_id, token_hash, expires_at)
-         values ($1, $2, $3, $4, $5, $6, $7, now() + interval '7 days')`,
+           (id, organization_id, email, role, team_id, invited_by_user_id, token_hash, created_at, expires_at)
+         values ($1, $2, $3, $4, $5, $6, $7, ${createdAt}, ${expiresAt})`,
         [
           id,
           orgId,
@@ -301,17 +335,27 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       test.each(TENANT_TABLES)('%s: B cannot update or delete A rows', async (table) => {
         const sql = `select count(*) as n from core.${table} where organization_id = $1`
         const before = await count(core, a.orgId, sql, [a.orgId])
-        const touched = await scoped(core, b.orgId, async (c) => {
-          const upd = await c.query(
-            `update core.${table} ${updates[table]} where organization_id = $1`,
-            [a.orgId]
-          )
-          const del = await c.query(`delete from core.${table} where organization_id = $1`, [
-            a.orgId,
-          ])
-          return [upd.rowCount, del.rowCount]
-        })
-        expect(touched).toEqual([0, 0])
+        const updated = await scoped(
+          core,
+          b.orgId,
+          async (c) =>
+            (
+              await c.query(`update core.${table} ${updates[table]} where organization_id = $1`, [
+                a.orgId,
+              ])
+            ).rowCount
+        )
+        // The service role cannot remove invitations at all (its own test below), so for that
+        // table the owner role, which row-level security also binds, stands in.
+        const remover = table === 'invitations' ? owner : core
+        const removed = await scoped(
+          remover,
+          b.orgId,
+          async (c) =>
+            (await c.query(`delete from core.${table} where organization_id = $1`, [a.orgId]))
+              .rowCount
+        )
+        expect([updated, removed]).toEqual([0, 0])
         expect(await count(core, a.orgId, sql, [a.orgId])).toBe(before)
       })
 
@@ -578,6 +622,36 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       await addTeam(b.orgId, 'Enterprise East')
     })
 
+    test('names and emails fold ASCII letters only, the same way in every locale', async () => {
+      const a = await createOrg()
+      // Non-ASCII letters are kept as typed: "É" and "é" are different, so both Teams and both
+      // pending invitations exist. A cluster whose locale lower-cases "É" would refuse the first
+      // email (it is not its own lower-case form) and merge the Team names.
+      await addTeam(a.orgId, 'Équipe')
+      await addTeam(a.orgId, 'équipe')
+      await invite(a.orgId, { email: 'É@example.com' })
+      await invite(a.orgId, { email: 'é@example.com' })
+      const keys = await inOrg(a.orgId, (c) =>
+        c.query<{ name_key: string }>(
+          'select name_key from core.teams where organization_id = $1 order by 1',
+          [a.orgId]
+        )
+      )
+      expect(keys.rows.map((r) => r.name_key)).toEqual(['Équipe', 'équipe'])
+      const [email, key] = await Promise.all([
+        owner.query<{ def: string }>(
+          "select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'invitations_email_shape'"
+        ),
+        owner.query<{ def: string }>(
+          `select pg_get_expr(d.adbin, d.adrelid) as def from pg_attrdef d
+             join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+            where d.adrelid = 'core.teams'::regclass and a.attname = 'name_key'`
+        ),
+      ])
+      expect(email.rows[0]?.def).toContain('COLLATE "C"')
+      expect(key.rows[0]?.def).toContain('COLLATE "C"')
+    })
+
     test('removing a membership or a Team removes its Team rows; a deleted Team only clears an invitation', async () => {
       const { orgId } = await createOrg()
       const rep = await addMember(orgId, 'rep')
@@ -607,7 +681,38 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       ['an upper-case hash', { hash: newHash().toUpperCase() }, 'invitations_token_hash_shape'],
       ['an upper-case email', { email: 'Ann@Example.com' }, 'invitations_email_shape'],
       ['an email with no @', { email: 'ann.example.com' }, 'invitations_email_shape'],
+      ['an email with two @', { email: 'a@b@example.com' }, 'invitations_email_shape'],
+      ['an email with a doubled @', { email: 'a@@example.com' }, 'invitations_email_shape'],
+      ['an email that starts with @', { email: '@example.com' }, 'invitations_email_shape'],
+      ['an email that ends with @', { email: 'ann@' }, 'invitations_email_shape'],
+      [
+        'an email with a trailing newline',
+        { email: 'ann@example.com\n' },
+        'invitations_email_shape',
+      ],
+      [
+        'an email with a header injection',
+        { email: 'ann@example.com\r\nbcc:x@y.z' },
+        'invitations_email_shape',
+      ],
+      ['an email with a tab', { email: 'an\tn@example.com' }, 'invitations_email_shape'],
+      ['an email with a space', { email: 'ann @example.com' }, 'invitations_email_shape'],
+      [
+        'an email with a control character',
+        { email: 'a\u0001nn@example.com' },
+        'invitations_email_shape',
+      ],
+      [
+        'an email with a DEL character',
+        { email: 'ann\u007f@example.com' },
+        'invitations_email_shape',
+      ],
       ['an unknown role', { role: 'boss' }, 'invitations_role_known'],
+      [
+        'an Owner role (ownership passes by promotion)',
+        { role: 'owner' },
+        'invitations_role_not_owner',
+      ],
     ])('an invitation with %s is refused', async (_name, options, constraint) => {
       const { orgId } = await createOrg()
       expect((await failure(invite(orgId, options))).constraint).toBe(constraint)
@@ -673,6 +778,66 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect(swap.constraint).toBe('invitations_state_final')
     })
 
+    test('an invitation cannot be accepted after it expired, but can still be revoked', async () => {
+      const { orgId } = await createOrg()
+      const { id } = await invite(orgId, { expired: true })
+      const refused = await failure(accept(orgId, id))
+      expect(refused.message).toContain('core.invitation_expired')
+      expect(refused.constraint).toBe('invitations_not_expired')
+      const state = () =>
+        inOrg(
+          orgId,
+          async (c) =>
+            (await c.query('select state from core.invitations where id = $1', [id])).rows[0]
+        )
+      expect(await state()).toEqual({ state: 'pending' })
+      await inOrg(orgId, (c) =>
+        c.query("update core.invitations set state = 'revoked', revoked_at = now() where id = $1", [
+          id,
+        ])
+      )
+      expect(await state()).toEqual({ state: 'revoked' })
+    })
+
+    test('an invitation cannot be accepted twice, even with the same timestamp', async () => {
+      const { orgId } = await createOrg()
+      const { id } = await invite(orgId)
+      await inOrg(orgId, (c) =>
+        c.query(
+          "update core.invitations set state = 'accepted', accepted_at = '2026-01-01T00:00:00Z' where id = $1",
+          [id]
+        )
+      )
+      for (const again of [
+        "set state = 'accepted', accepted_at = '2026-01-01T00:00:00Z'",
+        "set state = 'accepted', accepted_at = now()",
+        'set accepted_at = now()',
+        "set state = 'revoked', revoked_at = now(), accepted_at = null",
+      ]) {
+        const refused = await failure(
+          inOrg(orgId, (c) => c.query(`update core.invitations ${again} where id = $1`, [id]))
+        )
+        expect(refused.constraint).toBe('invitations_state_final')
+      }
+    })
+
+    test('the service cannot delete an invitation, so a used token cannot be re-issued', async () => {
+      const { orgId } = await createOrg()
+      const { id, hash } = await invite(orgId)
+      await accept(orgId, id)
+      const refused = await failure(
+        inOrg(orgId, (c) => c.query('delete from core.invitations where id = $1', [id]))
+      )
+      expect(refused.message).toContain('permission denied for table invitations')
+      expect(await count(core, orgId, 'select count(*) as n from core.invitations')).toBe(1)
+      // The only way out is deleting the whole Organization, which takes the token with it.
+      await inOrg(orgId, (c) =>
+        c.query('delete from core.organizations where organization_id = $1', [orgId])
+      )
+      expect(await invitationDirectoryOf([orgId])).toEqual([])
+      expect(hash).toHaveLength(64)
+    })
+
     test('an invitation must expire after it was created', async () => {
       const { orgId } = await createOrg()
       const refused = await failure(
@@ -712,11 +877,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         await c.query('select set_config($1, $2, true)', [SETTING, orgId])
         await insertOrganization(c, orgId)
         await insertMember(c, orgId, userId, 'owner')
-        const inside = await c.query(
-          'select user_id from core.membership_directory where user_id = $1',
-          [userId]
-        )
-        expect(inside.rows).toHaveLength(1)
+        const inside = await c.query('select * from core.organization_of_user($1)', [userId])
+        expect(inside.rows).toEqual([{ organization_id: orgId, status: 'active' }])
         await c.query('rollback')
       } finally {
         c.release()
@@ -991,12 +1153,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         const failed = await failure(insertMember(c, orgId, userId, 'rep'))
         expect(failed.constraint).toBe('memberships_organization_user_key')
         await c.query('rollback to savepoint s')
-        const inside = await c.query(
-          'select user_id from core.membership_directory where organization_id = $1 order by 1',
-          [orgId]
-        )
-        expect(inside.rows.map((r) => r.user_id)).toContain(userId)
-        expect(inside.rows.map((r) => r.user_id)).not.toContain(other)
+        // The lookup sees this transaction's own writes: the kept one, not the savepoint's.
+        const kept = await c.query('select * from core.organization_of_user($1)', [userId])
+        expect(kept.rows).toHaveLength(1)
+        const undone = await c.query('select * from core.organization_of_user($1)', [other])
+        expect(undone.rows).toEqual([])
         await c.query('rollback')
       } finally {
         c.release()
@@ -1004,10 +1165,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect(await directoryOf([orgId])).toEqual(before)
     })
 
-    test('invitation_directory follows insert, token change, state change, delete and cascade', async () => {
+    test('invitation_directory holds the pending invitations only, and follows insert, token, expiry, accept, revoke and cascade', async () => {
       const { orgId } = await createOrg()
       const one = await invite(orgId)
       const two = await invite(orgId)
+      const three = await invite(orgId)
       const expectDirectory = async (expected: [string, string][]) =>
         expect(
           (await invitationDirectoryOf([orgId])).map((r) => [r.token_hash, r.invitation_id])
@@ -1015,6 +1177,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       await expectDirectory([
         [one.hash, one.id],
         [two.hash, two.id],
+        [three.hash, three.id],
       ])
       const rotated = newHash()
       await inOrg(orgId, (c) =>
@@ -1023,17 +1186,25 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       await expectDirectory([
         [rotated, one.id],
         [two.hash, two.id],
+        [three.hash, three.id],
       ])
+      await inOrg(orgId, (c) =>
+        c.query(
+          "update core.invitations set expires_at = now() + interval '30 days' where id = $1",
+          [one.id]
+        )
+      )
+      const expiry = await owner.query<{ longer: boolean }>(
+        "select expires_at > now() + interval '29 days' as longer from core.invitation_directory where invitation_id = $1",
+        [one.id]
+      )
+      expect(expiry.rows).toEqual([{ longer: true }])
       await inOrg(orgId, (c) =>
         c.query("update core.invitations set state = 'revoked', revoked_at = now() where id = $1", [
           two.id,
         ])
       )
-      await expectDirectory([
-        [rotated, one.id],
-        [two.hash, two.id],
-      ])
-      await inOrg(orgId, (c) => c.query('delete from core.invitations where id = $1', [two.id]))
+      await accept(orgId, three.id)
       await expectDirectory([[rotated, one.id]])
       const c = await core.connect()
       try {
@@ -1055,54 +1226,268 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect(await invitationDirectoryOf([orgId])).toEqual([])
     })
 
-    test.each(DIRECTORIES)(
-      'the service role can read %s with no Organization set, and write nothing',
-      async (table) => {
-        const sample = (await owner.query(`select * from core.${table} limit 1`)).rows[0]
-        expect(sample).toBeDefined()
-        expect(await count(core, null, `select count(*) as n from core.${table}`)).toBeGreaterThan(
-          0
-        )
-        const key = table === 'membership_directory' ? 'user_id' : 'token_hash'
-        const statements = [
-          `insert into core.${table} select * from core.${table} limit 0`,
-          `update core.${table} set organization_id = organization_id`,
-          `delete from core.${table}`,
-          `truncate core.${table}`,
-        ]
-        for (const statement of statements) {
-          const refused = await failure(scoped(core, null, (c) => c.query(statement)))
-          expect(refused.message).toContain('permission denied for table')
-        }
-        const forged =
-          table === 'membership_directory'
-            ? "insert into core.membership_directory values ('usr_" +
-              '0'.repeat(32) +
-              "', 'org_" +
-              '0'.repeat(32) +
-              "')"
-            : `insert into core.invitation_directory values ('${'0'.repeat(64)}', 'org_${'0'.repeat(32)}', 'inv_${'0'.repeat(32)}')`
-        expect((await failure(scoped(core, null, (c) => c.query(forged)))).message).toContain(
-          'permission denied'
-        )
-        expect(key).toBeTruthy()
-      }
-    )
-
-    test('the sync functions cannot be called directly', async () => {
-      for (const fn of [
-        'sync_membership_directory',
-        'sync_invitation_directory',
-        'track_owner_count',
-      ]) {
-        const refused = await failure(scoped(core, null, (c) => c.query(`select core.${fn}()`)))
-        expect(refused.message).toMatch(
-          /trigger functions can only be called as triggers|permission denied/
-        )
-      }
+    test('both directories carry the Organization status and follow every change of it', async () => {
+      const { orgId, userId } = await createOrg()
+      const { id } = await invite(orgId)
+      const statuses = async () => ({
+        member: (
+          await owner.query<{ s: string }>(
+            'select organization_status as s from core.membership_directory where organization_id = $1',
+            [orgId]
+          )
+        ).rows.map((r) => r.s),
+        invitation: (
+          await owner.query<{ s: string }>(
+            'select organization_status as s from core.invitation_directory where organization_id = $1',
+            [orgId]
+          )
+        ).rows.map((r) => r.s),
+      })
+      expect(await statuses()).toEqual({ member: ['active'], invitation: ['active'] })
+      await setStatus(orgId, 'suspended')
+      expect(await statuses()).toEqual({ member: ['suspended'], invitation: ['suspended'] })
+      // Rows written while the Organization is suspended start from its current status.
+      await addMember(orgId, 'rep')
+      await invite(orgId)
+      expect((await statuses()).member).toEqual(['suspended', 'suspended'])
+      expect((await statuses()).invitation).toEqual(['suspended', 'suspended'])
+      await setStatus(orgId, 'active')
+      expect(await statuses()).toEqual({
+        member: ['active', 'active'],
+        invitation: ['active', 'active'],
+      })
+      expect((await organizationOfUser(handle.db, userId))?.status).toBe('active')
+      expect(id).toBeTruthy()
     })
 
-    test('a directory holds the mapping and nothing else', async () => {
+    test('a member added while another transaction suspends the Organization is not left active', async () => {
+      const { orgId } = await createOrg()
+      const c1 = await track(await core.connect())
+      const c2 = await track(await core.connect())
+      const userId = newId('usr')
+      try {
+        for (const c of [c1, c2]) {
+          await c.query('begin')
+          await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+        }
+        await insertMember(c1, orgId, userId, 'rep')
+        const suspend = c2.query(
+          "update core.organizations set status = 'suspended' where organization_id = $1",
+          [orgId]
+        )
+        // The suspension must wait for the insert, or its update of the directory would miss the
+        // new row and leave it saying "active".
+        await waitUntilBlocked(c2)
+        await c1.query('commit')
+        await suspend
+        await c2.query('commit')
+      } finally {
+        c1.release()
+        c2.release()
+      }
+      expect((await organizationOfUser(handle.db, userId))?.status).toBe('suspended')
+    })
+
+    describe('closeline_core cannot read a directory, only look a key up', () => {
+      const forged = (table: string) =>
+        table === 'membership_directory'
+          ? `insert into core.membership_directory values ('usr_${'0'.repeat(32)}', 'org_${'0'.repeat(32)}', 'active')`
+          : `insert into core.invitation_directory values ('${'0'.repeat(64)}', 'org_${'0'.repeat(32)}', 'inv_${'0'.repeat(32)}', now() + interval '1 day', 'active')`
+
+      test.each(DIRECTORIES)(
+        '%s: every statement is refused, whatever the Organization set',
+        async (table) => {
+          const { orgId } = await createOrg()
+          await invite(orgId)
+          const key = table === 'membership_directory' ? 'user_id' : 'token_hash'
+          const statements = [
+            `select * from core.${table}`,
+            `select count(*) from core.${table}`,
+            `select ${key} from core.${table}`,
+            `select organization_id from core.${table} where organization_id = '${orgId}'`,
+            `select 1 from core.${table} limit 1`,
+            `insert into core.${table} select * from core.${table} limit 0`,
+            forged(table),
+            `update core.${table} set organization_id = organization_id`,
+            `delete from core.${table}`,
+            `truncate core.${table}`,
+          ]
+          for (const setting of [null, orgId]) {
+            for (const statement of statements) {
+              const refused = await failure(scoped(core, setting, (c) => c.query(statement)))
+              expect(refused.message).toContain('permission denied for table')
+            }
+          }
+        }
+      )
+
+      test.each(DIRECTORIES)(
+        '%s: no service role holds any privilege on it, column level included',
+        async (table) => {
+          const held = await owner.query<{ role: string; privilege: string }>(
+            `select r.role, p.privilege
+               from unnest($2::text[]) r(role)
+               cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'),
+                                  ('REFERENCES'), ('TRIGGER')) p(privilege)
+              where has_table_privilege(r.role, $1, p.privilege)
+                 or (p.privilege in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+                     and has_any_column_privilege(r.role, $1, p.privilege))`,
+            [`core.${table}`, SERVICE_ROLES]
+          )
+          expect(held.rows).toEqual([])
+        }
+      )
+
+      test('closeline_auth and closeline_playbook cannot reach the lookups either', async () => {
+        const { userId } = await createOrg()
+        for (const pool of [auth, playbook]) {
+          const refused = await failure(
+            scoped(pool, null, (c) =>
+              c.query('select * from core.organization_of_user($1)', [userId])
+            )
+          )
+          expect(refused.message).toContain('permission denied for schema core')
+        }
+      })
+    })
+
+    describe('the two lookups', () => {
+      const lookupUser = (userId: string) =>
+        scoped(
+          core,
+          null,
+          async (c) =>
+            (await c.query('select * from core.organization_of_user($1)', [userId])).rows as {
+              organization_id: string
+              status: string
+            }[]
+        )
+      const lookupToken = (hash: string) =>
+        scoped(
+          core,
+          null,
+          async (c) =>
+            (await c.query('select * from core.invitation_for_token($1)', [hash])).rows as {
+              organization_id: string
+              invitation_id: string
+            }[]
+        )
+
+      test('organization_of_user returns the one row for a user, with the status, and nothing for anyone else', async () => {
+        const a = await createOrg()
+        const b = await createOrg()
+        expect(await lookupUser(a.userId)).toEqual([{ organization_id: a.orgId, status: 'active' }])
+        expect(await lookupUser(b.userId)).toEqual([{ organization_id: b.orgId, status: 'active' }])
+        expect(await lookupUser(newId('usr'))).toEqual([])
+        // An exact key: no pattern, empty value or NULL enumerates anything.
+        for (const probe of ['usr_%', 'usr_', '', '%', a.userId.toUpperCase(), `${a.userId} `]) {
+          expect(await lookupUser(probe)).toEqual([])
+        }
+        expect(
+          await scoped(
+            core,
+            null,
+            async (c) => (await c.query('select * from core.organization_of_user(null)')).rows
+          )
+        ).toEqual([])
+        // The answer does not depend on the Organization the caller has set.
+        const viaB = await scoped(
+          core,
+          b.orgId,
+          async (c) =>
+            (await c.query('select * from core.organization_of_user($1)', [a.userId])).rows
+        )
+        expect(viaB).toEqual([{ organization_id: a.orgId, status: 'active' }])
+      })
+
+      test('invitation_for_token returns the one pending, unexpired invitation of an active Organization', async () => {
+        const a = await createOrg()
+        const one = await invite(a.orgId)
+        const two = await invite(a.orgId)
+        expect(await lookupToken(one.hash)).toEqual([
+          { organization_id: a.orgId, invitation_id: one.id },
+        ])
+        expect(await lookupToken(two.hash)).toEqual([
+          { organization_id: a.orgId, invitation_id: two.id },
+        ])
+        expect(await lookupToken(newHash())).toEqual([])
+        for (const probe of ['', '%', '0'.repeat(64), one.hash.toUpperCase(), `${one.hash} `]) {
+          expect(await lookupToken(probe)).toEqual([])
+        }
+        expect(
+          await scoped(
+            core,
+            null,
+            async (c) => (await c.query('select * from core.invitation_for_token(null)')).rows
+          )
+        ).toEqual([])
+      })
+
+      test.each([
+        ['accepted', 'accept'],
+        ['revoked', 'revoke'],
+        ['expired', 'expire'],
+        ['in a suspended Organization', 'suspend'],
+        ['in a deleted Organization', 'delete'],
+      ])(
+        'invitation_for_token returns nothing for an invitation that is %s',
+        async (_name, how) => {
+          const a = await createOrg()
+          const { id, hash } = await invite(a.orgId, { expired: how === 'expire' })
+          const opens = [{ organization_id: a.orgId, invitation_id: id }]
+          expect(await lookupToken(hash)).toEqual(how === 'expire' ? [] : opens)
+          if (how === 'accept') {
+            await accept(a.orgId, id)
+          } else if (how === 'revoke') {
+            await inOrg(a.orgId, (c) =>
+              c.query(
+                "update core.invitations set state = 'revoked', revoked_at = now() where id = $1",
+                [id]
+              )
+            )
+          } else if (how === 'suspend') {
+            await setStatus(a.orgId, 'suspended')
+          } else if (how === 'delete') {
+            await setStatus(a.orgId, 'deleted')
+          }
+          expect(await lookupToken(hash)).toEqual([])
+          if (how === 'suspend') {
+            await setStatus(a.orgId, 'active')
+            expect(await lookupToken(hash)).toEqual(opens)
+          }
+        }
+      )
+
+      test('a token stops opening an invitation the instant it is rotated', async () => {
+        const a = await createOrg()
+        const { id, hash } = await invite(a.orgId)
+        const rotated = newHash()
+        await inOrg(a.orgId, (c) =>
+          c.query('update core.invitations set token_hash = $1 where id = $2', [rotated, id])
+        )
+        expect(await lookupToken(hash)).toEqual([])
+        expect(await lookupToken(rotated)).toEqual([
+          { organization_id: a.orgId, invitation_id: id },
+        ])
+      })
+
+      test('the typed helpers answer from the same functions, as a service connection with no Organization set', async () => {
+        const a = await createOrg()
+        const { id, hash } = await invite(a.orgId)
+        expect(await organizationOfUser(handle.db, a.userId)).toEqual({
+          organizationId: a.orgId,
+          status: 'active',
+        })
+        expect(await organizationOfUser(handle.db, newId('usr'))).toBeNull()
+        expect(await invitationForToken(handle.db, hash)).toEqual({
+          organizationId: a.orgId,
+          invitationId: id,
+        })
+        expect(await invitationForToken(handle.db, newHash())).toBeNull()
+      })
+    })
+
+    test('a directory holds the mapping and the facts the lookups need, and nothing else', async () => {
       const columns = await owner.query<{ table_name: string; column_name: string }>(
         `select table_name, column_name from information_schema.columns
           where table_schema = 'core' and table_name = any($1) order by table_name, ordinal_position`,
@@ -1112,32 +1497,368 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         'invitation_directory.token_hash',
         'invitation_directory.organization_id',
         'invitation_directory.invitation_id',
+        'invitation_directory.expires_at',
+        'invitation_directory.organization_status',
         'membership_directory.user_id',
         'membership_directory.organization_id',
+        'membership_directory.organization_status',
       ])
     })
 
-    test('the sign-in flow: read the directory, open the Organization, read the row under row-level security', async () => {
+    test('the sign-in flow: look the user up, open the Organization, read the row under row-level security', async () => {
       const { orgId, userId } = await createOrg()
-      const found = await scoped(core, null, (c) =>
-        c.query('select organization_id from core.membership_directory where user_id = $1', [
-          userId,
-        ])
-      )
-      expect(found.rows).toEqual([{ organization_id: orgId }])
-      const role = await inOrg(found.rows[0].organization_id, (c) =>
+      const found = await organizationOfUser(handle.db, userId)
+      expect(found).toEqual({ organizationId: orgId, status: 'active' })
+      const role = await inOrg(found?.organizationId ?? '', (c) =>
         c.query('select role from core.memberships where user_id = $1', [userId])
       )
       expect(role.rows).toEqual([{ role: 'owner' }])
 
       const { hash, id } = await invite(orgId)
-      const token = await scoped(core, null, (c) =>
-        c.query(
-          'select organization_id, invitation_id from core.invitation_directory where token_hash = $1',
-          [hash]
-        )
+      const token = await invitationForToken(handle.db, hash)
+      expect(token).toEqual({ organizationId: orgId, invitationId: id })
+      const row = await inOrg(token?.organizationId ?? '', (c) =>
+        c.query('select email, state from core.invitations where id = $1', [token?.invitationId])
       )
-      expect(token.rows).toEqual([{ organization_id: orgId, invitation_id: id }])
+      expect(row.rows).toHaveLength(1)
+    })
+  })
+
+  describe('every function in core is owned, pinned and callable by exactly the roles meant to', () => {
+    /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
+    const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
+      invitation_for_token: [true, false, true],
+      organization_of_user: [true, false, true],
+      refuse_region_change: [false, true, false],
+      refuse_reopened_invitation: [false, true, false],
+      refuse_revived_ownerless_organization: [false, true, false],
+      refuse_truncate: [false, true, false],
+      refuse_unacceptable_invitation: [false, true, false],
+      require_owner: [false, true, false],
+      start_organization: [false, true, false],
+      sync_invitation_directory: [true, true, false],
+      sync_membership_directory: [true, true, false],
+      sync_organization_status: [true, true, false],
+      track_owner_count: [true, true, false],
+    }
+
+    interface FunctionRow {
+      name: string
+      owner: string
+      definer: boolean
+      trigger: boolean
+      volatility: string
+      config: string[] | null
+      has_acl: boolean
+      public_execute: boolean
+      auth: boolean
+      core: boolean
+      playbook: boolean
+    }
+
+    const catalog = async () =>
+      (
+        await owner.query<FunctionRow>(
+          `select p.proname as name, pg_get_userbyid(p.proowner) as owner,
+                  p.prosecdef as definer, p.prorettype = 'trigger'::regtype as trigger,
+                  p.provolatile as volatility, p.proconfig as config,
+                  p.proacl is not null as has_acl,
+                  coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a), false) as public_execute,
+                  has_function_privilege('closeline_auth', p.oid, 'EXECUTE') as auth,
+                  has_function_privilege('closeline_core', p.oid, 'EXECUTE') as core,
+                  has_function_privilege('closeline_playbook', p.oid, 'EXECUTE') as playbook
+             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'core' and p.proname not like 'it\\_%' order by p.proname`
+        )
+      ).rows
+
+    test('the set of functions is exactly the one classified here, so a new one must be', async () => {
+      expect((await catalog()).map((f) => f.name)).toEqual(Object.keys(FUNCTIONS).sort())
+    })
+
+    test('each is owned by closeline_owner with search_path pinned, and SECURITY DEFINER only where intended', async () => {
+      for (const fn of await catalog()) {
+        const [definer, trigger] = FUNCTIONS[fn.name] ?? [false, false, false]
+        expect([fn.name, fn.owner]).toEqual([fn.name, 'closeline_owner'])
+        expect([fn.name, fn.config]).toEqual([fn.name, ['search_path=pg_catalog, pg_temp']])
+        expect([fn.name, fn.definer]).toEqual([fn.name, definer])
+        expect([fn.name, fn.trigger]).toEqual([fn.name, trigger])
+      }
+    })
+
+    test('the lookups are STABLE and the trigger functions are volatile', async () => {
+      for (const fn of await catalog()) {
+        expect([fn.name, fn.volatility]).toEqual([
+          fn.name,
+          fn.name === 'organization_of_user' || fn.name === 'invitation_for_token' ? 's' : 'v',
+        ])
+      }
+    })
+
+    test('EXECUTE is revoked from PUBLIC on all of them, and only the lookups are granted to closeline_core', async () => {
+      for (const fn of await catalog()) {
+        const coreMayRun = FUNCTIONS[fn.name]?.[2] ?? false
+        expect([fn.name, fn.has_acl, fn.public_execute]).toEqual([fn.name, true, false])
+        expect([fn.name, fn.auth, fn.playbook]).toEqual([fn.name, false, false])
+        expect([fn.name, fn.core]).toEqual([fn.name, coreMayRun])
+      }
+    })
+
+    test('no service role can fire a trigger function by calling it', async () => {
+      for (const [name, [, trigger]] of Object.entries(FUNCTIONS)) {
+        if (!trigger) {
+          continue
+        }
+        for (const pool of [core, auth, playbook]) {
+          const refused = await failure(scoped(pool, null, (c) => c.query(`select core.${name}()`)))
+          expect(refused.message).toMatch(/permission denied/)
+        }
+      }
+    })
+
+    test('an Organization cannot commit when the setting no longer names it', async () => {
+      const orgId = newId('org')
+      created.add(orgId)
+      for (const other of ['', newId('org')]) {
+        const refused = await failure(
+          scoped(core, orgId, async (c) => {
+            await insertOrganization(c, orgId)
+            await insertMember(c, orgId, newId('usr'), 'owner')
+            await c.query('select set_config($1, $2, true)', [SETTING, other])
+          })
+        )
+        expect(refused.message).toContain('core.owner_required')
+      }
+      expect(await count(owner, orgId, 'select count(*) as n from core.organizations')).toBe(0)
+    })
+  })
+
+  describe('an Organization that is deleted can be emptied; one that is not keeps its Owner', () => {
+    test('a deleted Organization lets its last Owner and every member go, freeing them to join another', async () => {
+      const a = await createOrg()
+      const b = await createOrg()
+      const rep = await addMember(a.orgId, 'rep')
+      await setStatus(a.orgId, 'deleted')
+      await inOrg(a.orgId, (c) => c.query('delete from core.memberships where id = $1', [rep.id]))
+      await inOrg(a.orgId, (c) =>
+        c.query('delete from core.memberships where id = $1', [a.membershipId])
+      )
+      expect(await ownersOf(a.orgId)).toEqual({ actual: 0, counter: 0 })
+      expect(await directoryOf([a.orgId])).toEqual([])
+      expect(await organizationOfUser(handle.db, a.userId)).toBeNull()
+      expect(await count(owner, a.orgId, 'select count(*) as n from core.organizations')).toBe(1)
+      await addMember(b.orgId, 'rep', a.userId)
+      expect(await organizationOfUser(handle.db, a.userId)).toEqual({
+        organizationId: b.orgId,
+        status: 'active',
+      })
+    })
+
+    test('the last Owner of a deleted Organization can also be demoted', async () => {
+      const a = await createOrg()
+      await setStatus(a.orgId, 'deleted')
+      await inOrg(a.orgId, (c) =>
+        c.query("update core.memberships set role = 'rep' where id = $1", [a.membershipId])
+      )
+      expect(await ownersOf(a.orgId)).toEqual({ actual: 0, counter: 0 })
+    })
+
+    test.each(['active', 'suspended'])(
+      'an %s Organization keeps its last Owner',
+      async (status) => {
+        const a = await createOrg()
+        await setStatus(a.orgId, status)
+        const removed = await failure(
+          inOrg(a.orgId, (c) =>
+            c.query('delete from core.memberships where id = $1', [a.membershipId])
+          )
+        )
+        expect(removed.message).toContain('core.last_owner')
+        const demoted = await failure(
+          inOrg(a.orgId, (c) =>
+            c.query("update core.memberships set role = 'rep' where id = $1", [a.membershipId])
+          )
+        )
+        expect(demoted.message).toContain('core.last_owner')
+        expect(await ownersOf(a.orgId)).toEqual({ actual: 1, counter: 1 })
+      }
+    )
+
+    test('an emptied deleted Organization cannot be revived without an Owner, a deleted one with an Owner can', async () => {
+      const a = await createOrg()
+      const b = await createOrg()
+      await setStatus(a.orgId, 'deleted')
+      await setStatus(b.orgId, 'deleted')
+      await inOrg(a.orgId, (c) =>
+        c.query('delete from core.memberships where id = $1', [a.membershipId])
+      )
+      for (const status of ['active', 'suspended']) {
+        const refused = await failure(setStatus(a.orgId, status))
+        expect(refused.message).toContain('core.owner_required')
+      }
+      await setStatus(b.orgId, 'suspended')
+      await setStatus(b.orgId, 'active')
+    })
+
+    test.each(['suspended', 'deleted'])(
+      'an invitation cannot be accepted while its Organization is %s, and can once it is active',
+      async (status) => {
+        const a = await createOrg()
+        const { id } = await invite(a.orgId)
+        await setStatus(a.orgId, status)
+        const refused = await failure(accept(a.orgId, id))
+        expect(refused.message).toContain('core.invitation_organization_inactive')
+        expect(refused.constraint).toBe('invitations_organization_active')
+        if (status === 'suspended') {
+          await setStatus(a.orgId, 'active')
+          const accepted = await accept(a.orgId, id)
+          expect(accepted.rowCount).toBe(1)
+        }
+      }
+    )
+
+    test('accepting an invitation waits for a concurrent suspension, then is refused', async () => {
+      const a = await createOrg()
+      const { id } = await invite(a.orgId)
+      const c1 = await track(await core.connect())
+      const c2 = await track(await core.connect())
+      try {
+        for (const c of [c1, c2]) {
+          await c.query('begin')
+          await c.query('select set_config($1, $2, true)', [SETTING, a.orgId])
+        }
+        await c1.query(
+          "update core.organizations set status = 'suspended' where organization_id = $1",
+          [a.orgId]
+        )
+        const pending = c2
+          .query(
+            "update core.invitations set state = 'accepted', accepted_at = now() where id = $1",
+            [id]
+          )
+          .then(
+            () => 'accepted',
+            (e: Error) => e.message
+          )
+        await waitUntilBlocked(c2)
+        await c1.query('commit')
+        expect(await pending).toContain('core.invitation_organization_inactive')
+        await c2.query('rollback')
+      } finally {
+        c1.release()
+        c2.release()
+      }
+    })
+  })
+
+  describe('writes that skip a per-row trigger, and the ones that conflict', () => {
+    test.each([
+      ['memberships', 'truncate core.memberships cascade'],
+      ['memberships and team_members', 'truncate core.memberships, core.team_members'],
+      ['invitations', 'truncate core.invitations'],
+      ['organizations', 'truncate core.organizations cascade'],
+      ['membership_directory', 'truncate core.membership_directory'],
+      ['invitation_directory', 'truncate core.invitation_directory'],
+    ])(
+      'TRUNCATE of %s is refused, even for the owner, and nothing is lost',
+      async (_table, statement) => {
+        const a = await createOrg()
+        await invite(a.orgId)
+        const before = await directoryOf([a.orgId])
+        const refused = await failure(scoped(owner, a.orgId, (c) => c.query(statement)))
+        expect(refused.message).toContain('core.truncate_refused')
+        expect(await directoryOf([a.orgId])).toEqual(before)
+        expect(await ownersOf(a.orgId)).toEqual({ actual: 1, counter: 1 })
+        expect(await invitationDirectoryOf([a.orgId])).toHaveLength(1)
+      }
+    )
+
+    describe('one statement that both promotes and demotes depends on the row order', () => {
+      // The Owner counter moves once per row, so a statement that promotes one member and demotes
+      // the sole Owner is refused when the Owner row is processed first, and allowed when the
+      // promoted row is. The end state is the same (one Owner) either way. The order is fixed by
+      // the keys: with sequential scans off the statement reads an index, which returns rows in
+      // key order, and both `id` and `user_id` are chosen to sort the same way, so it does not
+      // matter which of the two indexes the planner picks.
+      async function transfer(ownerFirst: boolean) {
+        const [lowMem, highMem] = [newId('mem'), newId('mem')]
+        const [lowUser, highUser] = [newId('usr'), newId('usr')]
+        const [ownerMem, ownerUser, memberMem, memberUser] = ownerFirst
+          ? [lowMem, lowUser, highMem, highUser]
+          : [highMem, highUser, lowMem, lowUser]
+        const orgId = newId('org')
+        created.add(orgId)
+        await inOrg(orgId, async (c) => {
+          await insertOrganization(c, orgId)
+          await insertMember(c, orgId, ownerUser, 'owner', ownerMem)
+          await insertMember(c, orgId, memberUser, 'rep', memberMem)
+        })
+        const result = await scoped(core, orgId, async (c) => {
+          await c.query('set local enable_seqscan = off')
+          await c.query('set local enable_bitmapscan = off')
+          return c.query(
+            `update core.memberships
+                set role = case when id = $1 then 'rep' else 'owner' end
+              where organization_id = $3 and id = any($2::text[])`,
+            [ownerMem, [ownerMem, memberMem], orgId]
+          )
+        })
+        return { orgId, result }
+      }
+
+      test('the Owner row first: refused as the last Owner, though the end state has one', async () => {
+        const refused = await failure(transfer(true))
+        expect(refused.message).toContain('core.last_owner')
+      })
+
+      test('the promoted row first: allowed, and the Organization ends with exactly one Owner', async () => {
+        const { orgId, result } = await transfer(false)
+        expect(result.rowCount).toBe(2)
+        expect(await ownersOf(orgId)).toEqual({ actual: 1, counter: 1 })
+      })
+    })
+
+    test('opposite-order updates around the Owner lock deadlock (40P01), so callers retry', async () => {
+      const first = await createOrg()
+      const orgId = first.orgId
+      const second = await addMember(orgId, 'owner')
+      const rep = await addMember(orgId, 'rep')
+      const c1 = await track(await core.connect())
+      const c2 = await track(await core.connect())
+      try {
+        for (const c of [c1, c2]) {
+          await c.query('begin')
+          await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+        }
+        // c1 holds the rep's row, c2 holds an Owner's row and the Organization's Owner counter.
+        await c1.query("update core.memberships set role = 'admin' where id = $1", [rep.id])
+        await c2.query("update core.memberships set role = 'rep' where id = $1", [
+          first.membershipId,
+        ])
+        // c1 now wants the counter (a second Owner demotion), c2 wants the rep's row: a cycle.
+        const p1 = c1
+          .query("update core.memberships set role = 'rep' where id = $1", [second.id])
+          .then(
+            () => 'ok',
+            (e: { code?: string }) => e.code
+          )
+        await waitUntilBlocked(c1)
+        const p2 = c2
+          .query("update core.memberships set role = 'manager' where id = $1", [rep.id])
+          .then(
+            () => 'ok',
+            (e: { code?: string }) => e.code
+          )
+        const outcomes = await Promise.all([p1, p2])
+        expect(outcomes.filter((o) => o === '40P01')).toHaveLength(1)
+        expect(outcomes.filter((o) => o === 'ok')).toHaveLength(1)
+        await c1.query('rollback')
+        await c2.query('rollback')
+      } finally {
+        c1.release()
+        c2.release()
+      }
+      expect(await ownersOf(orgId)).toEqual({ actual: 2, counter: 2 })
     })
   })
 
@@ -1179,8 +1900,21 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           )
         )
       }
+      // Pending invitations too, so the planner has statistics to choose their list index on.
+      await scoped(owner, orgId, (c) =>
+        c.query(
+          `insert into core.invitations
+             (id, organization_id, email, role, invited_by_user_id, token_hash, created_at, expires_at)
+           select 'inv_' || md5('i' || n || $1), $1, 'e' || n || '@example.com', 'rep',
+                  'usr_' || md5('b' || n || $1), md5('t' || n || $1) || md5('u' || n || $1),
+                  now() - interval '1 hour' + n * interval '1 second', now() + interval '30 days'
+             from generate_series(1, 1000) n`,
+          [orgId]
+        )
+      )
       await owner.query('analyze core.memberships')
       await owner.query('analyze core.team_members')
+      await owner.query('analyze core.invitations')
     })
 
     const A = () => `'${orgId}'`

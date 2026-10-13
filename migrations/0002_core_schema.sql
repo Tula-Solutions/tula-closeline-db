@@ -2,9 +2,12 @@ CREATE TABLE "core"."invitation_directory" (
 	"token_hash" text PRIMARY KEY NOT NULL,
 	"organization_id" text NOT NULL,
 	"invitation_id" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"organization_status" text NOT NULL,
 	CONSTRAINT "invitation_directory_token_hash_shape" CHECK ("token_hash" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "invitation_directory_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
-	CONSTRAINT "invitation_directory_invitation_id_shape" CHECK ("invitation_id" ~ '^inv_[0-9a-f]{32}$')
+	CONSTRAINT "invitation_directory_invitation_id_shape" CHECK ("invitation_id" ~ '^inv_[0-9a-f]{32}$'),
+	CONSTRAINT "invitation_directory_organization_status_known" CHECK ("core"."invitation_directory"."organization_status" in ('active', 'suspended', 'deleted'))
 );
 --> statement-breakpoint
 CREATE TABLE "core"."invitations" (
@@ -27,8 +30,13 @@ CREATE TABLE "core"."invitations" (
 	CONSTRAINT "invitations_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
 	CONSTRAINT "invitations_invited_by_shape" CHECK ("invited_by_user_id" ~ '^usr_[0-9a-f]{32}$'),
 	CONSTRAINT "invitations_team_id_shape" CHECK ("core"."invitations"."team_id" is null or "team_id" ~ '^team_[0-9a-f]{32}$'),
-	CONSTRAINT "invitations_email_shape" CHECK ("core"."invitations"."email" = lower(btrim("core"."invitations"."email")) and char_length("core"."invitations"."email") between 3 and 320 and position('@' in "core"."invitations"."email") > 1),
+	CONSTRAINT "invitations_email_shape" CHECK ("core"."invitations"."email" = lower("core"."invitations"."email" collate "C")
+        and char_length("core"."invitations"."email") between 3 and 320
+        and char_length("core"."invitations"."email") - char_length(replace("core"."invitations"."email", '@', '')) = 1
+        and position('@' in "core"."invitations"."email") between 2 and char_length("core"."invitations"."email") - 1
+        and "core"."invitations"."email" collate "C" !~ '[[:space:][:cntrl:]]'),
 	CONSTRAINT "invitations_role_known" CHECK ("core"."invitations"."role" in ('owner', 'admin', 'manager', 'rep')),
+	CONSTRAINT "invitations_role_not_owner" CHECK ("core"."invitations"."role" <> 'owner'),
 	CONSTRAINT "invitations_state_known" CHECK ("core"."invitations"."state" in ('pending', 'accepted', 'revoked')),
 	CONSTRAINT "invitations_token_hash_shape" CHECK ("core"."invitations"."token_hash" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "invitations_expiry_after_creation" CHECK ("core"."invitations"."expires_at" > "core"."invitations"."created_at"),
@@ -40,10 +48,12 @@ CREATE TABLE "core"."invitations" (
 CREATE TABLE "core"."membership_directory" (
 	"user_id" text NOT NULL,
 	"organization_id" text NOT NULL,
+	"organization_status" text NOT NULL,
 	CONSTRAINT "membership_directory_pkey" PRIMARY KEY("user_id","organization_id"),
 	CONSTRAINT "membership_directory_one_organization_per_user" UNIQUE("user_id"),
 	CONSTRAINT "membership_directory_user_id_shape" CHECK ("user_id" ~ '^usr_[0-9a-f]{32}$'),
-	CONSTRAINT "membership_directory_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$')
+	CONSTRAINT "membership_directory_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
+	CONSTRAINT "membership_directory_organization_status_known" CHECK ("core"."membership_directory"."organization_status" in ('active', 'suspended', 'deleted'))
 );
 --> statement-breakpoint
 CREATE TABLE "core"."memberships" (
@@ -89,7 +99,7 @@ CREATE TABLE "core"."teams" (
 	"id" text PRIMARY KEY NOT NULL,
 	"organization_id" text NOT NULL,
 	"name" text NOT NULL,
-	"name_key" text GENERATED ALWAYS AS (lower(name)) STORED,
+	"name_key" text GENERATED ALWAYS AS (lower(name collate "C")) STORED,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "teams_organization_id_id_key" UNIQUE("organization_id","id"),
@@ -105,9 +115,11 @@ ALTER TABLE "core"."memberships" ADD CONSTRAINT "memberships_organization_id_org
 ALTER TABLE "core"."team_members" ADD CONSTRAINT "team_members_team_fk" FOREIGN KEY ("organization_id","team_id") REFERENCES "core"."teams"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."team_members" ADD CONSTRAINT "team_members_membership_fk" FOREIGN KEY ("organization_id","membership_id") REFERENCES "core"."memberships"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."teams" ADD CONSTRAINT "teams_organization_id_organizations_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "core"."organizations"("organization_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "invitation_directory_organization_idx" ON "core"."invitation_directory" USING btree ("organization_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invitations_pending_email_key" ON "core"."invitations" USING btree ("organization_id","email") WHERE "core"."invitations"."state" = 'pending';--> statement-breakpoint
 CREATE INDEX "invitations_pending_list_idx" ON "core"."invitations" USING btree ("organization_id","created_at","id") WHERE "core"."invitations"."state" = 'pending';--> statement-breakpoint
 CREATE INDEX "invitations_team_idx" ON "core"."invitations" USING btree ("organization_id","team_id") WHERE "core"."invitations"."team_id" is not null;--> statement-breakpoint
+CREATE INDEX "membership_directory_organization_idx" ON "core"."membership_directory" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "team_members_membership_idx" ON "core"."team_members" USING btree ("organization_id","membership_id","team_id");
 --> statement-breakpoint
 -- Everything below is hand-written (Drizzle cannot express it), appended after the generated SQL
@@ -148,18 +160,25 @@ CREATE POLICY "invitations_tenant_isolation" ON "core"."invitations" AS PERMISSI
 --> statement-breakpoint
 -- An invitation outlives the Team it named: deleting the Team clears only `team_id`. Drizzle cannot
 -- write the column list, and a plain SET NULL would also null `organization_id`, so the generated
--- foreign key is replaced.
+-- foreign key is replaced. (The column list needs PostgreSQL 15; the supported minimum is 18.)
 ALTER TABLE "core"."invitations" DROP CONSTRAINT "invitations_team_fk";
 --> statement-breakpoint
 ALTER TABLE "core"."invitations" ADD CONSTRAINT "invitations_team_fk" FOREIGN KEY ("organization_id","team_id") REFERENCES "core"."teams"("organization_id","id") ON DELETE SET NULL ("team_id") ON UPDATE no action;
 --> statement-breakpoint
 
 -- Privileges. Default privileges give closeline_core SELECT, INSERT, UPDATE and DELETE on every new
--- core table; two cases narrow that.
+-- core table; three cases narrow that.
 --
--- The directories are read-only to the service: only the SECURITY DEFINER triggers below write
--- them, as the owner. (TRUNCATE is not in the defaults.)
-REVOKE INSERT, UPDATE, DELETE ON "core"."membership_directory", "core"."invitation_directory" FROM closeline_core;
+-- The directories are not under row-level security, so closeline_core gets no privilege on them at
+-- all: it could otherwise list every user, Organization and token hash in the Region. The two
+-- SECURITY DEFINER lookups below are its only way in, each for one exact key. The SECURITY DEFINER
+-- triggers write them, as the owner. (TRUNCATE is not in the defaults.)
+REVOKE ALL ON "core"."membership_directory", "core"."invitation_directory" FROM closeline_core;
+--> statement-breakpoint
+-- An invitation is revoked, never deleted: deleting and re-inserting the same id and token hash
+-- would bring a used token back. Deleting an Organization still removes its invitations (the
+-- foreign key cascade runs as the table owner).
+REVOKE DELETE ON "core"."invitations" FROM closeline_core;
 --> statement-breakpoint
 -- An Organization's Region is fixed at creation and owner_count is the triggers' bookkeeping, so
 -- the service may change only these columns of an existing Organization. (INSERT stays open on
@@ -207,6 +226,13 @@ CREATE TRIGGER "organizations_start" BEFORE INSERT ON "core"."organizations"
 --     transaction would count its own snapshot (write skew).
 --   * REPEATABLE READ and SERIALIZABLE: updating a row another transaction changed after the
 --     snapshot fails with SQLSTATE 40001, so a stale view cannot slip through either.
+-- The counter moves once per row, not once per statement, so one statement that both promotes a
+-- member and demotes the sole Owner is refused or allowed depending on the order its rows are
+-- processed (promote first, then demote, passes). Opposite-order updates around the lock can also
+-- deadlock (40P01). Callers retry on 40001 and 40P01.
+-- The rule holds while the Organization is active or suspended. A deleted Organization (kept for
+-- retention) may lose every membership, the last Owner included, so a retention job can empty it
+-- and free its users to join another Organization.
 -- The function is SECURITY DEFINER so the service role needs no UPDATE on `owner_count`. The
 -- Organization row is not found when the Organization itself is being deleted (the cascade runs
 -- after its row is gone); then the last Owner may go with it.
@@ -216,6 +242,7 @@ DECLARE
   delta integer := 0;
   target text;
   remaining integer;
+  org_status text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     target := NEW."organization_id";
@@ -233,8 +260,8 @@ BEGIN
   END IF;
   UPDATE "core"."organizations" SET "owner_count" = "owner_count" + delta
     WHERE "organization_id" = target
-    RETURNING "owner_count" INTO remaining;
-  IF FOUND AND delta < 0 AND remaining < 1 THEN
+    RETURNING "owner_count", "status" INTO remaining, org_status;
+  IF FOUND AND delta < 0 AND remaining < 1 AND org_status <> 'deleted' THEN
     RAISE EXCEPTION 'core.last_owner: an Organization must keep at least one Owner'
       USING ERRCODE = 'check_violation', CONSTRAINT = 'organizations_owner_required';
   END IF;
@@ -266,7 +293,24 @@ CREATE CONSTRAINT TRIGGER "organizations_owner_required" AFTER INSERT ON "core".
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "core"."require_owner"();
 --> statement-breakpoint
 
--- An accepted or revoked invitation is final, so a used token cannot be brought back to life.
+-- A deleted Organization may have been emptied of its Owners; it cannot then become active or
+-- suspended again, or the rule above would have an Organization with no Owner in it.
+CREATE FUNCTION "core"."refuse_revived_ownerless_organization"() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  RAISE EXCEPTION 'core.owner_required: an Organization with no Owner cannot leave the deleted status'
+    USING ERRCODE = 'check_violation', CONSTRAINT = 'organizations_owner_required';
+END
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "organizations_no_ownerless_revival" BEFORE UPDATE OF "status" ON "core"."organizations"
+  FOR EACH ROW WHEN (OLD."status" = 'deleted' AND NEW."status" <> 'deleted' AND OLD."owner_count" < 1)
+  EXECUTE FUNCTION "core"."refuse_revived_ownerless_organization"();
+--> statement-breakpoint
+
+-- An accepted or revoked invitation is final: no statement that sets its state or either timestamp
+-- is accepted, not even one that repeats the values. So a used token cannot be brought back to
+-- life and an invitation cannot be accepted twice.
 CREATE FUNCTION "core"."refuse_reopened_invitation"() RETURNS trigger LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
@@ -275,29 +319,72 @@ BEGIN
 END
 $$;
 --> statement-breakpoint
-CREATE TRIGGER "invitations_state_final" BEFORE UPDATE OF "state" ON "core"."invitations"
-  FOR EACH ROW WHEN (OLD."state" <> 'pending' AND NEW."state" IS DISTINCT FROM OLD."state")
+CREATE TRIGGER "invitations_state_final" BEFORE UPDATE OF "state", "accepted_at", "revoked_at" ON "core"."invitations"
+  FOR EACH ROW WHEN (OLD."state" <> 'pending')
   EXECUTE FUNCTION "core"."refuse_reopened_invitation"();
 --> statement-breakpoint
 
--- The directories. Each is a one-row-per-tenant-row projection kept by AFTER ROW triggers in the
--- statement's own transaction, so a rollback, a savepoint rollback, a cascade or a failed
--- statement undoes both together. The functions are SECURITY DEFINER (they run as the owner, the
--- only role that can write the directories) and touch nothing but the directory from OLD and NEW.
--- A key already present is an error, not skipped: drift must be loud. The unique constraint on
--- membership_directory.user_id (one Organization per user) is violated here, by the insert, which
--- is why it can see across Organizations when an index on memberships behind row-level security
--- cannot.
+-- Accepting an invitation needs it unexpired and its Organization active. The Organization row is
+-- locked FOR SHARE so a suspension in flight in another transaction is waited for, not missed
+-- (READ COMMITTED then sees the new status; REPEATABLE READ fails to serialise). An expired
+-- invitation can still be revoked. The service accepts and creates the membership in one
+-- transaction.
+CREATE FUNCTION "core"."refuse_unacceptable_invitation"() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  org_status text;
+BEGIN
+  IF OLD."expires_at" <= pg_catalog.statement_timestamp() THEN
+    RAISE EXCEPTION 'core.invitation_expired: an expired invitation cannot be accepted'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'invitations_not_expired';
+  END IF;
+  SELECT o."status" INTO org_status FROM "core"."organizations" o
+    WHERE o."organization_id" = OLD."organization_id" FOR SHARE;
+  IF org_status IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'core.invitation_organization_inactive: an invitation can be accepted only in an active Organization'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'invitations_organization_active';
+  END IF;
+  RETURN NEW;
+END
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "invitations_accept_guard" BEFORE UPDATE OF "state" ON "core"."invitations"
+  FOR EACH ROW WHEN (OLD."state" = 'pending' AND NEW."state" = 'accepted')
+  EXECUTE FUNCTION "core"."refuse_unacceptable_invitation"();
+--> statement-breakpoint
+
+-- The directories. Each is a projection kept by AFTER ROW triggers in the statement's own
+-- transaction, so a rollback, a savepoint rollback, a cascade or a failed statement undoes both
+-- together. The functions are SECURITY DEFINER (they run as the owner, the only role that can write
+-- the directories). A key already present is an error, not skipped: drift must be loud. The unique
+-- constraint on membership_directory.user_id (one Organization per user) is violated here, by the
+-- insert, which is why it can see across Organizations when an index on memberships behind
+-- row-level security cannot.
+--
+-- Each directory row also carries the Organization's status, so the lookups can answer without
+-- reading a tenant table: the owner is subject to forced row-level security, and no Organization is
+-- set when a lookup runs. The status is read here with FOR SHARE (row-level security passes because
+-- the membership or invitation being written is in the Organization the setting names), which makes
+-- a status change in another transaction wait for this one, so its update of the directory rows
+-- cannot miss a row that is still uncommitted.
 CREATE FUNCTION "core"."sync_membership_directory"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  org_status text;
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
     DELETE FROM "core"."membership_directory"
       WHERE "user_id" = OLD."user_id" AND "organization_id" = OLD."organization_id";
   END IF;
   IF TG_OP IN ('INSERT', 'UPDATE') THEN
-    INSERT INTO "core"."membership_directory" ("user_id", "organization_id")
-      VALUES (NEW."user_id", NEW."organization_id");
+    SELECT o."status" INTO org_status FROM "core"."organizations" o
+      WHERE o."organization_id" = NEW."organization_id" FOR SHARE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'core.organization_missing: the membership names an Organization that is not visible'
+        USING ERRCODE = 'foreign_key_violation';
+    END IF;
+    INSERT INTO "core"."membership_directory" ("user_id", "organization_id", "organization_status")
+      VALUES (NEW."user_id", NEW."organization_id", org_status);
   END IF;
   RETURN NULL;
 END
@@ -306,23 +393,112 @@ $$;
 CREATE TRIGGER "memberships_sync_directory" AFTER INSERT OR DELETE OR UPDATE OF "user_id", "organization_id" ON "core"."memberships"
   FOR EACH ROW EXECUTE FUNCTION "core"."sync_membership_directory"();
 --> statement-breakpoint
+-- Only pending invitations are in the directory: a row leaves it when its invitation is accepted or
+-- revoked, so a used token hash is not kept here.
 CREATE FUNCTION "core"."sync_invitation_directory"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  org_status text;
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
     DELETE FROM "core"."invitation_directory" WHERE "token_hash" = OLD."token_hash";
   END IF;
-  IF TG_OP IN ('INSERT', 'UPDATE') THEN
-    INSERT INTO "core"."invitation_directory" ("token_hash", "organization_id", "invitation_id")
-      VALUES (NEW."token_hash", NEW."organization_id", NEW."id");
+  IF TG_OP IN ('INSERT', 'UPDATE') AND NEW."state" = 'pending' THEN
+    SELECT o."status" INTO org_status FROM "core"."organizations" o
+      WHERE o."organization_id" = NEW."organization_id" FOR SHARE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'core.organization_missing: the invitation names an Organization that is not visible'
+        USING ERRCODE = 'foreign_key_violation';
+    END IF;
+    INSERT INTO "core"."invitation_directory"
+        ("token_hash", "organization_id", "invitation_id", "expires_at", "organization_status")
+      VALUES (NEW."token_hash", NEW."organization_id", NEW."id", NEW."expires_at", org_status);
   END IF;
   RETURN NULL;
 END
 $$;
 --> statement-breakpoint
-CREATE TRIGGER "invitations_sync_directory" AFTER INSERT OR DELETE OR UPDATE OF "token_hash", "organization_id", "id" ON "core"."invitations"
+CREATE TRIGGER "invitations_sync_directory" AFTER INSERT OR DELETE OR UPDATE OF "token_hash", "organization_id", "id", "state", "expires_at" ON "core"."invitations"
   FOR EACH ROW EXECUTE FUNCTION "core"."sync_invitation_directory"();
 --> statement-breakpoint
+-- A status change updates one directory row per member and per pending invitation of that
+-- Organization (by organization_id, on the indexes created above). Status changes are rare, deliberate
+-- operator actions, not a request path.
+CREATE FUNCTION "core"."sync_organization_status"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  UPDATE "core"."membership_directory" SET "organization_status" = NEW."status"
+    WHERE "organization_id" = NEW."organization_id";
+  UPDATE "core"."invitation_directory" SET "organization_status" = NEW."status"
+    WHERE "organization_id" = NEW."organization_id";
+  RETURN NULL;
+END
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "organizations_sync_directories" AFTER UPDATE OF "status" ON "core"."organizations"
+  FOR EACH ROW WHEN (OLD."status" IS DISTINCT FROM NEW."status")
+  EXECUTE FUNCTION "core"."sync_organization_status"();
+--> statement-breakpoint
 
--- Trigger functions are never called directly; nothing but the owner may execute them.
-REVOKE ALL ON FUNCTION "core"."refuse_region_change"(), "core"."start_organization"(), "core"."track_owner_count"(), "core"."require_owner"(), "core"."refuse_reopened_invitation"(), "core"."sync_membership_directory"(), "core"."sync_invitation_directory"() FROM PUBLIC;
+-- TRUNCATE skips every row trigger, so on a table whose triggers keep the directories and the Owner
+-- count in step it would leave them drifted. Refused for every role; DELETE the rows instead.
+CREATE FUNCTION "core"."refuse_truncate"() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  RAISE EXCEPTION 'core.truncate_refused: TRUNCATE skips the triggers that keep the directories and the Owner count in step; DELETE the rows instead'
+    USING ERRCODE = 'feature_not_supported';
+END
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "organizations_no_truncate" BEFORE TRUNCATE ON "core"."organizations"
+  FOR EACH STATEMENT EXECUTE FUNCTION "core"."refuse_truncate"();
+--> statement-breakpoint
+CREATE TRIGGER "memberships_no_truncate" BEFORE TRUNCATE ON "core"."memberships"
+  FOR EACH STATEMENT EXECUTE FUNCTION "core"."refuse_truncate"();
+--> statement-breakpoint
+CREATE TRIGGER "invitations_no_truncate" BEFORE TRUNCATE ON "core"."invitations"
+  FOR EACH STATEMENT EXECUTE FUNCTION "core"."refuse_truncate"();
+--> statement-breakpoint
+CREATE TRIGGER "membership_directory_no_truncate" BEFORE TRUNCATE ON "core"."membership_directory"
+  FOR EACH STATEMENT EXECUTE FUNCTION "core"."refuse_truncate"();
+--> statement-breakpoint
+CREATE TRIGGER "invitation_directory_no_truncate" BEFORE TRUNCATE ON "core"."invitation_directory"
+  FOR EACH STATEMENT EXECUTE FUNCTION "core"."refuse_truncate"();
+--> statement-breakpoint
+
+-- The two lookups, closeline_core's only way into the directories. Each is STABLE and SECURITY
+-- DEFINER, runs with search_path pinned, takes one exact key and returns at most one row (the keys
+-- are unique). They read only the directories, which are not under row-level security, so they
+-- need no Organization to be set; the status and the pending, unexpired facts live in the
+-- directory rows for that reason.
+--
+-- organization_of_user: the Organization of a user and that Organization's status.
+CREATE FUNCTION "core"."organization_of_user"(p_user_id text)
+RETURNS TABLE ("organization_id" text, "status" text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $$
+  SELECT d."organization_id", d."organization_status"
+    FROM "core"."membership_directory" d
+   WHERE d."user_id" = p_user_id
+$$;
+--> statement-breakpoint
+-- invitation_for_token: the Organization and invitation of a token hash, only while that invitation
+-- is pending and unexpired in an active Organization. Anything else, and any unknown token, gives
+-- no row, so the caller cannot tell them apart.
+CREATE FUNCTION "core"."invitation_for_token"(p_token_hash text)
+RETURNS TABLE ("organization_id" text, "invitation_id" text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $$
+  SELECT d."organization_id", d."invitation_id"
+    FROM "core"."invitation_directory" d
+   WHERE d."token_hash" = p_token_hash
+     AND d."expires_at" > pg_catalog.statement_timestamp()
+     AND d."organization_status" = 'active'
+$$;
+--> statement-breakpoint
+
+-- Functions are executable by PUBLIC unless revoked. Trigger functions are never called directly:
+-- nothing but the owner may execute them. The lookups are granted to closeline_core alone.
+REVOKE ALL ON FUNCTION "core"."refuse_region_change"(), "core"."start_organization"(), "core"."track_owner_count"(), "core"."require_owner"(), "core"."refuse_revived_ownerless_organization"(), "core"."refuse_reopened_invitation"(), "core"."refuse_unacceptable_invitation"(), "core"."sync_membership_directory"(), "core"."sync_invitation_directory"(), "core"."sync_organization_status"(), "core"."refuse_truncate"(), "core"."organization_of_user"(text), "core"."invitation_for_token"(text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION "core"."organization_of_user"(text), "core"."invitation_for_token"(text) TO closeline_core;

@@ -24,6 +24,7 @@ __export(exports_schema, {
   ENVIRONMENT_KINDS: () => ENVIRONMENT_KINDS2,
   EVENT_RETENTION_FLOOR: () => EVENT_RETENTION_FLOOR2,
   IDENTITY_PROVIDERS: () => IDENTITY_PROVIDERS2,
+  INVITATION_ROLES: () => INVITATION_ROLES2,
   INVITATION_STATES: () => INVITATION_STATES2,
   MEMBERSHIP_ROLES: () => MEMBERSHIP_ROLES2,
   OAUTH_PROVIDERS: () => OAUTH_PROVIDERS2,
@@ -840,6 +841,7 @@ import {
   uniqueIndex as uniqueIndex2
 } from "drizzle-orm/pg-core";
 var MEMBERSHIP_ROLES2 = ["owner", "admin", "manager", "rep"];
+var INVITATION_ROLES2 = ["admin", "manager", "rep"];
 var ORGANIZATION_REGIONS2 = ["us", "eu"];
 var ORGANIZATION_STATUSES2 = ["active", "suspended", "deleted"];
 var INVITATION_STATES2 = ["pending", "accepted", "revoked"];
@@ -881,7 +883,7 @@ var teams2 = coreSchema2.table("teams", {
   id: text30("id").primaryKey(),
   organizationId: text30("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
   name: text30("name").notNull(),
-  nameKey: text30("name_key").generatedAlwaysAs(() => sql15`lower(name)`),
+  nameKey: text30("name_key").generatedAlwaysAs(() => sql15`lower(name collate "C")`),
   createdAt: createdAt(),
   updatedAt: updatedAt()
 }, (t) => [
@@ -918,7 +920,7 @@ var invitations2 = coreSchema2.table("invitations", {
   id: text30("id").primaryKey(),
   organizationId: text30("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
   email: text30("email").notNull(),
-  role: text30("role", { enum: MEMBERSHIP_ROLES2 }).notNull(),
+  role: text30("role", { enum: INVITATION_ROLES2 }).notNull(),
   teamId: text30("team_id"),
   invitedByUserId: text30("invited_by_user_id").notNull(),
   tokenHash: text30("token_hash").notNull(),
@@ -933,8 +935,13 @@ var invitations2 = coreSchema2.table("invitations", {
   check10("invitations_organization_id_shape", idShape("organization_id", "org")),
   check10("invitations_invited_by_shape", idShape("invited_by_user_id", "usr")),
   check10("invitations_team_id_shape", sql15`${t.teamId} is null or "team_id" ~ '^team_[0-9a-f]{32}$'`),
-  check10("invitations_email_shape", sql15`${t.email} = lower(btrim(${t.email})) and char_length(${t.email}) between 3 and 320 and position('@' in ${t.email}) > 1`),
+  check10("invitations_email_shape", sql15`${t.email} = lower(${t.email} collate "C")
+        and char_length(${t.email}) between 3 and 320
+        and char_length(${t.email}) - char_length(replace(${t.email}, '@', '')) = 1
+        and position('@' in ${t.email}) between 2 and char_length(${t.email}) - 1
+        and ${t.email} collate "C" !~ '[[:space:][:cntrl:]]'`),
   check10("invitations_role_known", sql15`${t.role} in (${list(MEMBERSHIP_ROLES2)})`),
+  check10("invitations_role_not_owner", sql15`${t.role} <> 'owner'`),
   check10("invitations_state_known", sql15`${t.state} in (${list(INVITATION_STATES2)})`),
   check10("invitations_token_hash_shape", sql15`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
   check10("invitations_expiry_after_creation", sql15`${t.expiresAt} > ${t.createdAt}`),
@@ -954,23 +961,30 @@ var invitations2 = coreSchema2.table("invitations", {
 ]);
 var membershipDirectory2 = coreSchema2.table("membership_directory", {
   userId: text30("user_id").notNull(),
-  organizationId: text30("organization_id").notNull()
+  organizationId: text30("organization_id").notNull(),
+  organizationStatus: text30("organization_status", { enum: ORGANIZATION_STATUSES2 }).notNull()
 }, (t) => [
   primaryKey2({ name: "membership_directory_pkey", columns: [t.userId, t.organizationId] }),
   check10("membership_directory_user_id_shape", idShape("user_id", "usr")),
   check10("membership_directory_organization_id_shape", idShape("organization_id", "org")),
-  unique21("membership_directory_one_organization_per_user").on(t.userId)
+  check10("membership_directory_organization_status_known", sql15`${t.organizationStatus} in (${list(ORGANIZATION_STATUSES2)})`),
+  unique21("membership_directory_one_organization_per_user").on(t.userId),
+  index21("membership_directory_organization_idx").on(t.organizationId)
 ]);
 var invitationDirectory2 = coreSchema2.table("invitation_directory", {
   tokenHash: text30("token_hash").primaryKey(),
   organizationId: text30("organization_id").notNull(),
-  invitationId: text30("invitation_id").notNull()
-}, () => [
+  invitationId: text30("invitation_id").notNull(),
+  expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull(),
+  organizationStatus: text30("organization_status", { enum: ORGANIZATION_STATUSES2 }).notNull()
+}, (t) => [
   check10("invitation_directory_token_hash_shape", sql15`"token_hash" ~ '^[0-9a-f]{64}$'`),
   check10("invitation_directory_organization_id_shape", idShape("organization_id", "org")),
-  check10("invitation_directory_invitation_id_shape", idShape("invitation_id", "inv"))
+  check10("invitation_directory_invitation_id_shape", idShape("invitation_id", "inv")),
+  check10("invitation_directory_organization_status_known", sql15`${t.organizationStatus} in (${list(ORGANIZATION_STATUSES2)})`),
+  index21("invitation_directory_organization_idx").on(t.organizationId)
 ]);
 // src/schema/playbook.ts
 import { pgSchema as pgSchema3 } from "drizzle-orm/pg-core";
 var playbookSchema2 = pgSchema3("playbook");
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, API_KEY_KINDS2, apiKeys2, TENANT_SETTING, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, playbookSchema2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, API_KEY_KINDS2, apiKeys2, TENANT_SETTING, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, playbookSchema2, exports_schema };

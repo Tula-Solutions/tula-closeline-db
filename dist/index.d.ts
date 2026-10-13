@@ -1,6 +1,6 @@
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDENTITY_PROVIDERS, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDENTITY_PROVIDERS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -6490,6 +6490,8 @@ import { PgTableWithColumns as PgTableWithColumns_a5zn0g31 } from "drizzle-orm/p
 import { PgColumn as PgColumn_ffrhhp31 } from "drizzle-orm/pg-core";
 /** The roles a membership can hold, most privileged first. Mirrors the contract's `ROLES`. */
 declare const MEMBERSHIP_ROLES: readonly ["owner", "admin", "manager", "rep"];
+/** The roles an invitation can offer: ownership passes by promotion, never by invitation. */
+declare const INVITATION_ROLES: readonly ["admin", "manager", "rep"];
 /** The Regions an Organization can be created in. Mirrors the contract's `REGIONS`. */
 declare const ORGANIZATION_REGIONS: readonly ["us", "eu"];
 /** The states an Organization is in; `deleted` keeps the row for the retention window. */
@@ -6503,7 +6505,11 @@ declare const INVITATION_STATES: readonly ["pending", "accepted", "revoked"];
 * `owner_count` is kept by triggers on `memberships` and is what serialises changes to an
 * Organization's Owners, so no concurrent pair of transactions can remove the last two. The
 * service role cannot write it, and an insert always starts it at zero; a deferred trigger
-* refuses to commit an Organization that has no Owner.
+* refuses to commit an Organization that has no Owner. The last-Owner rule holds while the
+* Organization is `active` or `suspended`; a `deleted` Organization (kept for retention) may have
+* every membership removed, the last Owner included, so a retention job can empty it and free its
+* users to join another Organization. An emptied Organization cannot be made `active` or
+* `suspended` again.
 */
 declare const organizations: PgTableWithColumns_a5zn0g31<{
 	name: "organizations";
@@ -6758,6 +6764,10 @@ declare const memberships: PgTableWithColumns_a5zn0g31<{
 * - Teams of an Organization: `WHERE organization_id = $1 AND name_key > $cursor ORDER BY
 *   name_key`, on `teams_organization_name_key` (unique, so the key is the whole cursor).
 *   `lower()` itself cannot be an index condition under row-level security, hence the column.
+*
+* `name_key` folds ASCII letters only, with the explicit `"C"` collation, so it is the same on
+* every cluster whatever its locale; "É" and "é" are different names. The service must fold the
+* same way (`name.replace(/[A-Z]/g, ...)`, not `toLowerCase()`) wherever it compares names.
 */
 declare const teams: PgTableWithColumns_a5zn0g31<{
 	name: "teams";
@@ -6961,9 +6971,17 @@ declare const teamMembers: PgTableWithColumns_a5zn0g31<{
 * An invitation to join an Organization. Only a hash of the token is stored (64 lowercase hex
 * characters, a SHA-256). One pending invitation per email per Organization; a re-invite revokes
 * the old one first (an expired invitation stays `pending` until then). `accepted` and `revoked`
-* are final. `invited_by_user_id` is an opaque `usr_` id, so it outlives the inviter's membership.
-* Deleting the Team clears `team_id` (the migration replaces the generated foreign key with
-* `ON DELETE SET NULL (team_id)`, which Drizzle cannot express).
+* are final: no statement that sets the state or its timestamps on such a row is accepted, so an
+* invitation cannot be accepted twice. The database refuses to accept an invitation after
+* `expires_at` or while its Organization is not `active`. The role is never `owner`
+* (ownership passes by promotion). The email is stored folded with the ASCII-only rule below, has
+* exactly one `@` and no whitespace or control characters; the service folds with the same rule
+* and validates the whole address at the edge. `invited_by_user_id` is an opaque `usr_` id, so it
+* outlives the inviter's membership. Deleting the Team clears `team_id` (the migration replaces
+* the generated foreign key with `ON DELETE SET NULL (team_id)`, which Drizzle cannot express).
+* The service role cannot `DELETE` an invitation: it is revoked, and only deleting its
+* Organization removes it. Accepting an invitation and creating its membership is one
+* transaction in the service.
 *
 * Lists served:
 * - Pending invitations of an Organization: `WHERE organization_id = $1 AND state = 'pending' AND
@@ -7029,14 +7047,14 @@ declare const invitations: PgTableWithColumns_a5zn0g31<{
 			tableName: "invitations";
 			dataType: "string";
 			columnType: "PgText";
-			data: "admin" | "manager" | "owner" | "rep";
+			data: "admin" | "manager" | "rep";
 			driverParam: string;
 			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["owner", "admin", "manager", "rep"];
+			enumValues: ["admin", "manager", "rep"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -7198,12 +7216,15 @@ declare const invitations: PgTableWithColumns_a5zn0g31<{
 	dialect: "pg";
 }>;
 /**
-* Which Organization a user belongs to, readable before the Organization is known (asked at
-* sign-in). It holds the mapping and nothing else, is not under row-level security, and is
-* written only by the `SECURITY DEFINER` triggers on `memberships`: the service role can only
-* `SELECT`. A user belongs to exactly one Organization, enforced by the unique constraint on
-* `user_id`. To allow several, one migration drops
-* `membership_directory_one_organization_per_user`; nothing else changes.
+* Which Organization a user belongs to, with that Organization's status: the one fact sign-in asks
+* before any Organization is known. It is not under row-level security and no service role can
+* select from it, or write it: `closeline_core` reaches it only through the `SECURITY DEFINER`
+* function `core.organization_of_user(user_id)` (`organizationOfUser`), one row for one exact key.
+* The `SECURITY DEFINER` triggers on `memberships` write it, and the one on `organizations` keeps
+* `organization_status` equal to the Organization's status (a status change updates one row per
+* member, found by `membership_directory_organization_idx`). A user belongs to exactly one
+* Organization, enforced by the unique constraint on `user_id`. To allow several, one migration
+* drops `membership_directory_one_organization_per_user` and replaces the function.
 */
 declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
 	name: "membership_directory";
@@ -7243,13 +7264,34 @@ declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		organizationStatus: PgColumn_ffrhhp31<{
+			name: "organization_status";
+			tableName: "membership_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "deleted" | "suspended";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["active", "suspended", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 	};
 	dialect: "pg";
 }>;
 /**
-* Which Organization and invitation a token hash belongs to, readable before the Organization is
-* known (asked when accepting). Mapping only, not under row-level security, written only by the
-* `SECURITY DEFINER` triggers on `invitations`; the service role can only `SELECT`.
+* Which Organization and invitation a token hash opens, for the pending invitations only: a row
+* leaves when its invitation is accepted or revoked. It carries `expires_at` and the
+* Organization's status so that `core.invitation_for_token(token_hash)` (`invitationForToken`)
+* can answer, for one exact key, only when the invitation is pending, unexpired and in an
+* `active` Organization, without reading a tenant table. Not under row-level security; no
+* service role can select from it or write it. The `SECURITY DEFINER` triggers on `invitations`
+* and `organizations` keep it.
 */
 declare const invitationDirectory: PgTableWithColumns_a5zn0g31<{
 	name: "invitation_directory";
@@ -7302,6 +7344,40 @@ declare const invitationDirectory: PgTableWithColumns_a5zn0g31<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		expiresAt: PgColumn_ffrhhp31<{
+			name: "expires_at";
+			tableName: "invitation_directory";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationStatus: PgColumn_ffrhhp31<{
+			name: "organization_status";
+			tableName: "invitation_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "deleted" | "suspended";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["active", "suspended", "deleted"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -7369,6 +7445,50 @@ interface DbHandle {
 * @throws If the connection string is empty or an option is out of bounds.
 */
 declare function createDb(connectionString: string, options?: DbOptions): DbHandle;
+/** The state an Organization is in, as `core.organizations.status` stores it. */
+type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
+/** The Organization a user belongs to, as `core.organization_of_user` answers. */
+interface OrganizationOfUser {
+	/** The Organization the user belongs to (`org_` and 32 hex characters). */
+	organizationId: string;
+	/** The Organization's status; a sign-in refuses everything but `active`. */
+	status: OrganizationStatus;
+}
+/** The pending invitation a token hash opens, as `core.invitation_for_token` answers. */
+interface InvitationForToken {
+	/** The Organization that issued the invitation. */
+	organizationId: string;
+	/** The invitation to read, inside that Organization's scope. */
+	invitationId: string;
+}
+/**
+* Find the Organization a user belongs to: the question sign-in asks before any Organization is
+* known. It calls `core.organization_of_user`, the only way `closeline_core` reaches the
+* membership directory. Run it on the pooled handle, not inside `withOrganization`; then read the
+* membership itself inside `withOrganization` for the Organization it names.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param userId - The user's opaque id: `usr_` and 32 lowercase hex characters.
+* @returns The Organization and its status, or `null` when the user belongs to none.
+* @throws If `userId` is malformed (before any query runs), or if the directory holds more than
+*   one Organization for the user (the one-Organization rule was relaxed without updating this).
+*/
+declare function organizationOfUser(db: Pick<Database, "execute">, userId: string): Promise<OrganizationOfUser | null>;
+/**
+* Find the invitation a token hash opens: the question accepting an invitation asks before any
+* Organization is known. It calls `core.invitation_for_token`, the only way `closeline_core`
+* reaches the invitation directory. The database answers only for an invitation that is still
+* pending and unexpired in an `active` Organization, so a used, revoked or expired token, an
+* unknown one and one of a suspended or deleted Organization all give `null` and cannot be told
+* apart. Then accept inside `withOrganization`: update the invitation and create the membership
+* in one transaction.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param tokenHash - The SHA-256 of the token: 64 lowercase hex characters, never the token.
+* @returns The Organization and invitation ids, or `null`.
+* @throws If `tokenHash` is malformed (before any query runs).
+*/
+declare function invitationForToken(db: Pick<Database, "execute">, tokenHash: string): Promise<InvitationForToken | null>;
 /**
 * The transaction-local setting the `auth` schema's row-level-security policies compare
 * `environment_id` against. It is tula-auth's, kept so the service copied from it runs unchanged;
@@ -7429,7 +7549,10 @@ declare const CONTROL_PLANE_TABLES: readonly string[];
 * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
 * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
 * only entries are the two `core` directories, which are asked before an Organization is known.
-* An entry here needs a decision record in the hub.
+* An entry here needs a decision record in the hub. An exempt table is under no row-level
+* security, so {@link findTenantIsolationGaps} also reports it as a gap when any `closeline_*`
+* service role (or PUBLIC) holds a `SELECT` privilege on it, at table or column level: it may be
+* reached only through a `SECURITY DEFINER` function.
 */
 declare const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>>;
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
@@ -7474,8 +7597,10 @@ interface AuthTableCategories {
 *   USING and WITH CHECK expression `tenantRlsStatements` writes (any weaker or wider one could
 *   open the table across Organizations).
 *
-* Tables on `allowlist` are skipped. A `closeline_*` role that is a superuser or has `BYPASSRLS` is
-* a gap too, because it ignores every policy.
+* Tables on `allowlist` are skipped, except that one which any `closeline_*` role other than the
+* owner can `SELECT` from (the privilege check counts column grants and grants to PUBLIC) is a
+* gap: with no row-level security it would show every Organization's rows. A `closeline_*` role
+* that is a superuser or has `BYPASSRLS` is a gap too, because it ignores every policy.
 *
 * @param db - A database handle connected as any role; the catalogs are readable by all.
 * @param allowlist - `schema.table` names exempt from the check; defaults to {@link NON_TENANT_TABLES}.
@@ -7530,4 +7655,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, InvitationForToken, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

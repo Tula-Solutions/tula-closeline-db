@@ -6486,6 +6486,8 @@ import { PgTableWithColumns as PgTableWithColumns_a5zn0g31 } from "drizzle-orm/p
 import { PgColumn as PgColumn_ffrhhp31 } from "drizzle-orm/pg-core";
 /** The roles a membership can hold, most privileged first. Mirrors the contract's `ROLES`. */
 declare const MEMBERSHIP_ROLES: readonly ["owner", "admin", "manager", "rep"];
+/** The roles an invitation can offer: ownership passes by promotion, never by invitation. */
+declare const INVITATION_ROLES: readonly ["admin", "manager", "rep"];
 /** The Regions an Organization can be created in. Mirrors the contract's `REGIONS`. */
 declare const ORGANIZATION_REGIONS: readonly ["us", "eu"];
 /** The states an Organization is in; `deleted` keeps the row for the retention window. */
@@ -6499,7 +6501,11 @@ declare const INVITATION_STATES: readonly ["pending", "accepted", "revoked"];
 * `owner_count` is kept by triggers on `memberships` and is what serialises changes to an
 * Organization's Owners, so no concurrent pair of transactions can remove the last two. The
 * service role cannot write it, and an insert always starts it at zero; a deferred trigger
-* refuses to commit an Organization that has no Owner.
+* refuses to commit an Organization that has no Owner. The last-Owner rule holds while the
+* Organization is `active` or `suspended`; a `deleted` Organization (kept for retention) may have
+* every membership removed, the last Owner included, so a retention job can empty it and free its
+* users to join another Organization. An emptied Organization cannot be made `active` or
+* `suspended` again.
 */
 declare const organizations: PgTableWithColumns_a5zn0g31<{
 	name: "organizations";
@@ -6754,6 +6760,10 @@ declare const memberships: PgTableWithColumns_a5zn0g31<{
 * - Teams of an Organization: `WHERE organization_id = $1 AND name_key > $cursor ORDER BY
 *   name_key`, on `teams_organization_name_key` (unique, so the key is the whole cursor).
 *   `lower()` itself cannot be an index condition under row-level security, hence the column.
+*
+* `name_key` folds ASCII letters only, with the explicit `"C"` collation, so it is the same on
+* every cluster whatever its locale; "É" and "é" are different names. The service must fold the
+* same way (`name.replace(/[A-Z]/g, ...)`, not `toLowerCase()`) wherever it compares names.
 */
 declare const teams: PgTableWithColumns_a5zn0g31<{
 	name: "teams";
@@ -6957,9 +6967,17 @@ declare const teamMembers: PgTableWithColumns_a5zn0g31<{
 * An invitation to join an Organization. Only a hash of the token is stored (64 lowercase hex
 * characters, a SHA-256). One pending invitation per email per Organization; a re-invite revokes
 * the old one first (an expired invitation stays `pending` until then). `accepted` and `revoked`
-* are final. `invited_by_user_id` is an opaque `usr_` id, so it outlives the inviter's membership.
-* Deleting the Team clears `team_id` (the migration replaces the generated foreign key with
-* `ON DELETE SET NULL (team_id)`, which Drizzle cannot express).
+* are final: no statement that sets the state or its timestamps on such a row is accepted, so an
+* invitation cannot be accepted twice. The database refuses to accept an invitation after
+* `expires_at` or while its Organization is not `active`. The role is never `owner`
+* (ownership passes by promotion). The email is stored folded with the ASCII-only rule below, has
+* exactly one `@` and no whitespace or control characters; the service folds with the same rule
+* and validates the whole address at the edge. `invited_by_user_id` is an opaque `usr_` id, so it
+* outlives the inviter's membership. Deleting the Team clears `team_id` (the migration replaces
+* the generated foreign key with `ON DELETE SET NULL (team_id)`, which Drizzle cannot express).
+* The service role cannot `DELETE` an invitation: it is revoked, and only deleting its
+* Organization removes it. Accepting an invitation and creating its membership is one
+* transaction in the service.
 *
 * Lists served:
 * - Pending invitations of an Organization: `WHERE organization_id = $1 AND state = 'pending' AND
@@ -7025,14 +7043,14 @@ declare const invitations: PgTableWithColumns_a5zn0g31<{
 			tableName: "invitations";
 			dataType: "string";
 			columnType: "PgText";
-			data: "admin" | "manager" | "owner" | "rep";
+			data: "admin" | "manager" | "rep";
 			driverParam: string;
 			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["owner", "admin", "manager", "rep"];
+			enumValues: ["admin", "manager", "rep"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -7194,12 +7212,15 @@ declare const invitations: PgTableWithColumns_a5zn0g31<{
 	dialect: "pg";
 }>;
 /**
-* Which Organization a user belongs to, readable before the Organization is known (asked at
-* sign-in). It holds the mapping and nothing else, is not under row-level security, and is
-* written only by the `SECURITY DEFINER` triggers on `memberships`: the service role can only
-* `SELECT`. A user belongs to exactly one Organization, enforced by the unique constraint on
-* `user_id`. To allow several, one migration drops
-* `membership_directory_one_organization_per_user`; nothing else changes.
+* Which Organization a user belongs to, with that Organization's status: the one fact sign-in asks
+* before any Organization is known. It is not under row-level security and no service role can
+* select from it, or write it: `closeline_core` reaches it only through the `SECURITY DEFINER`
+* function `core.organization_of_user(user_id)` (`organizationOfUser`), one row for one exact key.
+* The `SECURITY DEFINER` triggers on `memberships` write it, and the one on `organizations` keeps
+* `organization_status` equal to the Organization's status (a status change updates one row per
+* member, found by `membership_directory_organization_idx`). A user belongs to exactly one
+* Organization, enforced by the unique constraint on `user_id`. To allow several, one migration
+* drops `membership_directory_one_organization_per_user` and replaces the function.
 */
 declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
 	name: "membership_directory";
@@ -7239,13 +7260,34 @@ declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		organizationStatus: PgColumn_ffrhhp31<{
+			name: "organization_status";
+			tableName: "membership_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "deleted" | "suspended";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["active", "suspended", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 	};
 	dialect: "pg";
 }>;
 /**
-* Which Organization and invitation a token hash belongs to, readable before the Organization is
-* known (asked when accepting). Mapping only, not under row-level security, written only by the
-* `SECURITY DEFINER` triggers on `invitations`; the service role can only `SELECT`.
+* Which Organization and invitation a token hash opens, for the pending invitations only: a row
+* leaves when its invitation is accepted or revoked. It carries `expires_at` and the
+* Organization's status so that `core.invitation_for_token(token_hash)` (`invitationForToken`)
+* can answer, for one exact key, only when the invitation is pending, unexpired and in an
+* `active` Organization, without reading a tenant table. Not under row-level security; no
+* service role can select from it or write it. The `SECURITY DEFINER` triggers on `invitations`
+* and `organizations` keep it.
 */
 declare const invitationDirectory: PgTableWithColumns_a5zn0g31<{
 	name: "invitation_directory";
@@ -7302,10 +7344,44 @@ declare const invitationDirectory: PgTableWithColumns_a5zn0g31<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		expiresAt: PgColumn_ffrhhp31<{
+			name: "expires_at";
+			tableName: "invitation_directory";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationStatus: PgColumn_ffrhhp31<{
+			name: "organization_status";
+			tableName: "invitation_directory";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "deleted" | "suspended";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["active", "suspended", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 	};
 	dialect: "pg";
 }>;
 import { PgSchema as PgSchema_mtt0uw3 } from "drizzle-orm/pg-core";
 /** The `playbook` Postgres schema, owned by the playbook service (login role `closeline_playbook`). */
 declare const playbookSchema: PgSchema_mtt0uw3<"playbook">;
-export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDENTITY_PROVIDERS, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+export { API_KEY_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, ApiKey, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDENTITY_PROVIDERS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, NativeAppRow, NewApiKey, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, apiKeys, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };

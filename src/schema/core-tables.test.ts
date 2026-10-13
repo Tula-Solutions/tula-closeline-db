@@ -4,6 +4,7 @@ import { is } from 'drizzle-orm'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
 import { NON_TENANT_TABLES } from '../isolation'
 import { tenantRlsStatements } from '../tenant'
+import { INVITATION_ROLES, MEMBERSHIP_ROLES } from './core-tables'
 import * as schemas from './index'
 
 const coreTables = Object.values<unknown>(schemas)
@@ -60,5 +61,80 @@ describe('the core schema', () => {
     expect(directory?.uniqueConstraints[0]?.columns.map((column) => column.name)).toEqual([
       'user_id',
     ])
+  })
+
+  test('an invitation can offer every role but Owner', () => {
+    expect<string[]>([...INVITATION_ROLES]).toEqual(
+      MEMBERSHIP_ROLES.filter((role) => role !== 'owner')
+    )
+  })
+})
+
+describe('the hand-written SQL of the migration', () => {
+  // The `CREATE FUNCTION "core"."name"` statements, split at the statement breakpoint.
+  const functions = migration
+    .split('--> statement-breakpoint')
+    .filter((statement) => statement.includes('CREATE FUNCTION "core"'))
+    .map((statement) => ({
+      name: /CREATE FUNCTION "core"\."(\w+)"/.exec(statement)?.[1] ?? '',
+      text: statement,
+    }))
+
+  test('creates the thirteen functions the integration suite classifies', () => {
+    expect(functions.map((fn) => fn.name).sort()).toEqual([
+      'invitation_for_token',
+      'organization_of_user',
+      'refuse_region_change',
+      'refuse_reopened_invitation',
+      'refuse_revived_ownerless_organization',
+      'refuse_truncate',
+      'refuse_unacceptable_invitation',
+      'require_owner',
+      'start_organization',
+      'sync_invitation_directory',
+      'sync_membership_directory',
+      'sync_organization_status',
+      'track_owner_count',
+    ])
+  })
+
+  test.each(functions.map((fn) => [fn.name, fn.text] as const))(
+    '%s pins search_path to pg_catalog, pg_temp',
+    (_name, text) => {
+      expect(text).toContain('SET search_path = pg_catalog, pg_temp')
+    }
+  )
+
+  test('revokes EXECUTE on every function from PUBLIC, and grants only the lookups to closeline_core', () => {
+    const revoke = /REVOKE ALL ON FUNCTION ([^;]+) FROM PUBLIC;/.exec(migration)?.[1] ?? ''
+    for (const fn of functions) {
+      expect(revoke).toContain(`"core"."${fn.name}"(`)
+    }
+    const grants = [...migration.matchAll(/GRANT EXECUTE ON FUNCTION ([^;]+) TO ([^;]+);/g)]
+    expect(grants.map((grant) => grant[2])).toEqual(['closeline_core'])
+    expect(grants[0]?.[1]).toBe(
+      '"core"."organization_of_user"(text), "core"."invitation_for_token"(text)'
+    )
+  })
+
+  test('takes every privilege on the directories, and the right to remove invitations, from closeline_core', () => {
+    expect(migration).toContain(
+      'REVOKE ALL ON "core"."membership_directory", "core"."invitation_directory" FROM closeline_core;'
+    )
+    expect(migration).toContain('REVOKE DELETE ON "core"."invitations" FROM closeline_core;')
+  })
+
+  test('guards bulk emptying of the five tables whose triggers keep the directories and Owner count', () => {
+    for (const table of [
+      'organizations',
+      'memberships',
+      'invitations',
+      'membership_directory',
+      'invitation_directory',
+    ]) {
+      expect(migration).toContain(
+        `CREATE TRIGGER "${table}_no_truncate" BEFORE TRUNCATE ON "core"."${table}"`
+      )
+    }
   })
 })

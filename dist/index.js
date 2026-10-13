@@ -1,7 +1,7 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-ygvxxas1.js";
+} from "./shared/chunk-d0a5g9kp.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -87,8 +87,31 @@ async function closePool(pool, clients, timeoutMs) {
     clearTimeout(timer);
   }
 }
-// src/environment.ts
+// src/core-lookups.ts
 import { sql } from "drizzle-orm";
+var USER_ID = /^usr_[0-9a-f]{32}$/;
+var TOKEN_HASH = /^[0-9a-f]{64}$/;
+async function organizationOfUser(db, userId) {
+  if (!USER_ID.test(userId)) {
+    throw new Error("organizationOfUser: invalid user id");
+  }
+  const { rows } = await db.execute(sql`select organization_id, status from core.organization_of_user(${userId})`);
+  if (rows.length > 1) {
+    throw new Error("organizationOfUser: more than one Organization for a user");
+  }
+  const row = rows[0];
+  return row ? { organizationId: row.organization_id, status: row.status } : null;
+}
+async function invitationForToken(db, tokenHash) {
+  if (!TOKEN_HASH.test(tokenHash)) {
+    throw new Error("invitationForToken: invalid token hash");
+  }
+  const { rows } = await db.execute(sql`select organization_id, invitation_id from core.invitation_for_token(${tokenHash})`);
+  const row = rows[0];
+  return row ? { organizationId: row.organization_id, invitationId: row.invitation_id } : null;
+}
+// src/environment.ts
+import { sql as sql2 } from "drizzle-orm";
 var ENVIRONMENT_SETTING = TENANT_SETTING;
 var ENVIRONMENT_POLICY_EXPRESSION = `(environment_id = (NULLIF(current_setting('${ENVIRONMENT_SETTING}'::text, true), ''::text))::uuid)`;
 var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,15 +120,18 @@ async function withEnvironment(db, environmentId, fn) {
     throw new Error("withEnvironment: environmentId must be a UUID");
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select set_config(${ENVIRONMENT_SETTING}, ${environmentId}, true)`);
+    await tx.execute(sql2`select set_config(${ENVIRONMENT_SETTING}, ${environmentId}, true)`);
     return fn(tx);
   });
 }
 // src/isolation.ts
-import { sql as sql3 } from "drizzle-orm";
+import { sql as sql4 } from "drizzle-orm";
+
+// src/roles.ts
+var OWNER_ROLE = "closeline_owner";
 
 // src/tenant.ts
-import { sql as sql2 } from "drizzle-orm";
+import { sql as sql3 } from "drizzle-orm";
 var ORGANIZATION_SETTING = "app.organization_id";
 var ORGANIZATION_ID = /^org_[0-9a-f]{32}$/;
 var IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -114,7 +140,7 @@ async function withOrganization(db, organizationId, fn) {
     throw new Error("withOrganization: invalid organization id");
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql2`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
+    await tx.execute(sql3`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
     return fn(tx);
   });
 }
@@ -174,8 +200,8 @@ var CONTROL_PLANE_TABLE_REASONS = {
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
-  "core.invitation_directory": "read before the Organization is known (accepting an invitation looks up a token hash); holds only token hash, Organization id and invitation id, is written only by SECURITY DEFINER triggers on core.invitations, and the service role has SELECT alone",
-  "core.membership_directory": "read before the Organization is known (sign-in asks which Organization a user belongs to); holds only user id and Organization id, is written only by SECURITY DEFINER triggers on core.memberships, and the service role has SELECT alone"
+  "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id, expiry and Organization status for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
+  "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id, Organization id and Organization status, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in"
 };
 var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
 var EXTENSION_SCHEMAS = [];
@@ -183,7 +209,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
   environmentScoped: ENVIRONMENT_SCOPED_TABLES,
   controlPlane: CONTROL_PLANE_TABLES
 }) {
-  const result = await db.execute(sql3`
+  const result = await db.execute(sql4`
     select n.nspname as schema,
            c.relname as "table",
            c.relkind as kind,
@@ -208,7 +234,12 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
                and not (p.cmd = 'ALL'
                         and p.qual = ${ENVIRONMENT_POLICY_EXPRESSION}
                         and p.with_check = ${ENVIRONMENT_POLICY_EXPRESSION})
-           ) as weak_environment_permissive
+           ) as weak_environment_permissive,
+           (select coalesce(array_agg(r.rolname::text order by r.rolname), '{}'::text[])
+              from pg_roles r
+             where r.rolname like 'closeline\\_%' and r.rolname <> ${OWNER_ROLE}
+               and has_any_column_privilege(r.oid, c.oid, 'SELECT')
+           ) as readable_by
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname not in ('drizzle', 'information_schema')
@@ -221,6 +252,13 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       continue;
     }
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
+      if (row.readable_by.length > 0) {
+        gaps.push({
+          schema: row.schema,
+          table: row.table,
+          reason: `is exempt from row-level security but ${row.readable_by.join(", ")} can SELECT from it (directly or as PUBLIC); only a SECURITY DEFINER function may read it`
+        });
+      }
       continue;
     }
     const reason = gapReason(row, categories);
@@ -228,7 +266,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       gaps.push({ schema: row.schema, table: row.table, reason });
     }
   }
-  const roles = await db.execute(sql3`
+  const roles = await db.execute(sql4`
     select rolname as role from pg_roles
      where rolname like 'closeline\\_%' and (rolsuper or rolbypassrls)
      order by rolname`);
@@ -311,8 +349,6 @@ ${lines.join(`
 `)}`);
   }
 }
-// src/roles.ts
-var OWNER_ROLE = "closeline_owner";
 
 // src/index.ts
 var PACKAGE = "tula-closeline-db";
@@ -332,6 +368,8 @@ export {
   assertTenantIsolation,
   createDb,
   findTenantIsolationGaps,
+  invitationForToken,
+  organizationOfUser,
   reportConnectionError,
   tenantRlsStatements,
   withEnvironment,
