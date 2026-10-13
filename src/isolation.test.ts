@@ -107,9 +107,10 @@ describe('EXTENSION_SCHEMAS', () => {
 
 describe('TENANT_SCHEMAS', () => {
   test('names exactly the Postgres schemas exported from src/schema', () => {
-    const declared = Object.values(schemas)
+    const declared = Object.values<unknown>(schemas)
       .filter(isPgSchema)
-      .map((schema) => schema.schemaName)
-    expect([...TENANT_SCHEMAS].sort()).toEqual(declared.sort())
+      .map((schema): string => schema.schemaName)
+      .sort()
+    expect<string[]>([...TENANT_SCHEMAS].sort()).toEqual(declared)
   })
 })

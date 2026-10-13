@@ -9,12 +9,57 @@ import { ORGANIZATION_SETTING, TENANT_POLICY_EXPRESSION } from './tenant'
  */
 export const TENANT_SCHEMAS = ['auth', 'core', 'playbook'] as const
 
+const ENVIRONMENT_SCOPED =
+  'tula-auth tenant data: users are global within a Region (ADR 0005), so it has no organization_id; forced row-level security on environment_id scopes it to one auth environment instead'
+
 /**
- * Tables that deliberately have no `organization_id` and no row-level security, as
- * `schema.table`. Empty today: add an entry only with a decision record that says why the table
- * holds no tenant data.
+ * Tables that deliberately have no `organization_id` and are not under the Organization policy,
+ * as `schema.table`, each with the one-line reason. Every entry needs a decision record: today
+ * these are all `auth` tables, which come from tula-auth (ADR 0005). Auth users are global within
+ * a Region and Organization membership lives in core, so no auth table is per-Organization data.
+ * Most are scoped to an auth environment by their own forced row-level security
+ * (`src/schema/auth`); the rest are control plane, below.
  */
-export const NON_TENANT_TABLES: readonly string[] = []
+export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'auth.api_keys':
+    'control plane: resolving a key is what determines the auth environment, so it cannot be under environment row-level security; stored as SHA-256 hashes only',
+  'auth.audit_logs': ENVIRONMENT_SCOPED,
+  'auth.backup_codes': ENVIRONMENT_SCOPED,
+  'auth.credentials': ENVIRONMENT_SCOPED,
+  'auth.environment_settings': ENVIRONMENT_SCOPED,
+  'auth.environments':
+    "control plane: the auth environment is itself the tenant boundary tula-auth scopes by, one per kind in the Region's fixed project",
+  'auth.events': ENVIRONMENT_SCOPED,
+  'auth.flow_attempts': ENVIRONMENT_SCOPED,
+  'auth.hook_call_counts': ENVIRONMENT_SCOPED,
+  'auth.hooks': ENVIRONMENT_SCOPED,
+  'auth.identities': ENVIRONMENT_SCOPED,
+  'auth.instance_audit_logs':
+    'control plane: operator actions outside any one environment, append-only, no tenant columns',
+  'auth.native_apps': ENVIRONMENT_SCOPED,
+  'auth.oauth_providers': ENVIRONMENT_SCOPED,
+  'auth.passkey_challenges': ENVIRONMENT_SCOPED,
+  'auth.passkeys': ENVIRONMENT_SCOPED,
+  'auth.password_history': ENVIRONMENT_SCOPED,
+  'auth.projects':
+    'control plane: the app the Region secures (one fixed project per Region, ADR 0005), above the environments, not tenant data',
+  'auth.proposals': ENVIRONMENT_SCOPED,
+  'auth.refresh_tokens': ENVIRONMENT_SCOPED,
+  'auth.sessions': ENVIRONMENT_SCOPED,
+  'auth.signing_keys': ENVIRONMENT_SCOPED,
+  'auth.sms_code_counts': ENVIRONMENT_SCOPED,
+  'auth.user_factors': ENVIRONMENT_SCOPED,
+  'auth.users': ENVIRONMENT_SCOPED,
+  'auth.verification_tokens': ENVIRONMENT_SCOPED,
+  'auth.webhook_deliveries': ENVIRONMENT_SCOPED,
+  'auth.webhook_delivery_attempts': ENVIRONMENT_SCOPED,
+  'auth.webhook_endpoints': ENVIRONMENT_SCOPED,
+  'auth.workspaces':
+    "control plane: top of tula-auth's account model, one workspace per Region, not tenant data",
+}
+
+/** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
+export const NON_TENANT_TABLES: readonly string[] = Object.keys(NON_TENANT_TABLE_REASONS)
 
 /**
  * Schemas that an installed Postgres extension owns, whose relations are skipped by the check.

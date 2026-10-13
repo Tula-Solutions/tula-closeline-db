@@ -59,9 +59,10 @@ success with zero rows changed.
 
 `bun run db:check:rls` (with `DATABASE_URL` set) fails when any table lacks `organization_id`,
 forced row-level security, or exactly the policy `tenantRlsStatements` writes, unless it is on
-`NON_TENANT_TABLES` (empty). It scans every schema except `public` and drizzle's own, so a table in
-a schema that is not `auth`, `core` or `playbook` is a gap, and so is a `closeline_*` role that is
-a superuser or has `BYPASSRLS`. The integration suite runs the same check, so a migration that
+`NON_TENANT_TABLES` (the `auth` tables, each with its reason in `NON_TENANT_TABLE_REASONS`). It
+scans every schema except `public` and drizzle's own, so a table in a schema that is not `auth`,
+`core` or `playbook` is a gap, and so is a `closeline_*` role that is a superuser or has
+`BYPASSRLS`. The integration suite runs the same check, so a migration that
 forgets `tenantRlsStatements` fails CI. The tests that change role attributes connect as the
 compose superuser, or as `DATABASE_URL_ADMIN` when you point at another Postgres.
 
@@ -72,3 +73,25 @@ the journal's `when` values do not strictly increase. Without that ref it warns 
 when `CI` is set. A new
 tenant table carries `organization_id` and runs the statements from `tenantRlsStatements` in its
 migration; tenant data is read and written only inside `withOrganization(db, organizationId, fn)`.
+
+## The auth schema
+
+The `auth` schema is tula-auth's tables, copied (ADR 0005) with the same names and columns so
+`tula-closeline-auth` runs the same code: 30 tables, from `workspaces` and `projects` down to
+`users`, `sessions`, `signing_keys` and the webhook outbox. Migration `0001` is tula-auth's 35
+migrations at their latest state, with `tula` renamed `auth` and `tula_app` renamed
+`closeline_auth`.
+
+- Auth users are global within a Region, so no auth table has `organization_id` and none is under
+  the Organization policy. They are on `NON_TENANT_TABLES`, each with a reason. Organizations,
+  Teams and roles live in core.
+- The tables are instead scoped to an auth environment by forced row-level security on
+  `environment_id`, reading the setting `tula.environment_id` (`ENVIRONMENT_SETTING`). Run auth
+  queries inside `withEnvironment(db, environmentId, fn)`. `api_keys` and the control plane
+  (`workspaces`, `projects`, `environments`, `instance_audit_logs`) have no such policy.
+- Only `closeline_auth` can reach the schema, with tula-auth's least-privilege grants: no
+  `DELETE` on the control plane, no `UPDATE` on the audit logs, column-level `UPDATE` on the
+  outbox and the counters. `auth.applied_migrations()` is the only way it reads migration history.
+- One fixed project per Region is data, not schema: nothing in the tables limits a Region to one
+  project. The auth service must bootstrap one workspace and one project, with a development and a
+  production environment, and refuse to create more.

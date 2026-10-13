@@ -1,6 +1,7 @@
 import {
+  TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-5vjswvjg.js";
+} from "./shared/chunk-dx6w7np6.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -86,11 +87,24 @@ async function closePool(pool, clients, timeoutMs) {
     clearTimeout(timer);
   }
 }
+// src/environment.ts
+import { sql } from "drizzle-orm";
+var ENVIRONMENT_SETTING = TENANT_SETTING;
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function withEnvironment(db, environmentId, fn) {
+  if (!UUID.test(environmentId)) {
+    throw new Error("withEnvironment: environmentId must be a UUID");
+  }
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config(${ENVIRONMENT_SETTING}, ${environmentId}, true)`);
+    return fn(tx);
+  });
+}
 // src/isolation.ts
-import { sql as sql2 } from "drizzle-orm";
+import { sql as sql3 } from "drizzle-orm";
 
 // src/tenant.ts
-import { sql } from "drizzle-orm";
+import { sql as sql2 } from "drizzle-orm";
 var ORGANIZATION_SETTING = "app.organization_id";
 var ORGANIZATION_ID = /^org_[0-9a-f]{32}$/;
 var IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -99,7 +113,7 @@ async function withOrganization(db, organizationId, fn) {
     throw new Error("withOrganization: invalid organization id");
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
+    await tx.execute(sql2`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
     return fn(tx);
   });
 }
@@ -123,10 +137,43 @@ function tenantRlsStatements(schemaName, tableName) {
 
 // src/isolation.ts
 var TENANT_SCHEMAS = ["auth", "core", "playbook"];
-var NON_TENANT_TABLES = [];
+var ENVIRONMENT_SCOPED = "tula-auth tenant data: users are global within a Region (ADR 0005), so it has no organization_id; forced row-level security on environment_id scopes it to one auth environment instead";
+var NON_TENANT_TABLE_REASONS = {
+  "auth.api_keys": "control plane: resolving a key is what determines the auth environment, so it cannot be under environment row-level security; stored as SHA-256 hashes only",
+  "auth.audit_logs": ENVIRONMENT_SCOPED,
+  "auth.backup_codes": ENVIRONMENT_SCOPED,
+  "auth.credentials": ENVIRONMENT_SCOPED,
+  "auth.environment_settings": ENVIRONMENT_SCOPED,
+  "auth.environments": "control plane: the auth environment is itself the tenant boundary tula-auth scopes by, one per kind in the Region's fixed project",
+  "auth.events": ENVIRONMENT_SCOPED,
+  "auth.flow_attempts": ENVIRONMENT_SCOPED,
+  "auth.hook_call_counts": ENVIRONMENT_SCOPED,
+  "auth.hooks": ENVIRONMENT_SCOPED,
+  "auth.identities": ENVIRONMENT_SCOPED,
+  "auth.instance_audit_logs": "control plane: operator actions outside any one environment, append-only, no tenant columns",
+  "auth.native_apps": ENVIRONMENT_SCOPED,
+  "auth.oauth_providers": ENVIRONMENT_SCOPED,
+  "auth.passkey_challenges": ENVIRONMENT_SCOPED,
+  "auth.passkeys": ENVIRONMENT_SCOPED,
+  "auth.password_history": ENVIRONMENT_SCOPED,
+  "auth.projects": "control plane: the app the Region secures (one fixed project per Region, ADR 0005), above the environments, not tenant data",
+  "auth.proposals": ENVIRONMENT_SCOPED,
+  "auth.refresh_tokens": ENVIRONMENT_SCOPED,
+  "auth.sessions": ENVIRONMENT_SCOPED,
+  "auth.signing_keys": ENVIRONMENT_SCOPED,
+  "auth.sms_code_counts": ENVIRONMENT_SCOPED,
+  "auth.user_factors": ENVIRONMENT_SCOPED,
+  "auth.users": ENVIRONMENT_SCOPED,
+  "auth.verification_tokens": ENVIRONMENT_SCOPED,
+  "auth.webhook_deliveries": ENVIRONMENT_SCOPED,
+  "auth.webhook_delivery_attempts": ENVIRONMENT_SCOPED,
+  "auth.webhook_endpoints": ENVIRONMENT_SCOPED,
+  "auth.workspaces": "control plane: top of tula-auth's account model, one workspace per Region, not tenant data"
+};
+var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
 var EXTENSION_SCHEMAS = [];
 async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extensionSchemas = EXTENSION_SCHEMAS) {
-  const result = await db.execute(sql2`
+  const result = await db.execute(sql3`
     select n.nspname as schema,
            c.relname as "table",
            c.relkind as kind,
@@ -164,7 +211,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       gaps.push({ schema: row.schema, table: row.table, reason });
     }
   }
-  const roles = await db.execute(sql2`
+  const roles = await db.execute(sql3`
     select rolname as role from pg_roles
      where rolname like 'closeline\\_%' and (rolsuper or rolbypassrls)
      order by rolname`);
@@ -220,7 +267,9 @@ var OWNER_ROLE = "closeline_owner";
 var PACKAGE = "tula-closeline-db";
 export {
   DEFAULT_POOL_OPTIONS,
+  ENVIRONMENT_SETTING,
   NON_TENANT_TABLES,
+  NON_TENANT_TABLE_REASONS,
   ORGANIZATION_SETTING,
   OWNER_ROLE,
   PACKAGE,
@@ -230,5 +279,6 @@ export {
   findTenantIsolationGaps,
   reportConnectionError,
   tenantRlsStatements,
+  withEnvironment,
   withOrganization
 };
