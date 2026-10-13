@@ -1905,6 +1905,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       has_expired: [false, false, true],
       invitation_for_token: [true, false, true],
       organization_of_user: [true, false, true],
+      refuse_idempotency_rewrite: [false, true, false],
       refuse_region_change: [false, true, false],
       refuse_reopened_invitation: [false, true, false],
       refuse_revived_ownerless_organization: [false, true, false],

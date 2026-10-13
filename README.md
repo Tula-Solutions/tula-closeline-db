@@ -119,7 +119,8 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
 
 ## The core schema
 
-Organizations and who belongs to them (tickets: hub issue 9). All five tenant tables carry
+Organizations and who belongs to them (tickets: hub issue 9), and the idempotency keys of its public
+`POST` routes (hub issue 33). All six tenant tables carry
 `organization_id` and the canonical policy; ids are the contract's prefixed text (`org_`, `usr_`,
 `mem_`, `team_`, and `inv_` for invitations), each checked by a constraint.
 
@@ -132,6 +133,7 @@ Organizations and who belongs to them (tickets: hub issue 9). All five tenant ta
 | `memberships` | a user (opaque `usr_` id, no cross-schema key) in an Organization with one of the four roles |
 | `teams`, `team_members` | Teams; composite keys `(organization_id, id)` make a member and Team of different Organizations impossible |
 | `invitations` | email, role (never Owner), optional Team, SHA-256 of the token (never the token), expiry, `pending`/`accepted`/`revoked`; indexed by `invitations_state_list_idx` (below) |
+| `idempotency_keys` | the outcome of one public `POST`, per Organization, user, route and client key; see below |
 | `membership_directory`, `invitation_directory`, `organization_state` | see below |
 
 `invitations` has `invitations_state_list_idx` on `(organization_id, state, created_at, id)`, which
@@ -177,6 +179,33 @@ Rules held by the database:
 - Bulk emptying with `TRUNCATE` is refused on `organizations`, `memberships`, `invitations` and the
   three no-access tables, because it would skip the row triggers that keep them and the Owner count
   in step. A row `DELETE` fires them.
+
+**Idempotency keys** (`core.idempotency_keys`, migration `0004`). One row per `(organization_id,
+user_id, route, key)`, which is the primary key in that order, so another Organization, user or
+route can reuse a client key. `route` is a short name such as `invitations.create` (1 to 64 of
+`a-z`, `0-9`, `.`, `_`), `key` is 1 to 255 printable ASCII characters (no space), `request_hash` is
+the 32-byte SHA-256 of the request body (the body is never stored), `status` is the stored HTTP
+status (100 to 599) and `response` the stored body. A request is **in flight** while both are null;
+a check ties them together (null exactly together), and `response` is at most 16 KiB
+(`pg_column_size`; the exported constants are `IDEMPOTENCY_ROUTE_MAX`, `IDEMPOTENCY_KEY_MAX`,
+`IDEMPOTENCY_HASH_BYTES` and `IDEMPOTENCY_RESPONSE_MAX_BYTES`).
+
+- **A row is completed once.** The `idempotency_keys_final` trigger refuses any update of a row whose
+  `status` is set, even one that repeats the values, and any change to the Organization, user,
+  route, key, hash or creation time of a row, completed or not. Complete with `UPDATE ... WHERE
+  <key> AND status IS NULL` and read zero rows as already completed (a second completion that
+  waited on the first one's lock re-reads the row, finds it completed, and writes nothing).
+- **The purge is per Organization and bounded**, from inside the Organization's scope, so no
+  cross-tenant function exists. Remove a batch with `DELETE ... WHERE ctid = ANY (ARRAY(SELECT ctid
+  FROM core.idempotency_keys WHERE organization_id = $1 AND created_at < $2 ORDER BY created_at
+  LIMIT $n))`, repeated until a batch removes fewer than `$n` rows. It runs on
+  `idempotency_keys_purge_idx` on `(organization_id, created_at)` with no sort; the lookup of one
+  key runs on the primary key. `core-plans.integration.ts` asserts both plans and their buffer
+  counts (about two buffers per purged row, four for a lookup) on an Organization of 20,000 keys
+  among 44,000, never the time.
+- `closeline_core` has the schema's default `SELECT`, `INSERT`, `UPDATE` and `DELETE` and no
+  `TRUNCATE`; no other service role can reach the schema. The table is a tenant table, so the
+  catalog check needs no allowlist entry.
 
 **Directories and the status table.** Sign-in must find a user's Organization, and accepting an
 invitation must find the Organization of a token hash, before any Organization is known, so
