@@ -7,6 +7,7 @@ import {
   ABANDON_MIN_GRACE_MS,
   ABANDON_RECORD,
   AUTH_STATEMENTS,
+  COUNTER_MIN_PERIOD_MS,
   LOCKOUT_ATTEMPT,
   LOCKOUT_MIN_RETRY_AFTER_MS,
   RATE_HIT,
@@ -66,4 +67,18 @@ describe('the rules the statements keep', () => {
       expect(afterConflict).toContain('from ts')
     }
   )
+
+  test('the counter statements floor the forgetting period and the window on every path', () => {
+    expect(COUNTER_MIN_PERIOD_MS).toBeGreaterThan(0)
+    const floor = (text: string, argument: string) => {
+      const pattern = new RegExp(
+        `greatest\\(coalesce\\(${argument}, 0\\), ${COUNTER_MIN_PERIOD_MS}\\)`,
+        'g'
+      )
+      return text.match(pattern)?.length ?? 0
+    }
+    // Once in the values row and once in each of the update's two uses of the period.
+    expect(floor(LOCKOUT_ATTEMPT, '\\$4::int')).toBeGreaterThanOrEqual(2)
+    expect(floor(RATE_HIT, '\\$3::float8')).toBeGreaterThanOrEqual(2)
+  })
 })

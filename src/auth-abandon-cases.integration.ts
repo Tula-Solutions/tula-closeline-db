@@ -525,12 +525,12 @@ describe('auth.abandon_cases', () => {
     const databaseNow = async (): Promise<Date> =>
       (await owner.query<{ t: Date }>('select clock_timestamp() as t')).rows[0]?.t ?? new Date(0)
 
-    const record = async (expiresAt: Date, graceMs: number) => {
-      const environmentId = extra.b.environmentId
+    const record = async (expiresAt: Date, graceMs: number, target: AuthRegion = extra) => {
+      const environmentId = target.b.environmentId
       const added = await inAuthEnvironment(authPool, environmentId, (client) =>
         client.query(ABANDON_RECORD, [
           uuid(),
-          extra.projectId,
+          target.projectId,
           environmentId,
           uuid(),
           uuid(),
@@ -552,8 +552,9 @@ describe('auth.abandon_cases', () => {
 
     test('a grace below the floor is raised to it, and the case never precedes its expiry', async () => {
       const now = await databaseNow()
-      const id = await record(new Date(now.getTime() - 3_600_000), 0)
-      const gap = await inAuthEnvironment(authPool, extra.b.environmentId, (client) =>
+      // In the rules region, not extra.b: this case is long due and must not reach the claims below.
+      const id = await record(new Date(now.getTime() - 3_600_000), 0, region)
+      const gap = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
         client.query(
           `select extract(epoch from next_attempt_at - attempt_expires_at)::float8 as seconds
              from auth.abandon_cases where id = $1`,

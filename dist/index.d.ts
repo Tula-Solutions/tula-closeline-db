@@ -6,6 +6,13 @@
 */
 declare const ABANDON_MIN_GRACE_MS = 1e4;
 /**
+* The least forgetting period or window, in milliseconds, the counter statements store: a
+* smaller, null or negative value passed in is raised to it. Without a floor a zero period would
+* make a row expire the instant it starts and break the table's `window_order` check, and a
+* statement must not be able to throw on caller-supplied durations.
+*/
+declare const COUNTER_MIN_PERIOD_MS = 1e3;
+/**
 * The least `Retry-After`, in milliseconds, the service answers with for a locked address when
 * {@link LOCKOUT_RETRY_AFTER} gives no row or 0 after a refusal (see {@link LOCKOUT_ATTEMPT}).
 */
@@ -13,14 +20,16 @@ declare const LOCKOUT_MIN_RETRY_AFTER_MS = 1e3;
 /**
 * One attempted sign-in of an address, counted up front. `$1` environment, `$2` key hash, `$3`
 * the wait in milliseconds after failure 1, 2, 3, ... (an `int[]`; the last element serves every
-* later failure), `$4` the forgetting period in milliseconds. A row back means the attempt may
+* later failure), `$4` the forgetting period in milliseconds, raised to {@link COUNTER_MIN_PERIOD_MS}
+* when smaller, null or negative; a missing, null or negative wait counts as 0, so no argument
+* makes the statement throw. A row back means the attempt may
 * go ahead (`hits` failures counted, `wait_ms` the wait this failure imposes); no row back means
 * the address is locked and the attempt was not counted: read {@link LOCKOUT_RETRY_AFTER}. If
 * that returns no row or 0 (the lock ended or the row was cleared in between), run this statement
 * again at most once; if it still refuses, answer locked with a `Retry-After` of at least
 * {@link LOCKOUT_MIN_RETRY_AFTER_MS}.
 */
-declare const LOCKOUT_ATTEMPT = "with ts as (select clock_timestamp() as tick)\\ninsert into auth.attempt_counters as c\\n  (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)\\nvalues ($1, 'lockout', $2, 1, clock_timestamp(),\\n        clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),\\n        clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))\\non conflict (environment_id, kind, key_hash) do update set\\n  hits = least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, 1000000),\\n  started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,\\n  locked_until = (select tick from ts) + make_interval(secs => ($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))]::float8 / 1000),\\n  expires_at = (select tick from ts) + make_interval(secs => (($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))] + $4::int)::float8 / 1000)\\nwhere c.locked_until <= (select tick from ts)\\nreturning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms";
+declare const LOCKOUT_ATTEMPT: string;
 /**
 * After a refused {@link LOCKOUT_ATTEMPT}: how long the address stays locked, by the database
 * clock. A separate read, so it can race: the row may have been cleared or unlocked since, which
@@ -31,17 +40,18 @@ declare const LOCKOUT_RETRY_AFTER = "select greatest(0, ceil(extract(epoch from 
 declare const LOCKOUT_CLEAR = "delete from auth.attempt_counters\\nwhere environment_id = $1 and kind = 'lockout' and key_hash = $2";
 /**
 * One request against a fixed-window limit. `$1` environment, `$2` key hash, `$3` the window in
-* milliseconds. The request is allowed when `hits <= limit`; requests over the limit are counted
+* milliseconds (raised to {@link COUNTER_MIN_PERIOD_MS} when smaller, null or negative). The
+* request is allowed when `hits <= limit`; requests over the limit are counted
 * too. `retry_after_ms` is the time to the end of the window.
 */
-declare const RATE_HIT = "with ts as (select clock_timestamp() as tick)\\ninsert into auth.attempt_counters as c\\n  (environment_id, kind, key_hash, hits, started_at, expires_at)\\nvalues ($1, 'rate_limit', $2, 1, clock_timestamp(),\\n        clock_timestamp() + make_interval(secs => $3::float8 / 1000))\\non conflict (environment_id, kind, key_hash) do update set\\n  hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,\\n  started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,\\n  expires_at = case when c.expires_at <= (select tick from ts)\\n                    then (select tick from ts) + make_interval(secs => $3::float8 / 1000)\\n                    else c.expires_at end\\nreturning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms";
+declare const RATE_HIT = "with ts as (select clock_timestamp() as tick)\\ninsert into auth.attempt_counters as c\\n  (environment_id, kind, key_hash, hits, started_at, expires_at)\\nvalues ($1, 'rate_limit', $2, 1, clock_timestamp(),\\n        clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000))\\non conflict (environment_id, kind, key_hash) do update set\\n  hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,\\n  started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,\\n  expires_at = case when c.expires_at <= (select tick from ts)\\n                    then (select tick from ts) + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000)\\n                    else c.expires_at end\\nreturning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms";
 /**
 * The purge of dead counters, one bounded batch, **across all environments on purpose** (it is
 * housekeeping of a table without row-level security): rows expired for at least a minute by the
 * database clock, oldest first, skipping rows another purge holds. `$1` is the batch size; repeat
 * while a batch comes back full.
 */
-declare const COUNTER_PURGE_BATCH = "delete from auth.attempt_counters\\nwhere (environment_id, kind, key_hash) in (\\n  select environment_id, kind, key_hash from auth.attempt_counters\\n  where expires_at < clock_timestamp() - interval '1 minute'\\n  order by expires_at\\n  limit $1\\n  for update skip locked)";
+declare const COUNTER_PURGE_BATCH = "with batch as (\\n  select environment_id, kind, key_hash from auth.attempt_counters\\n  where expires_at < clock_timestamp() - interval '1 minute'\\n  order by expires_at\\n  limit $1\\n  for update skip locked)\\ndelete from auth.attempt_counters c\\nusing batch b\\nwhere c.environment_id = b.environment_id and c.kind = b.kind and c.key_hash = b.key_hash";
 /**
 * Record an abandon case, once. `$1` id, `$2` project, `$3` environment, `$4` the Organization id
 * (null when a timed-out create never revealed it), `$5` user id, `$6` attempt id, `$7` the time
@@ -57,7 +67,9 @@ declare const ABANDON_RECORD = "insert into auth.abandon_cases\n  (id, project_i
 /**
 * Claim a batch of due cases as a lease: the short transaction that runs this commits at once,
 * and core is called outside any transaction. `$1` environment, `$2` batch size, `$3` the lease in
-* milliseconds. A case is due when its `next_attempt_at` has passed; the table keeps that from
+* milliseconds, which **must exceed the service's call bound to core**: a worker slower than its
+* lease can find its case already resolved `gave_up` by {@link ABANDON_GIVE_UP_SPENT} (see
+* {@link ABANDON_RESOLVE}). A case is due when its `next_attempt_at` has passed; the table keeps that from
 * being earlier than `attempt_expires_at`, so a case is never due while its attempt can still
 * write the account. A crash leaves the case due again once the lease ends. A case that has
 * used all {@link ABANDON_CASE_MAX_ATTEMPTS} attempts is never claimed (the count would pass the
@@ -69,26 +81,32 @@ declare const ABANDON_CLAIM = "with due as (\n  select id from auth.abandon_case
 /**
 * Record the outcome in a second short transaction. `$1` case id, `$2` environment, `$3` the
 * outcome (`done`, `refused` or `gave_up`). No row back means the case was already resolved.
-* This is also what sets `gave_up` when the service reaches its own attempt limit. Run it inside
-* `withEnvironment`.
+* This is also what sets `gave_up` when the service reaches its own attempt limit. No row back
+* means the case is already resolved, for example `gave_up` by {@link ABANDON_GIVE_UP_SPENT}
+* while a worker slower than its lease was still calling core: the worker treats that as "already
+* resolved", not as an error. Run it inside `withEnvironment`.
 */
 declare const ABANDON_RESOLVE = "update auth.abandon_cases\nset resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()\nwhere id = $1 and environment_id = $2 and resolved_at is null\nreturning id";
 /**
 * Resolve spent cases as `gave_up`, one bounded batch: open cases that have used every attempt
 * and whose lease has ended, so no worker holds them. It is the safety net behind the service's
-* own limit (which is lower, so in normal operation this finds nothing); run it now and then, not
-* on every sweep, because it walks the due cases. `$1` environment, `$2` batch size. Run it
-* inside `withEnvironment`.
+* own limit (which is lower, so in normal operation this finds nothing). The sweep runs it once
+* per run, after the claim, with a small batch, because it walks the due cases; it assumes the
+* claim's lease exceeds the service's call bound to core. `$1` environment, `$2` batch size. Run
+* it inside `withEnvironment`.
 */
-declare const ABANDON_GIVE_UP_SPENT = "update auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()\\nwhere id in (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is null and attempts >= 100\\n    and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked)\\nreturning id";
+declare const ABANDON_GIVE_UP_SPENT = "with batch as (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is null and attempts >= 100\\n    and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked)\\nupdate auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()\\nwhere id in (select id from batch)\\nreturning id";
 /**
 * Fill in the Organization id of a case recorded without one, once it is learned. `$1` case id,
 * `$2` environment, `$3` the Organization id. A row back means it was filled; no row means the
 * case already has an id (it is never overwritten) or is resolved (it is not touched). If another
 * case in the environment already holds that Organization id, the statement fails with the unique
-* violation `abandon_cases_environment_organization_key` (SQLSTATE 23505): that Organization is
-* already tracked by the other case, so the service resolves this one with {@link ABANDON_RESOLVE}
-* as `gave_up` and does nothing else. Run it inside `withEnvironment`.
+* violation `abandon_cases_environment_organization_key` (SQLSTATE 23505). The failed statement
+* aborts its transaction, so the service resolves this case with {@link ABANDON_RESOLVE} as
+* `gave_up` in a new one. It reports the violation by ids only (both case ids and the
+* Organization id, never an email) so a person can reconcile: the other case may already be
+* resolved or belong to another user, and the Organization may then never be abandoned. Run it
+* inside `withEnvironment`.
 */
 declare const ABANDON_LEARN = "update auth.abandon_cases\nset core_organization_id = $3, updated_at = clock_timestamp()\nwhere id = $1 and environment_id = $2 and core_organization_id is null and resolved_at is null\nreturning id";
 /**
@@ -96,19 +114,19 @@ declare const ABANDON_LEARN = "update auth.abandon_cases\nset core_organization_
 * clock, oldest first. `$1` environment, `$2` batch size; repeat while a batch comes back full.
 * Run it inside `withEnvironment`.
 */
-declare const ABANDON_PURGE_BATCH = "delete from auth.abandon_cases\\nwhere id in (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is not null\\n    and resolved_at < clock_timestamp() - interval '1 day'\\n  order by resolved_at\\n  limit $2\\n  for update skip locked)";
+declare const ABANDON_PURGE_BATCH = "with batch as (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is not null\\n    and resolved_at < clock_timestamp() - interval '1 day'\\n  order by resolved_at\\n  limit $2\\n  for update skip locked)\\ndelete from auth.abandon_cases\\nwhere id in (select id from batch)";
 /** Every statement above by name, for the README check and the integration tests. */
 declare const AUTH_STATEMENTS: {
-	readonly LOCKOUT_ATTEMPT: "with ts as (select clock_timestamp() as tick)\\ninsert into auth.attempt_counters as c\\n  (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)\\nvalues ($1, 'lockout', $2, 1, clock_timestamp(),\\n        clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),\\n        clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))\\non conflict (environment_id, kind, key_hash) do update set\\n  hits = least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, 1000000),\\n  started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,\\n  locked_until = (select tick from ts) + make_interval(secs => ($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))]::float8 / 1000),\\n  expires_at = (select tick from ts) + make_interval(secs => (($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))] + $4::int)::float8 / 1000)\\nwhere c.locked_until <= (select tick from ts)\\nreturning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms";
+	readonly LOCKOUT_ATTEMPT: string;
 	readonly LOCKOUT_RETRY_AFTER: "select greatest(0, ceil(extract(epoch from locked_until - clock_timestamp()) * 1000))::int as retry_after_ms\\nfrom auth.attempt_counters\\nwhere environment_id = $1 and kind = 'lockout' and key_hash = $2";
 	readonly LOCKOUT_CLEAR: "delete from auth.attempt_counters\\nwhere environment_id = $1 and kind = 'lockout' and key_hash = $2";
-	readonly RATE_HIT: "with ts as (select clock_timestamp() as tick)\\ninsert into auth.attempt_counters as c\\n  (environment_id, kind, key_hash, hits, started_at, expires_at)\\nvalues ($1, 'rate_limit', $2, 1, clock_timestamp(),\\n        clock_timestamp() + make_interval(secs => $3::float8 / 1000))\\non conflict (environment_id, kind, key_hash) do update set\\n  hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,\\n  started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,\\n  expires_at = case when c.expires_at <= (select tick from ts)\\n                    then (select tick from ts) + make_interval(secs => $3::float8 / 1000)\\n                    else c.expires_at end\\nreturning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms";
-	readonly COUNTER_PURGE_BATCH: "delete from auth.attempt_counters\\nwhere (environment_id, kind, key_hash) in (\\n  select environment_id, kind, key_hash from auth.attempt_counters\\n  where expires_at < clock_timestamp() - interval '1 minute'\\n  order by expires_at\\n  limit $1\\n  for update skip locked)";
+	readonly RATE_HIT: "with ts as (select clock_timestamp() as tick)\\ninsert into auth.attempt_counters as c\\n  (environment_id, kind, key_hash, hits, started_at, expires_at)\\nvalues ($1, 'rate_limit', $2, 1, clock_timestamp(),\\n        clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000))\\non conflict (environment_id, kind, key_hash) do update set\\n  hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,\\n  started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,\\n  expires_at = case when c.expires_at <= (select tick from ts)\\n                    then (select tick from ts) + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000)\\n                    else c.expires_at end\\nreturning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms";
+	readonly COUNTER_PURGE_BATCH: "with batch as (\\n  select environment_id, kind, key_hash from auth.attempt_counters\\n  where expires_at < clock_timestamp() - interval '1 minute'\\n  order by expires_at\\n  limit $1\\n  for update skip locked)\\ndelete from auth.attempt_counters c\\nusing batch b\\nwhere c.environment_id = b.environment_id and c.kind = b.kind and c.key_hash = b.key_hash";
 	readonly ABANDON_RECORD: "insert into auth.abandon_cases\n  (id, project_id, environment_id, core_organization_id, user_id, attempt_id,\n   attempt_expires_at, next_attempt_at)\nvalues ($1, $2, $3, $4, $5, $6, $7::timestamptz,\n        $7::timestamptz + make_interval(secs => greatest($8::int, 10000)::float8 / 1000))\non conflict do nothing\nreturning id";
 	readonly ABANDON_CLAIM: "with due as (\n  select id from auth.abandon_cases\n  where environment_id = $1 and resolved_at is null and attempts < 100\n    and next_attempt_at <= clock_timestamp()\n  order by next_attempt_at\n  limit $2\n  for update skip locked)\nupdate auth.abandon_cases c\nset attempts = c.attempts + 1,\n    next_attempt_at = clock_timestamp() + make_interval(secs => $3::float8 / 1000),\n    updated_at = clock_timestamp()\nfrom due\nwhere c.id = due.id\nreturning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts";
 	readonly ABANDON_RESOLVE: "update auth.abandon_cases\nset resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()\nwhere id = $1 and environment_id = $2 and resolved_at is null\nreturning id";
-	readonly ABANDON_PURGE_BATCH: "delete from auth.abandon_cases\\nwhere id in (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is not null\\n    and resolved_at < clock_timestamp() - interval '1 day'\\n  order by resolved_at\\n  limit $2\\n  for update skip locked)";
-	readonly ABANDON_GIVE_UP_SPENT: "update auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()\\nwhere id in (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is null and attempts >= 100\\n    and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked)\\nreturning id";
+	readonly ABANDON_PURGE_BATCH: "with batch as (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is not null\\n    and resolved_at < clock_timestamp() - interval '1 day'\\n  order by resolved_at\\n  limit $2\\n  for update skip locked)\\ndelete from auth.abandon_cases\\nwhere id in (select id from batch)";
+	readonly ABANDON_GIVE_UP_SPENT: "with batch as (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is null and attempts >= 100\\n    and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked)\\nupdate auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()\\nwhere id in (select id from batch)\\nreturning id";
 	readonly ABANDON_LEARN: "update auth.abandon_cases\nset core_organization_id = $3, updated_at = clock_timestamp()\nwhere id = $1 and environment_id = $2 and core_organization_id is null and resolved_at is null\nreturning id";
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -8476,4 +8494,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, AUTH_STATEMENTS, AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_PURGE_BATCH, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, AUTH_STATEMENTS, AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

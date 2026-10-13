@@ -9,6 +9,14 @@ import { ABANDON_CASE_MAX_ATTEMPTS } from './schema/auth/abandon-cases'
 export const ABANDON_MIN_GRACE_MS = 10_000
 
 /**
+ * The least forgetting period or window, in milliseconds, the counter statements store: a
+ * smaller, null or negative value passed in is raised to it. Without a floor a zero period would
+ * make a row expire the instant it starts and break the table's `window_order` check, and a
+ * statement must not be able to throw on caller-supplied durations.
+ */
+export const COUNTER_MIN_PERIOD_MS = 1000
+
+/**
  * The least `Retry-After`, in milliseconds, the service answers with for a locked address when
  * {@link LOCKOUT_RETRY_AFTER} gives no row or 0 after a refusal (see {@link LOCKOUT_ATTEMPT}).
  */
@@ -35,13 +43,22 @@ export const LOCKOUT_MIN_RETRY_AFTER_MS = 1000
 // The failure count after this attempt, as the do-update branch computes it.
 const NEXT_FAILURES = 'case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end'
 
+// The wait at an index of the schedule, in milliseconds, never negative and 0 where the schedule
+// has no such element (an empty or short array, a null element): the statement cannot throw on it.
+const WAIT = (index: string) => `greatest(coalesce(($3::int[])[${index}], 0), 0)::float8`
+
+// The forgetting period in milliseconds, raised to the floor (null and negative included).
+const FORGET = `greatest(coalesce($4::int, 0), ${COUNTER_MIN_PERIOD_MS})::float8`
+
 // The index into the wait schedule for that count; the last element serves every later failure.
-const SCHEDULE_AT = `($3::int[])[least(${NEXT_FAILURES}, cardinality($3::int[]))]`
+const SCHEDULE_AT = `least(${NEXT_FAILURES}, cardinality($3::int[]))`
 
 /**
  * One attempted sign-in of an address, counted up front. `$1` environment, `$2` key hash, `$3`
  * the wait in milliseconds after failure 1, 2, 3, ... (an `int[]`; the last element serves every
- * later failure), `$4` the forgetting period in milliseconds. A row back means the attempt may
+ * later failure), `$4` the forgetting period in milliseconds, raised to {@link COUNTER_MIN_PERIOD_MS}
+ * when smaller, null or negative; a missing, null or negative wait counts as 0, so no argument
+ * makes the statement throw. A row back means the attempt may
  * go ahead (`hits` failures counted, `wait_ms` the wait this failure imposes); no row back means
  * the address is locked and the attempt was not counted: read {@link LOCKOUT_RETRY_AFTER}. If
  * that returns no row or 0 (the lock ended or the row was cleared in between), run this statement
@@ -52,15 +69,15 @@ export const LOCKOUT_ATTEMPT = `with ts as (select clock_timestamp() as tick)
 insert into auth.attempt_counters as c
   (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
 values ($1, 'lockout', $2, 1, clock_timestamp(),
-        clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),
-        clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))
+        clock_timestamp() + make_interval(secs => ${WAIT('1')} / 1000),
+        clock_timestamp() + make_interval(secs => (${WAIT('1')} + ${FORGET}) / 1000))
 on conflict (environment_id, kind, key_hash) do update set
   hits = least(${NEXT_FAILURES}, 1000000),
   started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
-  locked_until = (select tick from ts) + make_interval(secs => ${SCHEDULE_AT}::float8 / 1000),
-  expires_at = (select tick from ts) + make_interval(secs => (${SCHEDULE_AT} + $4::int)::float8 / 1000)
+  locked_until = (select tick from ts) + make_interval(secs => ${WAIT(SCHEDULE_AT)} / 1000),
+  expires_at = (select tick from ts) + make_interval(secs => (${WAIT(SCHEDULE_AT)} + ${FORGET}) / 1000)
 where c.locked_until <= (select tick from ts)
-returning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms`
+returning hits, ${WAIT('least(hits, cardinality($3::int[]))')}::int as wait_ms`
 
 /**
  * After a refused {@link LOCKOUT_ATTEMPT}: how long the address stays locked, by the database
@@ -75,21 +92,25 @@ where environment_id = $1 and kind = 'lockout' and key_hash = $2`
 export const LOCKOUT_CLEAR = `delete from auth.attempt_counters
 where environment_id = $1 and kind = 'lockout' and key_hash = $2`
 
+// The window in milliseconds, raised to the floor (null and negative included).
+const WINDOW = `greatest(coalesce($3::float8, 0), ${COUNTER_MIN_PERIOD_MS})`
+
 /**
  * One request against a fixed-window limit. `$1` environment, `$2` key hash, `$3` the window in
- * milliseconds. The request is allowed when `hits <= limit`; requests over the limit are counted
+ * milliseconds (raised to {@link COUNTER_MIN_PERIOD_MS} when smaller, null or negative). The
+ * request is allowed when `hits <= limit`; requests over the limit are counted
  * too. `retry_after_ms` is the time to the end of the window.
  */
 export const RATE_HIT = `with ts as (select clock_timestamp() as tick)
 insert into auth.attempt_counters as c
   (environment_id, kind, key_hash, hits, started_at, expires_at)
 values ($1, 'rate_limit', $2, 1, clock_timestamp(),
-        clock_timestamp() + make_interval(secs => $3::float8 / 1000))
+        clock_timestamp() + make_interval(secs => ${WINDOW} / 1000))
 on conflict (environment_id, kind, key_hash) do update set
   hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,
   started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
   expires_at = case when c.expires_at <= (select tick from ts)
-                    then (select tick from ts) + make_interval(secs => $3::float8 / 1000)
+                    then (select tick from ts) + make_interval(secs => ${WINDOW} / 1000)
                     else c.expires_at end
 returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms`
 
@@ -99,13 +120,15 @@ returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp
  * database clock, oldest first, skipping rows another purge holds. `$1` is the batch size; repeat
  * while a batch comes back full.
  */
-export const COUNTER_PURGE_BATCH = `delete from auth.attempt_counters
-where (environment_id, kind, key_hash) in (
+export const COUNTER_PURGE_BATCH = `with batch as (
   select environment_id, kind, key_hash from auth.attempt_counters
   where expires_at < clock_timestamp() - interval '1 minute'
   order by expires_at
   limit $1
-  for update skip locked)`
+  for update skip locked)
+delete from auth.attempt_counters c
+using batch b
+where c.environment_id = b.environment_id and c.kind = b.kind and c.key_hash = b.key_hash`
 
 /**
  * Record an abandon case, once. `$1` id, `$2` project, `$3` environment, `$4` the Organization id
@@ -129,7 +152,9 @@ returning id`
 /**
  * Claim a batch of due cases as a lease: the short transaction that runs this commits at once,
  * and core is called outside any transaction. `$1` environment, `$2` batch size, `$3` the lease in
- * milliseconds. A case is due when its `next_attempt_at` has passed; the table keeps that from
+ * milliseconds, which **must exceed the service's call bound to core**: a worker slower than its
+ * lease can find its case already resolved `gave_up` by {@link ABANDON_GIVE_UP_SPENT} (see
+ * {@link ABANDON_RESOLVE}). A case is due when its `next_attempt_at` has passed; the table keeps that from
  * being earlier than `attempt_expires_at`, so a case is never due while its attempt can still
  * write the account. A crash leaves the case due again once the lease ends. A case that has
  * used all {@link ABANDON_CASE_MAX_ATTEMPTS} attempts is never claimed (the count would pass the
@@ -155,8 +180,10 @@ returning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts`
 /**
  * Record the outcome in a second short transaction. `$1` case id, `$2` environment, `$3` the
  * outcome (`done`, `refused` or `gave_up`). No row back means the case was already resolved.
- * This is also what sets `gave_up` when the service reaches its own attempt limit. Run it inside
- * `withEnvironment`.
+ * This is also what sets `gave_up` when the service reaches its own attempt limit. No row back
+ * means the case is already resolved, for example `gave_up` by {@link ABANDON_GIVE_UP_SPENT}
+ * while a worker slower than its lease was still calling core: the worker treats that as "already
+ * resolved", not as an error. Run it inside `withEnvironment`.
  */
 export const ABANDON_RESOLVE = `update auth.abandon_cases
 set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
@@ -166,19 +193,21 @@ returning id`
 /**
  * Resolve spent cases as `gave_up`, one bounded batch: open cases that have used every attempt
  * and whose lease has ended, so no worker holds them. It is the safety net behind the service's
- * own limit (which is lower, so in normal operation this finds nothing); run it now and then, not
- * on every sweep, because it walks the due cases. `$1` environment, `$2` batch size. Run it
- * inside `withEnvironment`.
+ * own limit (which is lower, so in normal operation this finds nothing). The sweep runs it once
+ * per run, after the claim, with a small batch, because it walks the due cases; it assumes the
+ * claim's lease exceeds the service's call bound to core. `$1` environment, `$2` batch size. Run
+ * it inside `withEnvironment`.
  */
-export const ABANDON_GIVE_UP_SPENT = `update auth.abandon_cases
-set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
-where id in (
+export const ABANDON_GIVE_UP_SPENT = `with batch as (
   select id from auth.abandon_cases
   where environment_id = $1 and resolved_at is null and attempts >= ${ABANDON_CASE_MAX_ATTEMPTS}
     and next_attempt_at <= clock_timestamp()
   order by next_attempt_at
   limit $2
   for update skip locked)
+update auth.abandon_cases
+set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
+where id in (select id from batch)
 returning id`
 
 /**
@@ -186,9 +215,12 @@ returning id`
  * `$2` environment, `$3` the Organization id. A row back means it was filled; no row means the
  * case already has an id (it is never overwritten) or is resolved (it is not touched). If another
  * case in the environment already holds that Organization id, the statement fails with the unique
- * violation `abandon_cases_environment_organization_key` (SQLSTATE 23505): that Organization is
- * already tracked by the other case, so the service resolves this one with {@link ABANDON_RESOLVE}
- * as `gave_up` and does nothing else. Run it inside `withEnvironment`.
+ * violation `abandon_cases_environment_organization_key` (SQLSTATE 23505). The failed statement
+ * aborts its transaction, so the service resolves this case with {@link ABANDON_RESOLVE} as
+ * `gave_up` in a new one. It reports the violation by ids only (both case ids and the
+ * Organization id, never an email) so a person can reconcile: the other case may already be
+ * resolved or belong to another user, and the Organization may then never be abandoned. Run it
+ * inside `withEnvironment`.
  */
 export const ABANDON_LEARN = `update auth.abandon_cases
 set core_organization_id = $3, updated_at = clock_timestamp()
@@ -200,14 +232,15 @@ returning id`
  * clock, oldest first. `$1` environment, `$2` batch size; repeat while a batch comes back full.
  * Run it inside `withEnvironment`.
  */
-export const ABANDON_PURGE_BATCH = `delete from auth.abandon_cases
-where id in (
+export const ABANDON_PURGE_BATCH = `with batch as (
   select id from auth.abandon_cases
   where environment_id = $1 and resolved_at is not null
     and resolved_at < clock_timestamp() - interval '1 day'
   order by resolved_at
   limit $2
-  for update skip locked)`
+  for update skip locked)
+delete from auth.abandon_cases
+where id in (select id from batch)`
 
 /** Every statement above by name, for the README check and the integration tests. */
 export const AUTH_STATEMENTS = {

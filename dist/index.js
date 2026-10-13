@@ -6,46 +6,52 @@ import {
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
+var COUNTER_MIN_PERIOD_MS = 1000;
 var LOCKOUT_MIN_RETRY_AFTER_MS = 1000;
 var NEXT_FAILURES = "case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end";
-var SCHEDULE_AT = `($3::int[])[least(${NEXT_FAILURES}, cardinality($3::int[]))]`;
+var WAIT = (index) => `greatest(coalesce(($3::int[])[${index}], 0), 0)::float8`;
+var FORGET = `greatest(coalesce($4::int, 0), ${COUNTER_MIN_PERIOD_MS})::float8`;
+var SCHEDULE_AT = `least(${NEXT_FAILURES}, cardinality($3::int[]))`;
 var LOCKOUT_ATTEMPT = `with ts as (select clock_timestamp() as tick)
 insert into auth.attempt_counters as c
   (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
 values ($1, 'lockout', $2, 1, clock_timestamp(),
-        clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),
-        clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))
+        clock_timestamp() + make_interval(secs => ${WAIT("1")} / 1000),
+        clock_timestamp() + make_interval(secs => (${WAIT("1")} + ${FORGET}) / 1000))
 on conflict (environment_id, kind, key_hash) do update set
   hits = least(${NEXT_FAILURES}, 1000000),
   started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
-  locked_until = (select tick from ts) + make_interval(secs => ${SCHEDULE_AT}::float8 / 1000),
-  expires_at = (select tick from ts) + make_interval(secs => (${SCHEDULE_AT} + $4::int)::float8 / 1000)
+  locked_until = (select tick from ts) + make_interval(secs => ${WAIT(SCHEDULE_AT)} / 1000),
+  expires_at = (select tick from ts) + make_interval(secs => (${WAIT(SCHEDULE_AT)} + ${FORGET}) / 1000)
 where c.locked_until <= (select tick from ts)
-returning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms`;
+returning hits, ${WAIT("least(hits, cardinality($3::int[]))")}::int as wait_ms`;
 var LOCKOUT_RETRY_AFTER = `select greatest(0, ceil(extract(epoch from locked_until - clock_timestamp()) * 1000))::int as retry_after_ms
 from auth.attempt_counters
 where environment_id = $1 and kind = 'lockout' and key_hash = $2`;
 var LOCKOUT_CLEAR = `delete from auth.attempt_counters
 where environment_id = $1 and kind = 'lockout' and key_hash = $2`;
+var WINDOW = `greatest(coalesce($3::float8, 0), ${COUNTER_MIN_PERIOD_MS})`;
 var RATE_HIT = `with ts as (select clock_timestamp() as tick)
 insert into auth.attempt_counters as c
   (environment_id, kind, key_hash, hits, started_at, expires_at)
 values ($1, 'rate_limit', $2, 1, clock_timestamp(),
-        clock_timestamp() + make_interval(secs => $3::float8 / 1000))
+        clock_timestamp() + make_interval(secs => ${WINDOW} / 1000))
 on conflict (environment_id, kind, key_hash) do update set
   hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,
   started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
   expires_at = case when c.expires_at <= (select tick from ts)
-                    then (select tick from ts) + make_interval(secs => $3::float8 / 1000)
+                    then (select tick from ts) + make_interval(secs => ${WINDOW} / 1000)
                     else c.expires_at end
 returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms`;
-var COUNTER_PURGE_BATCH = `delete from auth.attempt_counters
-where (environment_id, kind, key_hash) in (
+var COUNTER_PURGE_BATCH = `with batch as (
   select environment_id, kind, key_hash from auth.attempt_counters
   where expires_at < clock_timestamp() - interval '1 minute'
   order by expires_at
   limit $1
-  for update skip locked)`;
+  for update skip locked)
+delete from auth.attempt_counters c
+using batch b
+where c.environment_id = b.environment_id and c.kind = b.kind and c.key_hash = b.key_hash`;
 var ABANDON_RECORD = `insert into auth.abandon_cases
   (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
    attempt_expires_at, next_attempt_at)
@@ -71,28 +77,30 @@ var ABANDON_RESOLVE = `update auth.abandon_cases
 set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
 where id = $1 and environment_id = $2 and resolved_at is null
 returning id`;
-var ABANDON_GIVE_UP_SPENT = `update auth.abandon_cases
-set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
-where id in (
+var ABANDON_GIVE_UP_SPENT = `with batch as (
   select id from auth.abandon_cases
   where environment_id = $1 and resolved_at is null and attempts >= ${ABANDON_CASE_MAX_ATTEMPTS2}
     and next_attempt_at <= clock_timestamp()
   order by next_attempt_at
   limit $2
   for update skip locked)
+update auth.abandon_cases
+set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
+where id in (select id from batch)
 returning id`;
 var ABANDON_LEARN = `update auth.abandon_cases
 set core_organization_id = $3, updated_at = clock_timestamp()
 where id = $1 and environment_id = $2 and core_organization_id is null and resolved_at is null
 returning id`;
-var ABANDON_PURGE_BATCH = `delete from auth.abandon_cases
-where id in (
+var ABANDON_PURGE_BATCH = `with batch as (
   select id from auth.abandon_cases
   where environment_id = $1 and resolved_at is not null
     and resolved_at < clock_timestamp() - interval '1 day'
   order by resolved_at
   limit $2
-  for update skip locked)`;
+  for update skip locked)
+delete from auth.abandon_cases
+where id in (select id from batch)`;
 var AUTH_STATEMENTS = {
   LOCKOUT_ATTEMPT,
   LOCKOUT_RETRY_AFTER,
@@ -492,6 +500,7 @@ export {
   AUTH_STATEMENTS,
   CONTROL_PLANE_TABLES,
   CONTROL_PLANE_TABLE_REASONS,
+  COUNTER_MIN_PERIOD_MS,
   COUNTER_PURGE_BATCH,
   DEFAULT_POOL_OPTIONS,
   ENVIRONMENT_POLICY_EXPRESSION,

@@ -152,8 +152,11 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
       therefore skips cases with `attempts >= 100` (the bound is one shared constant,
       `ABANDON_CASE_MAX_ATTEMPTS`). **Who sets `gave_up`**: the service, with `ABANDON_RESOLVE`,
       when a claimed case reaches the service's own attempt limit (lower than the bound); and
-      `ABANDON_GIVE_UP_SPENT`, a safety net run now and then, for open cases that nevertheless
-      used all 100 and whose lease has ended.
+      `ABANDON_GIVE_UP_SPENT`, a safety net the sweep runs once per run, after the claim, with a
+      small batch, for open cases that nevertheless used all 100 and whose lease has ended. **The
+      lease must exceed the service's call bound to core**: a worker slower than its lease can
+      find its case already `gave_up`, and `ABANDON_RESOLVE` then returns no row, which the worker
+      treats as "already resolved", not as an error.
     - **How the statements are run.** Every `abandon_cases` statement runs inside
       `withEnvironment` (the table has forced row-level security, so outside it nothing is visible
       and nothing can be written). Run `ABANDON_PURGE_BATCH` there too, once per environment.
@@ -215,22 +218,26 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     The safety net for spent cases:
 
     ```sql
-    update auth.abandon_cases
-    set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
-    where id in (
+    with batch as (
       select id from auth.abandon_cases
       where environment_id = $1 and resolved_at is null and attempts >= 100
         and next_attempt_at <= clock_timestamp()
       order by next_attempt_at
       limit $2
       for update skip locked)
+    update auth.abandon_cases
+    set resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()
+    where id in (select id from batch)
     returning id
     ```
 
     Fill in the Organization id once it is learned. Another case already holding that Organization
-    id is the unique violation `abandon_cases_environment_organization_key` (SQLSTATE 23505):
-    that Organization is already tracked, so the service resolves this case with `ABANDON_RESOLVE`
-    as `gave_up` and does nothing else:
+    id is the unique violation `abandon_cases_environment_organization_key` (SQLSTATE 23505). The
+    failed statement aborts its transaction, so the service resolves this case with
+    `ABANDON_RESOLVE` as `gave_up` in a new one. It reports the violation by ids only (both case
+    ids and the Organization id, never an email) so a person can reconcile: the other case may
+    already be resolved or belong to another user, and the Organization may then never be
+    abandoned:
 
     ```sql
     update auth.abandon_cases
@@ -242,14 +249,15 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     Purge resolved cases, one bounded batch at a time:
 
     ```sql
-    delete from auth.abandon_cases
-    where id in (
+    with batch as (
       select id from auth.abandon_cases
       where environment_id = $1 and resolved_at is not null
         and resolved_at < clock_timestamp() - interval '1 day'
       order by resolved_at
       limit $2
       for update skip locked)
+    delete from auth.abandon_cases
+    where id in (select id from batch)
     ```
 
   - `auth.attempt_counters` (migration `0007`, hub issue 30, ADR 0014): the sign-in lockout and
@@ -298,6 +306,11 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     most once, and otherwise answers locked with a `Retry-After` of at least
     `LOCKOUT_MIN_RETRY_AFTER_MS` (1 s).
 
+    **No argument makes them throw.** The forgetting period and the rate-limit window are raised
+    to `COUNTER_MIN_PERIOD_MS` (1 s) when smaller, null or negative, and a missing, null or
+    negative wait counts as 0, so a row never expires the instant it starts and no check can be
+    violated by the durations passed in.
+
     **How they are run.** The attempt-counter statements run on the pool, each with an explicit
     `environment_id` parameter (the table has no row-level security, so nothing scopes them
     for you); `COUNTER_PURGE_BATCH` crosses environments on purpose. The strings are not
@@ -308,15 +321,15 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     insert into auth.attempt_counters as c
       (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
     values ($1, 'lockout', $2, 1, clock_timestamp(),
-            clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),
-            clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))
+            clock_timestamp() + make_interval(secs => greatest(coalesce(($3::int[])[1], 0), 0)::float8 / 1000),
+            clock_timestamp() + make_interval(secs => (greatest(coalesce(($3::int[])[1], 0), 0)::float8 + greatest(coalesce($4::int, 0), 1000)::float8) / 1000))
     on conflict (environment_id, kind, key_hash) do update set
       hits = least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, 1000000),
       started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
-      locked_until = (select tick from ts) + make_interval(secs => ($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))]::float8 / 1000),
-      expires_at = (select tick from ts) + make_interval(secs => (($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))] + $4::int)::float8 / 1000)
+      locked_until = (select tick from ts) + make_interval(secs => greatest(coalesce(($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))], 0), 0)::float8 / 1000),
+      expires_at = (select tick from ts) + make_interval(secs => (greatest(coalesce(($3::int[])[least(case when c.expires_at <= (select tick from ts) then 1 else c.hits + 1 end, cardinality($3::int[]))], 0), 0)::float8 + greatest(coalesce($4::int, 0), 1000)::float8) / 1000)
     where c.locked_until <= (select tick from ts)
-    returning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms
+    returning hits, greatest(coalesce(($3::int[])[least(hits, cardinality($3::int[]))], 0), 0)::float8::int as wait_ms
     ```
 
     After a refused attempt:
@@ -342,12 +355,12 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     insert into auth.attempt_counters as c
       (environment_id, kind, key_hash, hits, started_at, expires_at)
     values ($1, 'rate_limit', $2, 1, clock_timestamp(),
-            clock_timestamp() + make_interval(secs => $3::float8 / 1000))
+            clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000))
     on conflict (environment_id, kind, key_hash) do update set
       hits = case when c.expires_at <= (select tick from ts) then 1 else least(c.hits + 1, 1000000) end,
       started_at = case when c.expires_at <= (select tick from ts) then (select tick from ts) else c.started_at end,
       expires_at = case when c.expires_at <= (select tick from ts)
-                        then (select tick from ts) + make_interval(secs => $3::float8 / 1000)
+                        then (select tick from ts) + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000)
                         else c.expires_at end
     returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms
     ```
@@ -360,13 +373,15 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     full:
 
     ```sql
-    delete from auth.attempt_counters
-    where (environment_id, kind, key_hash) in (
+    with batch as (
       select environment_id, kind, key_hash from auth.attempt_counters
       where expires_at < clock_timestamp() - interval '1 minute'
       order by expires_at
       limit $1
       for update skip locked)
+    delete from auth.attempt_counters c
+    using batch b
+    where c.environment_id = b.environment_id and c.kind = b.kind and c.key_hash = b.key_hash
     ```
 
     The **known-device cookie** (ADR 0014) is signed and verified in the service and needs no

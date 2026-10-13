@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Pool, type QueryResult, type QueryResultRow } from 'pg'
 import {
+  COUNTER_MIN_PERIOD_MS,
   COUNTER_PURGE_BATCH,
   LOCKOUT_ATTEMPT,
   LOCKOUT_CLEAR,
@@ -352,6 +353,73 @@ describe('auth.attempt_counters', () => {
     })
   })
 
+  describe('durations a caller passes cannot make a statement throw', () => {
+    const FLOOR_SECONDS = COUNTER_MIN_PERIOD_MS / 1000
+
+    /** Seconds from a row's `from` column to its expiry, computed by the database. */
+    const spanOf = async (
+      environmentId: string,
+      hash: Buffer,
+      from: 'locked_until' | 'started_at'
+    ): Promise<number> =>
+      (
+        await owner.query<{ seconds: number }>(
+          `select extract(epoch from expires_at - ${from})::float8 as seconds
+             from auth.attempt_counters where environment_id = $1 and key_hash = $2`,
+          [environmentId, hash]
+        )
+      ).rows[0]?.seconds ?? Number.NaN
+
+    test.each([0, -5, null, 1])(
+      'a lockout forgetting period of %p is raised to the floor, on a new row and on a conflict',
+      async (period) => {
+        const hash = keyHash(`period-${period}`)
+        const environmentId = region.a.environmentId
+        const run = () => authPool.query(LOCKOUT_ATTEMPT, [environmentId, hash, [0, 0, 0], period])
+        expect((await run()).rows).toHaveLength(1)
+        expect(await spanOf(environmentId, hash, 'locked_until')).toBeGreaterThanOrEqual(
+          FLOOR_SECONDS
+        )
+        expect((await run()).rows).toHaveLength(1)
+        expect(await spanOf(environmentId, hash, 'locked_until')).toBeGreaterThanOrEqual(
+          FLOOR_SECONDS
+        )
+        expect((await rowOf(environmentId, hash)).hits).toBe(2)
+      }
+    )
+
+    test.each([[[]], [[-5]], [[0]], [[null]]])(
+      'a wait schedule of %j counts as no wait, on a new row and on a conflict',
+      async (schedule) => {
+        const hash = keyHash(`schedule-${JSON.stringify(schedule)}`)
+        const environmentId = region.a.environmentId
+        const run = () =>
+          authPool.query<{ hits: number; wait_ms: number }>(LOCKOUT_ATTEMPT, [
+            environmentId,
+            hash,
+            schedule,
+            0,
+          ])
+        expect((await run()).rows).toEqual([{ hits: 1, wait_ms: 0 }])
+        expect((await run()).rows).toEqual([{ hits: 2, wait_ms: 0 }])
+      }
+    )
+
+    test.each([0, -5, null, 1])(
+      'a rate-limit window of %p is raised to the floor, on a new row and on a conflict',
+      async (window) => {
+        const hash = keyHash(`window-${window}`)
+        const environmentId = region.a.environmentId
+        const run = () => authPool.query(RATE_HIT, [environmentId, hash, window])
+        expect((await run()).rows).toHaveLength(1)
+        expect(await spanOf(environmentId, hash, 'started_at')).toBeGreaterThanOrEqual(
+          FLOOR_SECONDS
+        )
+        expect((await run()).rows).toHaveLength(1)
+      }
+    )
+  })
+
   describe('the rate-limit statement', () => {
     test('counts in a fixed window, and says how long the window has left', async () => {
       const hash = keyHash('window')
@@ -445,18 +513,20 @@ describe('auth.attempt_counters', () => {
             allowed: true,
             hits: 2,
           })
-          // A reading of the database clock taken while the first transaction still holds the row.
-          const held = (await first.query<{ t: Date }>('select clock_timestamp() as t')).rows[0]?.t
           const waiting = attempt(second, environmentId, hash)
           await untilBlocked(pid)
+          // A reading of the database clock taken while the second statement is already waiting for
+          // the row and the first transaction still holds it.
+          const held = (await first.query<{ t: Date }>('select clock_timestamp() as t')).rows[0]?.t
           await first.query('commit')
           // The second statement reads its clock after the row lock, so its times cannot precede
           // the first's: it is counted, with no constraint violated.
           expect(await waiting).toMatchObject({ allowed: true, hits: 3 })
           await second.query('commit')
           // Free failures lock until the instant they are counted, so the stored lock is the
-          // second statement's own clock reading. It cannot be earlier than `held`, which was
-          // taken while that statement waited for the lock; a clock read before the lock would be.
+          // second statement's own clock reading. That statement was issued before `held` was
+          // read: a tick taken at statement start would be earlier than `held` and fail here; one
+          // taken after the lock follows the first commit, which follows `held`.
           const stored = await rowOf(environmentId, hash)
           expect(stored.locked_until.getTime()).toBeGreaterThanOrEqual(held?.getTime() ?? Infinity)
         } finally {
