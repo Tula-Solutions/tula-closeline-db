@@ -7,6 +7,7 @@ import {
   ENVIRONMENT_SCOPED_TABLES,
   EXTENSION_SCHEMAS,
   findTenantIsolationGaps,
+  NON_TENANT_TABLE_REASONS,
   NON_TENANT_TABLES,
   TENANT_SCHEMAS,
 } from './isolation'
@@ -191,8 +192,16 @@ describe('the auth table categories', () => {
     }
   })
 
-  test('replace the blanket allowlist: no auth table is exempt from the check', () => {
-    expect(NON_TENANT_TABLES).toEqual([])
+  test('exempt only the two core directories, each with a precise reason, and no auth table', () => {
+    expect([...NON_TENANT_TABLES].sort()).toEqual([
+      'core.invitation_directory',
+      'core.membership_directory',
+    ])
+    expect(Object.keys(NON_TENANT_TABLE_REASONS).sort()).toEqual([...NON_TENANT_TABLES].sort())
+    for (const reason of Object.values(NON_TENANT_TABLE_REASONS)) {
+      expect(reason.trim().length).toBeGreaterThan(60)
+      expect(reason).not.toContain('\n')
+    }
   })
 })
 

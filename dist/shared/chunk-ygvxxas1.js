@@ -24,7 +24,11 @@ __export(exports_schema, {
   ENVIRONMENT_KINDS: () => ENVIRONMENT_KINDS2,
   EVENT_RETENTION_FLOOR: () => EVENT_RETENTION_FLOOR2,
   IDENTITY_PROVIDERS: () => IDENTITY_PROVIDERS2,
+  INVITATION_STATES: () => INVITATION_STATES2,
+  MEMBERSHIP_ROLES: () => MEMBERSHIP_ROLES2,
   OAUTH_PROVIDERS: () => OAUTH_PROVIDERS2,
+  ORGANIZATION_REGIONS: () => ORGANIZATION_REGIONS2,
+  ORGANIZATION_STATUSES: () => ORGANIZATION_STATUSES2,
   PASSKEY_CHALLENGE_PURPOSES: () => PASSKEY_CHALLENGE_PURPOSES2,
   SESSION_CLIENTS: () => SESSION_CLIENTS2,
   SESSION_REVOKE_REASONS: () => SESSION_REVOKE_REASONS2,
@@ -49,8 +53,13 @@ __export(exports_schema, {
   hooks: () => hooks2,
   identities: () => identities2,
   instanceAuditLogs: () => instanceAuditLogs2,
+  invitationDirectory: () => invitationDirectory2,
+  invitations: () => invitations2,
+  membershipDirectory: () => membershipDirectory2,
+  memberships: () => memberships2,
   nativeApps: () => nativeApps2,
   oauthProviders: () => oauthProviders2,
+  organizations: () => organizations2,
   passkeyChallenges: () => passkeyChallenges2,
   passkeys: () => passkeys2,
   passwordHistory: () => passwordHistory2,
@@ -61,6 +70,8 @@ __export(exports_schema, {
   sessions: () => sessions2,
   signingKeys: () => signingKeys2,
   smsCodeCounts: () => smsCodeCounts2,
+  teamMembers: () => teamMembers2,
+  teams: () => teams2,
   userFactors: () => userFactors2,
   users: () => users2,
   verificationTokens: () => verificationTokens2,
@@ -815,7 +826,151 @@ var webhookDeliveryAttempts2 = authSchema2.table("webhook_delivery_attempts", {
 // src/schema/core.ts
 import { pgSchema as pgSchema2 } from "drizzle-orm/pg-core";
 var coreSchema2 = pgSchema2("core");
+// src/schema/core-tables.ts
+import { sql as sql15 } from "drizzle-orm";
+import {
+  check as check10,
+  foreignKey as foreignKey3,
+  index as index21,
+  integer as integer10,
+  primaryKey as primaryKey2,
+  text as text30,
+  timestamp as timestamp23,
+  unique as unique21,
+  uniqueIndex as uniqueIndex2
+} from "drizzle-orm/pg-core";
+var MEMBERSHIP_ROLES2 = ["owner", "admin", "manager", "rep"];
+var ORGANIZATION_REGIONS2 = ["us", "eu"];
+var ORGANIZATION_STATUSES2 = ["active", "suspended", "deleted"];
+var INVITATION_STATES2 = ["pending", "accepted", "revoked"];
+var list = (values) => sql15.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape = (column, prefix) => sql15.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var createdAt = () => timestamp23("created_at", { withTimezone: true }).notNull().defaultNow();
+var updatedAt = () => timestamp23("updated_at", { withTimezone: true }).notNull().defaultNow();
+var organizations2 = coreSchema2.table("organizations", {
+  organizationId: text30("organization_id").primaryKey(),
+  name: text30("name").notNull(),
+  region: text30("region", { enum: ORGANIZATION_REGIONS2 }).notNull(),
+  status: text30("status", { enum: ORGANIZATION_STATUSES2 }).notNull().default("active"),
+  ownerCount: integer10("owner_count").notNull().default(0),
+  createdAt: createdAt(),
+  updatedAt: updatedAt()
+}, (t) => [
+  check10("organizations_id_shape", idShape("organization_id", "org")),
+  check10("organizations_name_shape", sql15`char_length(btrim(${t.name})) between 1 and 200`),
+  check10("organizations_region_known", sql15`${t.region} in (${list(ORGANIZATION_REGIONS2)})`),
+  check10("organizations_status_known", sql15`${t.status} in (${list(ORGANIZATION_STATUSES2)})`),
+  check10("organizations_owner_count_not_negative", sql15`${t.ownerCount} >= 0`)
+]);
+var memberships2 = coreSchema2.table("memberships", {
+  id: text30("id").primaryKey(),
+  organizationId: text30("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  userId: text30("user_id").notNull(),
+  role: text30("role", { enum: MEMBERSHIP_ROLES2 }).notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt()
+}, (t) => [
+  check10("memberships_id_shape", idShape("id", "mem")),
+  check10("memberships_organization_id_shape", idShape("organization_id", "org")),
+  check10("memberships_user_id_shape", idShape("user_id", "usr")),
+  check10("memberships_role_known", sql15`${t.role} in (${list(MEMBERSHIP_ROLES2)})`),
+  unique21("memberships_organization_user_key").on(t.organizationId, t.userId),
+  unique21("memberships_organization_id_id_key").on(t.organizationId, t.id)
+]);
+var teams2 = coreSchema2.table("teams", {
+  id: text30("id").primaryKey(),
+  organizationId: text30("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  name: text30("name").notNull(),
+  nameKey: text30("name_key").generatedAlwaysAs(() => sql15`lower(name)`),
+  createdAt: createdAt(),
+  updatedAt: updatedAt()
+}, (t) => [
+  check10("teams_id_shape", idShape("id", "team")),
+  check10("teams_organization_id_shape", idShape("organization_id", "org")),
+  check10("teams_name_shape", sql15`char_length(btrim(${t.name})) between 1 and 200`),
+  unique21("teams_organization_id_id_key").on(t.organizationId, t.id),
+  unique21("teams_organization_name_key").on(t.organizationId, t.nameKey)
+]);
+var teamMembers2 = coreSchema2.table("team_members", {
+  organizationId: text30("organization_id").notNull(),
+  teamId: text30("team_id").notNull(),
+  membershipId: text30("membership_id").notNull(),
+  createdAt: createdAt()
+}, (t) => [
+  primaryKey2({
+    name: "team_members_pkey",
+    columns: [t.organizationId, t.teamId, t.membershipId]
+  }),
+  check10("team_members_organization_id_shape", idShape("organization_id", "org")),
+  foreignKey3({
+    name: "team_members_team_fk",
+    columns: [t.organizationId, t.teamId],
+    foreignColumns: [teams2.organizationId, teams2.id]
+  }).onDelete("cascade"),
+  foreignKey3({
+    name: "team_members_membership_fk",
+    columns: [t.organizationId, t.membershipId],
+    foreignColumns: [memberships2.organizationId, memberships2.id]
+  }).onDelete("cascade"),
+  index21("team_members_membership_idx").on(t.organizationId, t.membershipId, t.teamId)
+]);
+var invitations2 = coreSchema2.table("invitations", {
+  id: text30("id").primaryKey(),
+  organizationId: text30("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  email: text30("email").notNull(),
+  role: text30("role", { enum: MEMBERSHIP_ROLES2 }).notNull(),
+  teamId: text30("team_id"),
+  invitedByUserId: text30("invited_by_user_id").notNull(),
+  tokenHash: text30("token_hash").notNull(),
+  state: text30("state", { enum: INVITATION_STATES2 }).notNull().default("pending"),
+  expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp23("accepted_at", { withTimezone: true }),
+  revokedAt: timestamp23("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt()
+}, (t) => [
+  check10("invitations_id_shape", idShape("id", "inv")),
+  check10("invitations_organization_id_shape", idShape("organization_id", "org")),
+  check10("invitations_invited_by_shape", idShape("invited_by_user_id", "usr")),
+  check10("invitations_team_id_shape", sql15`${t.teamId} is null or "team_id" ~ '^team_[0-9a-f]{32}$'`),
+  check10("invitations_email_shape", sql15`${t.email} = lower(btrim(${t.email})) and char_length(${t.email}) between 3 and 320 and position('@' in ${t.email}) > 1`),
+  check10("invitations_role_known", sql15`${t.role} in (${list(MEMBERSHIP_ROLES2)})`),
+  check10("invitations_state_known", sql15`${t.state} in (${list(INVITATION_STATES2)})`),
+  check10("invitations_token_hash_shape", sql15`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
+  check10("invitations_expiry_after_creation", sql15`${t.expiresAt} > ${t.createdAt}`),
+  check10("invitations_state_shape", sql15`(${t.state} = 'pending' and ${t.acceptedAt} is null and ${t.revokedAt} is null)
+        or (${t.state} = 'accepted' and ${t.acceptedAt} is not null and ${t.revokedAt} is null)
+        or (${t.state} = 'revoked' and ${t.revokedAt} is not null and ${t.acceptedAt} is null)`),
+  unique21("invitations_organization_id_id_key").on(t.organizationId, t.id),
+  unique21("invitations_token_hash_key").on(t.tokenHash),
+  foreignKey3({
+    name: "invitations_team_fk",
+    columns: [t.organizationId, t.teamId],
+    foreignColumns: [teams2.organizationId, teams2.id]
+  }),
+  uniqueIndex2("invitations_pending_email_key").on(t.organizationId, t.email).where(sql15`${t.state} = 'pending'`),
+  index21("invitations_pending_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql15`${t.state} = 'pending'`),
+  index21("invitations_team_idx").on(t.organizationId, t.teamId).where(sql15`${t.teamId} is not null`)
+]);
+var membershipDirectory2 = coreSchema2.table("membership_directory", {
+  userId: text30("user_id").notNull(),
+  organizationId: text30("organization_id").notNull()
+}, (t) => [
+  primaryKey2({ name: "membership_directory_pkey", columns: [t.userId, t.organizationId] }),
+  check10("membership_directory_user_id_shape", idShape("user_id", "usr")),
+  check10("membership_directory_organization_id_shape", idShape("organization_id", "org")),
+  unique21("membership_directory_one_organization_per_user").on(t.userId)
+]);
+var invitationDirectory2 = coreSchema2.table("invitation_directory", {
+  tokenHash: text30("token_hash").primaryKey(),
+  organizationId: text30("organization_id").notNull(),
+  invitationId: text30("invitation_id").notNull()
+}, () => [
+  check10("invitation_directory_token_hash_shape", sql15`"token_hash" ~ '^[0-9a-f]{64}$'`),
+  check10("invitation_directory_organization_id_shape", idShape("organization_id", "org")),
+  check10("invitation_directory_invitation_id_shape", idShape("invitation_id", "inv"))
+]);
 // src/schema/playbook.ts
 import { pgSchema as pgSchema3 } from "drizzle-orm/pg-core";
 var playbookSchema2 = pgSchema3("playbook");
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, API_KEY_KINDS2, apiKeys2, TENANT_SETTING, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, playbookSchema2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, API_KEY_KINDS2, apiKeys2, TENANT_SETTING, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, playbookSchema2, exports_schema };

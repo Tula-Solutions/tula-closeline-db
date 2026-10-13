@@ -1,7 +1,7 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-mrxhbtkz.js";
+} from "./shared/chunk-ygvxxas1.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -173,7 +173,10 @@ var CONTROL_PLANE_TABLE_REASONS = {
   "auth.workspaces": "control plane: top of tula-auth's account model, one workspace per Region, not tenant data"
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
-var NON_TENANT_TABLE_REASONS = {};
+var NON_TENANT_TABLE_REASONS = {
+  "core.invitation_directory": "read before the Organization is known (accepting an invitation looks up a token hash); holds only token hash, Organization id and invitation id, is written only by SECURITY DEFINER triggers on core.invitations, and the service role has SELECT alone",
+  "core.membership_directory": "read before the Organization is known (sign-in asks which Organization a user belongs to); holds only user id and Organization id, is written only by SECURITY DEFINER triggers on core.memberships, and the service role has SELECT alone"
+};
 var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
 var EXTENSION_SCHEMAS = [];
 async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extensionSchemas = EXTENSION_SCHEMAS, categories = {

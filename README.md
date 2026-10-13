@@ -59,7 +59,7 @@ success with zero rows changed.
 
 `bun run db:check:rls` (with `DATABASE_URL` set) fails when any table lacks `organization_id`,
 forced row-level security, or exactly the policy `tenantRlsStatements` writes, unless it is on
-`NON_TENANT_TABLES` (empty today; an entry needs a decision record). The `auth` tables are not
+`NON_TENANT_TABLES` (the two `core` directories today, each with its reason in `NON_TENANT_TABLE_REASONS`; an entry needs a decision record in the hub). The `auth` tables are not
 skipped: each is verified under `ENVIRONMENT_SCOPED_TABLES` or `CONTROL_PLANE_TABLES` (see below),
 and an `auth` table in neither is a gap. It scans every schema except `public` and drizzle's own, so a table in a schema that is not `auth`,
 `core` or `playbook` is a gap, and so is a `closeline_*` role that is a superuser or has
@@ -107,3 +107,43 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
 - One fixed project per Region is data, not schema: nothing in the tables limits a Region to one
   project. The auth service must bootstrap one workspace and one project, with a development and a
   production environment, and refuse to create more.
+
+## The core schema
+
+Organizations and who belongs to them (tickets: hub issue 9). All five tenant tables carry
+`organization_id` and the canonical policy; ids are the contract's prefixed text (`org_`, `usr_`,
+`mem_`, `team_`, and `inv_` for invitations), each checked by a constraint.
+
+| Table | Holds |
+| --- | --- |
+| `organizations` | the Organization; keyed by `organization_id`; Region fixed at creation; `owner_count` is trigger-kept |
+| `memberships` | a user (opaque `usr_` id, no cross-schema key) in an Organization with one of the four roles |
+| `teams`, `team_members` | Teams; composite keys `(organization_id, id)` make a member and Team of different Organizations impossible |
+| `invitations` | email, role, optional Team, SHA-256 of the token (never the token), expiry, `pending`/`accepted`/`revoked` |
+| `membership_directory`, `invitation_directory` | see below |
+
+Rules held by the database: the Region never changes (trigger; the service role also has no
+`UPDATE` on it); an Organization always has an Owner (an Organization commits only with its first
+Owner, and the last Owner cannot be removed or demoted: the `track_owner_count` trigger updates the
+Organization's `owner_count`, whose row lock serialises concurrent changes at any isolation level,
+so ownership transfers by promoting before demoting); one pending invitation per email per
+Organization; accepted and revoked invitations are final; a user belongs to exactly one Organization.
+
+**Directories.** Sign-in must find a user's Organization, and accepting an invitation must find
+the Organization of a token hash, before any Organization is known, so neither can sit behind
+row-level security. Each is a narrow mapping table (`user_id` to `organization_id`; `token_hash` to
+`organization_id` and `invitation_id`), kept by `SECURITY DEFINER` triggers in the same
+transaction as the tenant row, readable by `closeline_core` and writable by nothing else. Read the
+directory, then `withOrganization` for the Organization it names, then read the real row. A reader
+learns which Organization a user or token belongs to, and nothing else.
+
+**Exactly one Organization per user** is the unique constraint
+`membership_directory_one_organization_per_user` on `membership_directory.user_id`. It has to sit
+there: a unique index on `memberships` cannot see rows hidden by row-level security. To allow
+several Organizations per user, one migration runs `ALTER TABLE core.membership_directory DROP
+CONSTRAINT membership_directory_one_organization_per_user`; nothing else changes.
+
+Keyset lists, each on an index (the schema comments name the query): members of an Organization
+(`memberships_organization_id_id_key`), Teams (`teams_organization_name_key` on `name_key`, the
+lower-cased name), members of a Team (`team_members_pkey`), Teams of a member
+(`team_members_membership_idx`), pending invitations (`invitations_pending_list_idx`).

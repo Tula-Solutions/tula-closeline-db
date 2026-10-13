@@ -70,11 +70,17 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
 
 /**
  * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
- * one-line reason. Empty: the `auth` tables, which have no `organization_id`, are verified under
- * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped.
+ * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
+ * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
+ * only entries are the two `core` directories, which are asked before an Organization is known.
  * An entry here needs a decision record in the hub.
  */
-export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {}
+export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'core.invitation_directory':
+    'read before the Organization is known (accepting an invitation looks up a token hash); holds only token hash, Organization id and invitation id, is written only by SECURITY DEFINER triggers on core.invitations, and the service role has SELECT alone',
+  'core.membership_directory':
+    'read before the Organization is known (sign-in asks which Organization a user belongs to); holds only user id and Organization id, is written only by SECURITY DEFINER triggers on core.memberships, and the service role has SELECT alone',
+}
 
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */
 export const NON_TENANT_TABLES: readonly string[] = Object.keys(NON_TENANT_TABLE_REASONS)
