@@ -6985,6 +6985,12 @@ declare const teamMembers: PgTableWithColumns_a5zn0g31<{
 * Lists served:
 * - Pending invitations of an Organization: `WHERE organization_id = $1 AND state = 'pending' AND
 *   (created_at, id) > ($c, $i) ORDER BY created_at, id`, on `invitations_pending_list_idx`.
+* - Invitations of an Organization in any one state, newest first: `WHERE organization_id = $1 AND
+*   state = $2 AND (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC LIMIT n`, on
+*   `invitations_state_list_idx` (read backwards, so no sort).
+* - How many invitations an Organization created since a time, revoked ones included, capped with a
+*   `LIMIT`: `WHERE organization_id = $1 AND state IN (...) AND created_at > $t`, on the same index.
+*   (`state` is in the index, so the count lists the three states; it is bounded by the cap.)
 */
 declare const invitations: PgTableWithColumns_a5zn0g31<{
 	name: "invitations";

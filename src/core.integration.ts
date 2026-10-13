@@ -2304,46 +2304,48 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     })
 
     const A = () => `'${orgId}'`
-    const cases: [string, () => string, string][] = [
+    // The index each list may use: the pending list is answered by its own partial index or, equally
+    // well, by the all-states index added for the other states (same columns, same order).
+    const cases: [string, () => string, string[]][] = [
       [
         'members of an Organization',
         () =>
           `select id from core.memberships where organization_id = ${A()} and id > 'mem_0' order by id limit 50`,
-        'memberships_organization_id_id_key',
+        ['memberships_organization_id_id_key'],
       ],
       [
         'Teams of an Organization',
         () =>
           `select id from core.teams where organization_id = ${A()} and name_key > 'a' order by name_key limit 50`,
-        'teams_organization_name_key',
+        ['teams_organization_name_key'],
       ],
       [
         'members of a Team',
         () =>
           `select membership_id from core.team_members where organization_id = ${A()} and team_id = '${teamId}' and membership_id > 'mem_0' order by membership_id limit 50`,
-        'team_members_pkey',
+        ['team_members_pkey'],
       ],
       [
         'Teams of a membership',
         () =>
           `select team_id from core.team_members where organization_id = ${A()} and membership_id = '${membershipId}' and team_id > 'team_0' order by team_id limit 50`,
-        'team_members_membership_idx',
+        ['team_members_membership_idx'],
       ],
       [
         'pending invitations',
         () =>
           `select id from core.invitations where organization_id = ${A()} and state = 'pending' and (created_at, id) > ('2020-01-01', 'inv_0') order by created_at, id limit 50`,
-        'invitations_pending_list_idx',
+        ['invitations_pending_list_idx', 'invitations_state_list_idx'],
       ],
     ]
 
-    test.each(cases)('%s', async (_name, query, index) => {
+    test.each(cases)('%s', async (_name, query, indexes) => {
       const plan = await inOrg(orgId, async (c) => {
         await c.query('set local enable_seqscan = off')
         return (await c.query(`explain (format json) ${query()}`)).rows[0]['QUERY PLAN']
       })
       const text = JSON.stringify(plan)
-      expect(text).toContain(`"Index Name":"${index}"`)
+      expect(indexes.some((index) => text.includes(`"Index Name":"${index}"`))).toBe(true)
       expect(text).not.toContain('"Node Type":"Sort"')
     })
   })

@@ -61,6 +61,27 @@ describe('the core schema', () => {
     ])
   })
 
+  test('invitations are indexed by Organization, state, creation time and id, in that order', () => {
+    const config = coreTables.find((table) => table.name === 'invitations')
+    const index = config?.indexes.find((i) => i.config.name === 'invitations_state_list_idx')
+    expect(index?.config.columns.map((column) => ('name' in column ? column.name : ''))).toEqual([
+      'organization_id',
+      'state',
+      'created_at',
+      'id',
+    ])
+    expect(index?.config.unique).toBe(false)
+    expect(index?.config.where).toBeUndefined()
+    expect(
+      readFileSync(
+        new URL('../../migrations/0003_invitation_state_index.sql', import.meta.url),
+        'utf8'
+      )
+    ).toContain(
+      'CREATE INDEX "invitations_state_list_idx" ON "core"."invitations" USING btree ("organization_id","state","created_at","id")'
+    )
+  })
+
   test('an invitation can offer every role but Owner', () => {
     expect<string[]>([...INVITATION_ROLES]).toEqual(
       MEMBERSHIP_ROLES.filter((role) => role !== 'owner')

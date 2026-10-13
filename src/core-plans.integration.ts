@@ -142,3 +142,158 @@ describe('deleting a large Organization does a bounded amount of work per member
     expect(read).toBeLessThan(members * 2)
   }, 180_000)
 })
+
+/** The plan nodes of an `EXPLAIN (FORMAT JSON)` tree, the root first. */
+interface PlanNode {
+  'Node Type': string
+  'Index Name'?: string
+  Plans?: PlanNode[]
+}
+
+/** Every node of the plan tree, depth first. */
+function planNodes(node: PlanNode): PlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(planNodes)]
+}
+
+describe('listing and counting invitations by state reads the state index', () => {
+  const orgId = newId('org')
+  const INDEX = 'invitations_state_list_idx'
+  const TOTAL = 20_000
+  let admin: Pool
+  let owner: Pool
+  let core: Pool
+  let planDatabase: string
+
+  beforeAll(async () => {
+    admin = new Pool({ connectionString: adminUrl(), max: 1 })
+    assertLocalTestDatabase(adminUrl())
+    // Its own database, as the suite above: the statistics must be this table's alone.
+    planDatabase = `it_plans_${suffix}_inv`
+    await admin.query(`create database "${planDatabase}" owner closeline_owner`)
+    const url = new URL(env.owner)
+    url.pathname = `/${planDatabase}`
+    await migrateUp(url.toString())
+    owner = new Pool({ connectionString: url.toString(), max: 1 })
+    // Row-level security binds the owner too, so the rows go in as the service role, scoped to the
+    // Organization.
+    const coreUrl = new URL(env.core)
+    coreUrl.pathname = `/${planDatabase}`
+    core = new Pool({ connectionString: coreUrl.toString(), max: 1 })
+    const c = await core.connect()
+    try {
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      await c.query(
+        'insert into core.organizations (organization_id, name, region) values ($1, $1, $2)',
+        [orgId, 'us']
+      )
+      await c.query(
+        "insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
+        [newId('mem'), orgId, newId('usr')]
+      )
+      // Set-based: one third pending, accepted and revoked each, a distinct email per row (so one
+      // pending invitation per email holds), a role other than Owner, and the timestamps its state
+      // requires. Creation times are spread over 20,000 minutes and expire a day later.
+      await c.query(
+        `insert into core.invitations
+         (id, organization_id, email, role, invited_by_user_id, token_hash, state,
+          expires_at, accepted_at, revoked_at, created_at)
+       select 'inv_' || md5('i' || n),
+              $1::text,
+              'user' || n || '@example.com',
+              (array['admin', 'manager', 'rep'])[1 + n % 3],
+              'usr_' || md5('u'),
+              md5('t' || n) || md5('h' || n),
+              s.state,
+              base.at + interval '1 day',
+              case when s.state = 'accepted' then base.at + interval '1 hour' end,
+              case when s.state = 'revoked' then base.at + interval '1 hour' end,
+              base.at
+         from generate_series(1, $2::int) n
+        cross join lateral (select (array['pending', 'accepted', 'revoked'])[1 + n % 3] as state) s
+        cross join lateral (
+          select timestamptz '2026-01-01 00:00:00+00' + n * interval '1 minute' as at) base`,
+        [orgId, TOTAL]
+      )
+      await c.query('commit')
+    } catch (error) {
+      await c.query('rollback').catch(() => undefined)
+      throw error
+    } finally {
+      c.release()
+    }
+    await owner.query('analyze core.invitations')
+  }, 120_000)
+
+  afterAll(async () => {
+    await Promise.all([core?.end(), owner?.end()])
+    await admin?.query(`drop database if exists "${planDatabase}" with (force)`)
+    await admin?.end()
+  })
+
+  /** Run `fn` in a transaction of the service role scoped to the seeded Organization. */
+  async function scoped<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+    const c = await core.connect()
+    try {
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      return await fn(c)
+    } finally {
+      await c.query('rollback').catch(() => undefined)
+      c.release()
+    }
+  }
+
+  /** The plan nodes the service role's planner chooses for `sql` with these parameters. */
+  async function plan(sql: string, params: unknown[]): Promise<PlanNode[]> {
+    const result = await scoped((c) =>
+      c.query<{ 'QUERY PLAN': { Plan: PlanNode }[] }>(`explain (format json) ${sql}`, params)
+    )
+    const root = result.rows[0]?.['QUERY PLAN'][0]?.Plan
+    if (!root) {
+      throw new Error('no plan returned')
+    }
+    return planNodes(root)
+  }
+
+  test('seeds the three states', async () => {
+    const counts = await scoped((c) =>
+      c.query<{ state: string; n: string }>(
+        'select state, count(*)::text as n from core.invitations group by state order by state'
+      )
+    )
+    expect(counts.rows.map((r) => r.state)).toEqual(['accepted', 'pending', 'revoked'])
+    expect(counts.rows.every((r) => Number(r.n) > TOTAL / 4)).toBe(true)
+  })
+
+  test('a page of revoked invitations, newest first, uses the index and no sort', async () => {
+    const nodes = await plan(
+      `select id, email, created_at from core.invitations
+        where organization_id = $1 and state = 'revoked'
+          and (created_at, id) < ($2::timestamptz, $3::text)
+        order by created_at desc, id desc
+        limit 101`,
+      [orgId, '2026-01-10 00:00:00+00', 'inv_ffffffffffffffffffffffffffffffff']
+    )
+    expect(nodes.map((n) => n['Index Name'])).toContain(INDEX)
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Sort')
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Incremental Sort')
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Seq Scan')
+  })
+
+  test('a capped count of invitations created after a time, in every state, uses the index', async () => {
+    const nodes = await plan(
+      `select count(*) from (
+         select 1 from core.invitations
+          where organization_id = $1
+            and state in ('pending', 'accepted', 'revoked')
+            and created_at > $2::timestamptz
+          limit 1001) capped`,
+      // The window of the last few hours of the seeded range (about 3% of the rows), as a mail cap
+      // looks at a recent window, not at everything.
+      [orgId, '2026-01-14 12:00:00+00']
+    )
+    expect(nodes.map((n) => n['Index Name'])).toContain(INDEX)
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Seq Scan')
+  })
+})
