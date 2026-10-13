@@ -712,7 +712,7 @@ past other states' rows), `deleted` is the deleted list (`documents_deleted_list
 carries all the columns `DOCUMENT_GET` returns (`DOCUMENT_ROW_FIELDS`, row type `DocumentRow`): `updated_at`,
 `failure_reason`, `purge_due_at`, `page_count` and the database-computed `not_restorable`, so a listed
 document is never read again. `DOCUMENT_LIST` and `DOCUMENT_LIST_DELETED` keep their parameters and
-only gained columns. Carry the cursor as the database's `created_at::text`, not a JavaScript
+only gained columns, so read rows by column name, never by position. Carry the cursor as the database's `created_at::text`, not a JavaScript
 Date, which drops microseconds. `DOCUMENT_GET` reads one document with everything the service
 answers and publishes with (including `deletion_seq`). Its `not_restorable` is computed by the database clock (a `deleted` document past its purge time or with a started purge), so the service never compares the purge time with its own clock: an explicit restore that returns no row for a `deleted` document is 410 `not_restorable`. The page count is stored on the document, set by `INGESTION_JOB_COMPLETE` and `INGESTION_JOB_FAIL` from the job's count (record it with `INGESTION_JOB_ADVANCE` first), null until then. Content hash: `documents_content_hash_key`. Due for purge:
 `documents_purge_idx`, which also lists an Organization's deleted documents oldest-due first (it

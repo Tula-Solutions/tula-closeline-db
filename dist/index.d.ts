@@ -10003,7 +10003,9 @@ declare const DOCUMENT_LIST_DELETED: string;
 * served by one index read backwards with no sort and no pass over other states' rows: null by
 * `documents_list_idx`, a live state by `documents_state_list_idx` (equality on the state, then the
 * keyset), `deleted` by `documents_deleted_list_idx`. The three branches are guarded by `$5`, so
-* only the matching one runs.
+* only the matching one runs. The state branch repeats the literal `state <> 'deleted'` of the partial
+* index's predicate: under a generic plan `state = $5` alone does not prove it, and the index would
+* be unusable.
 */
 declare const DOCUMENT_LIST_FILTERED: string;
 /**

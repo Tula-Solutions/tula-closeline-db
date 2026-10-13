@@ -2148,6 +2148,102 @@ describe('the playbook schema', () => {
       expect(crossed.rowCount).toBe(0)
     })
 
+    describe('the plans use the list indexes under a generic plan', () => {
+      interface PlanNode {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Name'?: string
+        'Scan Direction'?: string
+        'One-Time Filter'?: string
+        Plans?: PlanNode[]
+      }
+      const walk = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(walk)]
+      /**
+       * Prepare the statement, force the generic plan, and return the plan tree (JSON). The scan
+       * of `documents` is only planned with `enable_seqscan = off`, so a branch whose index cannot
+       * serve it shows up as a Seq Scan instead of silently passing on a tiny table.
+       */
+      async function planOf(org: string, text: string, types: string, args: string) {
+        return inOrg(org, async (c) => {
+          await c.query(`set local plan_cache_mode = force_generic_plan`)
+          await c.query(`set local enable_seqscan = off`)
+          await c.query(`prepare plan_probe(${types}) as ${text}`)
+          try {
+            const r = await c.query(`explain (format json, costs off) execute plan_probe(${args})`)
+            return r.rows[0]['QUERY PLAN'][0].Plan as PlanNode
+          } finally {
+            await c.query('deallocate plan_probe')
+          }
+        })
+      }
+      const lit = (v: string | null) => (v === null ? 'null' : `'${v}'`)
+      const fail = (plan: PlanNode) => `plan:\n${JSON.stringify(plan, null, 1)}`
+      /** Assert on the scans of `documents` under `root`: the named index, backward, and no Sort node anywhere under it. */
+      const expectIndexScan = (root: PlanNode, index: string) => {
+        const nodes = walk(root)
+        const scans = nodes.filter((n) => n['Relation Name'] === 'documents')
+        expect([scans.length, fail(root)]).toEqual([1, fail(root)])
+        expect([
+          scans[0]?.['Node Type'],
+          scans[0]?.['Index Name'],
+          scans[0]?.['Scan Direction'],
+          fail(root),
+        ]).toEqual(['Index Scan', index, 'Backward', fail(root)])
+        expect([nodes.some((n) => n['Node Type'] === 'Sort'), fail(root)]).toEqual([
+          false,
+          fail(root),
+        ])
+      }
+
+      test.each([
+        ['DOCUMENT_LIST', DOCUMENT_LIST, 'documents_list_idx'],
+        ['DOCUMENT_LIST_DELETED', DOCUMENT_LIST_DELETED, 'documents_deleted_list_idx'],
+      ] as const)(
+        '%s: its index, read backwards, with no Sort anywhere',
+        async (_name, text, index) => {
+          const org = newOrg()
+          const plan = await planOf(
+            org,
+            text,
+            'text, timestamptz, text, int',
+            `${lit(org)}, 'infinity', '', 50`
+          )
+          expectIndexScan(plan, index)
+        }
+      )
+
+      // The generic plan holds all three branches, each under a Result with a One-Time Filter on
+      // $5. For each filter value this asserts, on the branch that value selects (found by its
+      // One-Time Filter): exactly one scan of documents, an Index Scan Backward on the expected
+      // index, and no Sort node inside that branch. The outer merge of one page may sort; that is
+      // not asserted. The other branches are checked the same way in the other cases.
+      test.each([
+        [null, 'IS NULL', 'documents_list_idx'],
+        ['ready', 'ANY', 'documents_state_list_idx'],
+        ['deleted', "'deleted'", 'documents_deleted_list_idx'],
+      ] as const)(
+        'DOCUMENT_LIST_FILTERED with %s: the branch uses %s -> %s',
+        async (state, marker, index) => {
+          const org = newOrg()
+          const plan = await planOf(
+            org,
+            DOCUMENT_LIST_FILTERED,
+            'text, timestamptz, text, int, text',
+            `${lit(org)}, 'infinity', '', 50, ${lit(state)}`
+          )
+          const branches = walk(plan).filter((n) => /\$5/.test(n['One-Time Filter'] ?? ''))
+          const branch = branches.find(
+            (n) =>
+              (n['One-Time Filter'] ?? '').includes(marker) &&
+              (marker !== "'deleted'" || !(n['One-Time Filter'] ?? '').includes('ANY'))
+          )
+          expect([branches.length, fail(plan)]).toEqual([3, fail(plan)])
+          expect([branch !== undefined, fail(plan)]).toEqual([true, fail(plan)])
+          expectIndexScan(branch as PlanNode, index)
+        }
+      )
+    })
+
     test('the page count is set by complete and by fail, and returned by get and every list', async () => {
       const org = newOrg()
       const ready = await mustAdd(org)
@@ -3131,7 +3227,7 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        // 0000 to 0013: the eight before the playbook plus 0009 to 0013.
+        // 0000 to 0013: the nine before the playbook (0000 to 0008) plus 0009 to 0013.
         expect(applied.rows[0].n).toBe(14)
         await runMigrations(url.toString())
       } finally {

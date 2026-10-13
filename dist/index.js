@@ -568,7 +568,7 @@ var DOCUMENT_LIST_FILTERED = `select * from (
    order by created_at desc, id desc limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)})
   union all
   (select ${DOCUMENT_COLUMNS} from playbook.documents
-   where $5::text in ('uploaded', 'processing', 'ready', 'failed') and organization_id = $1 and state = $5::text
+   where $5::text in ('uploaded', 'processing', 'ready', 'failed') and organization_id = $1 and state = $5::text and state <> 'deleted'
      and (created_at, id) < ($2::timestamptz, $3::text)
    order by created_at desc, id desc limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)})
   union all
