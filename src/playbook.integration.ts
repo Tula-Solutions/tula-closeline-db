@@ -1080,8 +1080,10 @@ describe('the playbook schema', () => {
         attempts: 1,
       })
       expect(await row(org, doc.id)).toMatchObject({ state: 'processing' })
-      expect((await claimJobs(org)).rowCount).toBe(0)
-      expect((await claimJobs(org, 10, 1000, doc.jobId)).rowCount).toBe(0)
+      expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
+      expect((await claimJobs(org, 10, 1000, doc.jobId)).rows.filter((r) => r.id !== null)).toEqual(
+        []
+      )
     })
 
     test('a claim by job id takes only that job, and a batch is bounded', async () => {
@@ -1206,7 +1208,7 @@ describe('the playbook schema', () => {
       )
       expect((await claimJobs(org, 10)).rows[0]).toMatchObject({ id: healthy.jobId, attempts: 20 })
       await expireLease(org, healthy.jobId)
-      expect((await claimJobs(org, 10)).rowCount).toBe(0)
+      expect((await claimJobs(org, 10)).rows.filter((r) => r.id !== null)).toEqual([])
       // The safety net fails both, with their documents.
       const failed = await inOrg(org, (c) => c.query(INGESTION_JOB_GIVE_UP_SPENT, [org, 10]))
       expect(failed.rows.map((r) => r.document_id).sort()).toEqual([spent.id, healthy.id].sort())
@@ -1566,7 +1568,7 @@ describe('the playbook schema', () => {
       expect(await row(org, docId)).toMatchObject({ state: 'deleted' })
       // The job the delete could not see is still queued until the claim looks at its document.
       expect(await jobRow(org, jobId)).toMatchObject({ state: 'queued' })
-      expect((await claimJobs(org)).rowCount).toBe(0)
+      expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
       expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled', claim_token: null })
       expect(await activeJobs(org, docId)).toBe(0)
     }
@@ -1630,7 +1632,7 @@ describe('the playbook schema', () => {
       expect((await remove(org, doc.id)).rows[0]).toMatchObject({ state: 'deleted', changed: true })
       expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled' })
       expect(await activeJobs(org, doc.id)).toBe(0)
-      expect((await claimJobs(org)).rowCount).toBe(0)
+      expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
       expect((await restore(org, doc.id)).rows[0]).toMatchObject({
         state: 'processing',
         changed: true,
@@ -1714,6 +1716,118 @@ describe('the playbook schema', () => {
       const claimed = (await claimJobs(org)).rows
       expect(claimed.map((r) => r.id)).toEqual([live.jobId])
       expect(await jobRow(org, stale.jobId)).toMatchObject({ state: 'cancelled' })
+    })
+  })
+
+  describe('a job left running on a deleted document', () => {
+    /** The state a claim that raced a delete can leave: a running job at epoch e on a document at e+1. */
+    const runningOnDeleted = async (org: string) => {
+      const doc = await mustAdd(org)
+      const token = (await claimJobs(org)).rows[0].claim_token as string
+      expect((await remove(org, doc.id)).rows[0]).toMatchObject({ state: 'deleted' })
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.ingestion_jobs set state = 'running', claim_token = $2::uuid, finished_at = null,
+             next_attempt_at = clock_timestamp() + interval '1 hour' where id = $1`,
+          [doc.jobId, token]
+        )
+      )
+      return { doc, token }
+    }
+
+    test('heartbeat and advance return no row, and the cleanup is not clear until the lease ends', async () => {
+      const org = newOrg()
+      const { doc, token } = await runningOnDeleted(org)
+      expect(
+        (await inOrg(org, (c) => c.query(INGESTION_JOB_HEARTBEAT, [org, doc.jobId, token, 60_000])))
+          .rowCount
+      ).toBe(0)
+      expect(
+        (
+          await inOrg(org, (c) =>
+            c.query(INGESTION_JOB_ADVANCE, [
+              org,
+              doc.jobId,
+              token,
+              'chunk',
+              null,
+              null,
+              null,
+              null,
+              60_000,
+            ])
+          )
+        ).rowCount
+      ).toBe(0)
+      const begin = () =>
+        inOrg(org, (c) => c.query(DOCUMENT_CLEANUP_BEGIN, [org, doc.id, 1])).then((r) => r.rows[0])
+      expect(await begin()).toMatchObject({ epoch: 1, clear: false })
+      await expireLease(org, doc.jobId)
+      expect(await begin()).toMatchObject({ clear: true })
+      // The lapsed job is cancelled by the next claim, which reports it.
+      const claim = await claimJobs(org)
+      expect(claim.rows).toEqual([expect.objectContaining({ id: null, cancelled: 1 })])
+      expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'cancelled' })
+    })
+  })
+
+  describe('the claim reports the stale jobs it cancels', () => {
+    test('batch size 1 with two stale jobs ahead of a live one: two empty claims that say so, then the job', async () => {
+      const org = newOrg()
+      const stale1 = await mustAdd(org)
+      const stale2 = await mustAdd(org)
+      const live = await mustAdd(org)
+      await asOwner(org, (c) =>
+        c.query(`update playbook.documents set epoch = 5 where id = any($1::text[])`, [
+          [stale1.id, stale2.id],
+        ])
+      )
+      for (const stale of [stale1, stale2]) {
+        const claim = await claimJobs(org, 1)
+        expect(claim.rows).toEqual([expect.objectContaining({ id: null, cancelled: 1 })])
+        expect(await jobRow(org, stale.jobId)).toMatchObject({ state: 'cancelled' })
+      }
+      const third = await claimJobs(org, 1)
+      expect(third.rows).toEqual([expect.objectContaining({ id: live.jobId, cancelled: 0 })])
+      expect((await claimJobs(org, 1)).rowCount).toBe(0)
+    })
+  })
+
+  describe('not_restorable agrees with the explicit restore', () => {
+    test.each([
+      ['1 ms in the past', '-1 millisecond', true],
+      ['1 hour in the future', '1 hour', false],
+    ])('purge time %s', async (_name, offset, notRestorable) => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.documents set purge_due_at = clock_timestamp() + $2::interval where id = $1`,
+          [doc.id, offset]
+        )
+      )
+      const got = (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, doc.id]))).rows[0]
+      expect(got).toMatchObject({ state: 'deleted', not_restorable: notRestorable })
+      const restored = await restore(org, doc.id)
+      expect(restored.rowCount).toBe(notRestorable ? 0 : 1)
+      if (notRestorable) {
+        expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
+      }
+    })
+
+    test('a purge that has started is not restorable, and a live document is not flagged', async () => {
+      const org = newOrg()
+      const live = await mustAdd(org)
+      expect(
+        (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, live.id]))).rows[0]
+      ).toMatchObject({ not_restorable: false })
+      const doc = await mustAdd(org)
+      await deleteDue(org, doc.id)
+      await claimPurge(org)
+      expect((await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, doc.id]))).rows[0]).toMatchObject(
+        { not_restorable: true }
+      )
     })
   })
 
@@ -2546,7 +2660,7 @@ describe('the playbook schema', () => {
         }
         expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
         expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'cancelled' })
-        expect((await claimJobs(org)).rowCount).toBe(0)
+        expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
       }
     )
 
@@ -2619,7 +2733,7 @@ describe('the playbook schema', () => {
       } finally {
         releaseAll(requeue, del)
       }
-      expect((await claimJobs(second)).rowCount).toBe(0)
+      expect((await claimJobs(second)).rows.filter((r) => r.id !== null)).toEqual([])
       expect(await activeJobs(second, other.id)).toBe(0)
     })
 

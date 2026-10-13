@@ -538,7 +538,8 @@ where organization_id = $1 and state = 'deleted'
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
 var DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
-  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at
+  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
+  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable
 from playbook.documents
 where organization_id = $1 and id = $2`;
 var DOCUMENT_SOFT_DELETE = `with j as (
@@ -604,7 +605,7 @@ var DOCUMENT_CLEANUP_BEGIN = `select d.id, d.epoch,
   not exists (
     select 1 from playbook.ingestion_jobs j
     where j.organization_id = d.organization_id and j.document_id = d.id
-      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear
+      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear
 from playbook.documents d
 where d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int`;
 var DOCUMENT_CLEANUP_DONE = `update playbook.documents
@@ -645,7 +646,8 @@ stale as (
   update playbook.ingestion_jobs t
   set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   from due
-  where t.organization_id = $1 and t.id = due.id and not due.live),
+  where t.organization_id = $1 and t.id = due.id and not due.live
+  returning t.id),
 claimed as (
   update playbook.ingestion_jobs j
   set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
@@ -658,12 +660,21 @@ moved as (
   update playbook.documents d
   set state = 'processing', updated_at = clock_timestamp()
   from claimed
-  where d.organization_id = $1 and d.id = claimed.document_id and d.state = 'uploaded')
-select id, document_id, epoch, step, attempts, claim_token, artifact_key, page_count, chunk_count, chunks_done
-from claimed`;
+  where d.organization_id = $1 and d.id = claimed.document_id
+    and d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch
+  returning d.id)
+select c.id, c.document_id, c.epoch, c.step, c.attempts, c.claim_token, c.artifact_key, c.page_count,
+  c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled
+from claimed c join moved m on m.id = c.document_id
+union all
+select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int
+where not exists (select 1 from claimed c join moved m on m.id = c.document_id)
+  and (select count(*) from stale) > 0`;
 var INGESTION_JOB_HEARTBEAT = `update playbook.ingestion_jobs
 set next_attempt_at = clock_timestamp() + ${LEASE("$4")}, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+  and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+              and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
 returning id`;
 var INGESTION_JOB_ADVANCE = `update playbook.ingestion_jobs
 set step = $4::text, artifact_key = coalesce($5::text, artifact_key), page_count = coalesce($6::int, page_count),
@@ -671,6 +682,8 @@ set step = $4::text, artifact_key = coalesce($5::text, artifact_key), page_count
     next_attempt_at = clock_timestamp() + ${LEASE("$9")}, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
   and array_position(${STEP_ORDER}, $4::text) >= array_position(${STEP_ORDER}, step)
+  and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+              and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
 returning id, step, chunks_done`;
 var INGESTION_JOB_RETRY = `update playbook.ingestion_jobs
 set state = 'queued', claim_token = null,

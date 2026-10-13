@@ -149,11 +149,17 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * One document by id with everything the service answers and publishes with: the public columns,
  * `failure_reason`, `epoch`, `deletion_seq`, `deleted_at`, `deleted_by`, `purge_due_at` and
  * `purge_started_at`. `$1` Organization, `$2` document. No row means no such document (never
- * existed, or purged). The service reads it to tell why a restore was refused: `deleted` with a
- * `purge_due_at` in the past or a `purge_started_at` set is not restorable.
+ * existed, or purged). `not_restorable` is computed by the database clock, so the service never
+ * compares the purge time with its own: it is true for a `deleted` document whose `purge_due_at`
+ * has passed or whose purge has started. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
+ * restore returns no row and this read shows `state = 'deleted'`, the answer is 410
+ * `not_restorable`; no row from this read is 404. (The two reads are separate statements, so a
+ * document due between them can show `not_restorable` false right after a refused restore: ask
+ * again.)
  */
 export const DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
-  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at
+  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
+  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable
 from playbook.documents
 where organization_id = $1 and id = $2`
 
@@ -286,14 +292,16 @@ where organization_id = $1 and id = $2 and state in ('uploaded', 'processing', '
  * No row means it does not (the document was restored, deleted again under a later sequence, or
  * purged): do nothing. The row carries `epoch`: remove the vectors tagged with an epoch up to it
  * and no later one, so vectors written by a restore are never touched. `clear` is false while a
- * worker of the cancelled job may still hold its lease: wait and run this again. The check is a
+ * worker may still hold a lease on the document: a cancelled job's kept lease end, or a `running`
+ * job whose lease has not ended (a claim can race a delete and leave a job running on the deleted
+ * document; its heartbeat is refused, so its lease ends). Wait and run this again. The check is a
  * read; {@link DOCUMENT_CLEANUP_DONE} is what is guarded again at the end.
  */
 export const DOCUMENT_CLEANUP_BEGIN = `select d.id, d.epoch,
   not exists (
     select 1 from playbook.ingestion_jobs j
     where j.organization_id = d.organization_id and j.document_id = d.id
-      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear
+      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear
 from playbook.documents d
 where d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int`
 
@@ -370,9 +378,20 @@ returning id, size_bytes`
  * `processing` at the job's `epoch`**: the claim reads the document, and a due job whose document
  * is deleted, failed, ready, gone or at another epoch is cancelled in the same statement and not
  * returned (this covers a job a restore or requeue committed while a delete was already waiting
- * for the document, which the delete's own cancel could not see). It locks the job row only (`for
- * update of j skip locked`), never the document, except the `uploaded` to `processing` move after
- * it: job before document, the delete's order. A cancelled job's slot counts against the batch.
+ * for the document, which the delete's own cancel could not see). It locks the job row (`for
+ * update of j skip locked`) and then the document row, in the delete's order (job before
+ * document): the document update moves an `uploaded` document to `processing` and touches a
+ * `processing` one, and it **re-checks the document after any wait**: if a delete took the
+ * document while the claim waited, the document is no longer live at that epoch, it is not
+ * updated and the job is not returned. (That job stays `running` with its lease on the deleted
+ * document, which {@link INGESTION_JOB_HEARTBEAT} and {@link INGESTION_JOB_ADVANCE} refuse and
+ * {@link DOCUMENT_CLEANUP_BEGIN} waits out; it is cancelled by the next claim once the lease lapses.)
+ *
+ * **Rows.** Each claimed job is a row; every row also carries `cancelled`, the number of stale jobs
+ * this call cancelled, whose slots count against the batch. When the whole batch was stale (or its
+ * documents were taken meanwhile) no job is returned, but one row comes back with a null `id` and
+ * `cancelled` above zero: that is not an empty queue. The worker claims again at once while
+ * `cancelled` is above zero; no rows at all means nothing was due.
  */
 export const INGESTION_JOB_CLAIM = `with due as (
   select j.id, coalesce(d.state in ('uploaded', 'processing') and d.epoch = j.epoch, false) as live
@@ -388,7 +407,8 @@ stale as (
   update playbook.ingestion_jobs t
   set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   from due
-  where t.organization_id = $1 and t.id = due.id and not due.live),
+  where t.organization_id = $1 and t.id = due.id and not due.live
+  returning t.id),
 claimed as (
   update playbook.ingestion_jobs j
   set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
@@ -401,19 +421,30 @@ moved as (
   update playbook.documents d
   set state = 'processing', updated_at = clock_timestamp()
   from claimed
-  where d.organization_id = $1 and d.id = claimed.document_id and d.state = 'uploaded')
-select id, document_id, epoch, step, attempts, claim_token, artifact_key, page_count, chunk_count, chunks_done
-from claimed`
+  where d.organization_id = $1 and d.id = claimed.document_id
+    and d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch
+  returning d.id)
+select c.id, c.document_id, c.epoch, c.step, c.attempts, c.claim_token, c.artifact_key, c.page_count,
+  c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled
+from claimed c join moved m on m.id = c.document_id
+union all
+select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int
+where not exists (select 1 from claimed c join moved m on m.id = c.document_id)
+  and (select count(*) from stale) > 0`
 
 /**
  * Extend a job's lease while a step runs. `$1` Organization, `$2` job, `$3` the claim token, `$4`
  * the new lease in milliseconds from now. No row means the claim was lost: the lease lapsed and
- * another worker took the job, or the job was cancelled by a delete or ended. The worker stops
- * and writes nothing more.
+ * another worker took the job, or the job was cancelled by a delete or ended, or its document is
+ * no longer live at the job's epoch (deleted, failed, ready, gone or restored under a newer epoch,
+ * which includes a job a claim left running on a document a concurrent delete took). The worker
+ * stops and writes nothing more.
  */
 export const INGESTION_JOB_HEARTBEAT = `update playbook.ingestion_jobs
 set next_attempt_at = clock_timestamp() + ${LEASE('$4')}, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+  and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+              and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
 returning id`
 
 /**
@@ -421,7 +452,8 @@ returning id`
  * the next step to run (it may repeat the current one but never go back), `$5` the object key of
  * the parsed intermediate, `$6` the page count, `$7` the chunk count, `$8` chunks done, `$9` the
  * lease in milliseconds. A null `$5` to `$8` leaves that value as it is. The table refuses chunks
- * done above the chunk count. No row means the claim was lost or the step would go backwards.
+ * done above the chunk count. No row means the claim was lost, the document is no longer live at the job's epoch (as for
+ * {@link INGESTION_JOB_HEARTBEAT}), or the step would go backwards.
  */
 export const INGESTION_JOB_ADVANCE = `update playbook.ingestion_jobs
 set step = $4::text, artifact_key = coalesce($5::text, artifact_key), page_count = coalesce($6::int, page_count),
@@ -429,6 +461,8 @@ set step = $4::text, artifact_key = coalesce($5::text, artifact_key), page_count
     next_attempt_at = clock_timestamp() + ${LEASE('$9')}, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
   and array_position(${STEP_ORDER}, $4::text) >= array_position(${STEP_ORDER}, step)
+  and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+              and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
 returning id, step, chunks_done`
 
 /**

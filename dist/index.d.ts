@@ -9849,10 +9849,15 @@ declare const DOCUMENT_LIST_DELETED: string;
 * One document by id with everything the service answers and publishes with: the public columns,
 * `failure_reason`, `epoch`, `deletion_seq`, `deleted_at`, `deleted_by`, `purge_due_at` and
 * `purge_started_at`. `$1` Organization, `$2` document. No row means no such document (never
-* existed, or purged). The service reads it to tell why a restore was refused: `deleted` with a
-* `purge_due_at` in the past or a `purge_started_at` set is not restorable.
+* existed, or purged). `not_restorable` is computed by the database clock, so the service never
+* compares the purge time with its own: it is true for a `deleted` document whose `purge_due_at`
+* has passed or whose purge has started. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
+* restore returns no row and this read shows `state = 'deleted'`, the answer is 410
+* `not_restorable`; no row from this read is 404. (The two reads are separate statements, so a
+* document due between them can show `not_restorable` false right after a refused restore: ask
+* again.)
 */
-declare const DOCUMENT_GET = "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at\nfrom playbook.documents\nwhere organization_id = $1 and id = $2";
+declare const DOCUMENT_GET = "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
 /**
 * Soft delete: hide the document at once and set when it may be purged, in one write. `$1`
 * Organization, `$2` document, `$3` who deleted it, `$4` the retention in milliseconds, raised to
@@ -9921,10 +9926,12 @@ declare const DOCUMENT_REQUEUE = "with j as (\\n  update playbook.ingestion_jobs
 * No row means it does not (the document was restored, deleted again under a later sequence, or
 * purged): do nothing. The row carries `epoch`: remove the vectors tagged with an epoch up to it
 * and no later one, so vectors written by a restore are never touched. `clear` is false while a
-* worker of the cancelled job may still hold its lease: wait and run this again. The check is a
+* worker may still hold a lease on the document: a cancelled job's kept lease end, or a `running`
+* job whose lease has not ended (a claim can race a delete and leave a job running on the deleted
+* document; its heartbeat is refused, so its lease ends). Wait and run this again. The check is a
 * read; {@link DOCUMENT_CLEANUP_DONE} is what is guarded again at the end.
 */
-declare const DOCUMENT_CLEANUP_BEGIN = "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
+declare const DOCUMENT_CLEANUP_BEGIN = "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
 /**
 * Record that the cleanup of one deletion finished. `$1` Organization, `$2` document, `$3` the
 * `deletion_seq`. It applies only to that deletion: a row back means it was recorded (repeating it
@@ -9974,16 +9981,29 @@ declare const DOCUMENT_PURGE_COMPLETE = "delete from playbook.documents\\nwhere 
 * `processing` at the job's `epoch`**: the claim reads the document, and a due job whose document
 * is deleted, failed, ready, gone or at another epoch is cancelled in the same statement and not
 * returned (this covers a job a restore or requeue committed while a delete was already waiting
-* for the document, which the delete's own cancel could not see). It locks the job row only (`for
-* update of j skip locked`), never the document, except the `uploaded` to `processing` move after
-* it: job before document, the delete's order. A cancelled job's slot counts against the batch.
+* for the document, which the delete's own cancel could not see). It locks the job row (`for
+* update of j skip locked`) and then the document row, in the delete's order (job before
+* document): the document update moves an `uploaded` document to `processing` and touches a
+* `processing` one, and it **re-checks the document after any wait**: if a delete took the
+* document while the claim waited, the document is no longer live at that epoch, it is not
+* updated and the job is not returned. (That job stays `running` with its lease on the deleted
+* document, which {@link INGESTION_JOB_HEARTBEAT} and {@link INGESTION_JOB_ADVANCE} refuse and
+* {@link DOCUMENT_CLEANUP_BEGIN} waits out; it is cancelled by the next claim once the lease lapses.)
+*
+* **Rows.** Each claimed job is a row; every row also carries `cancelled`, the number of stale jobs
+* this call cancelled, whose slots count against the batch. When the whole batch was stale (or its
+* documents were taken meanwhile) no job is returned, but one row comes back with a null `id` and
+* `cancelled` above zero: that is not an empty queue. The worker claims again at once while
+* `cancelled` is above zero; no rows at all means nothing was due.
 */
 declare const INGESTION_JOB_CLAIM: string;
 /**
 * Extend a job's lease while a step runs. `$1` Organization, `$2` job, `$3` the claim token, `$4`
 * the new lease in milliseconds from now. No row means the claim was lost: the lease lapsed and
-* another worker took the job, or the job was cancelled by a delete or ended. The worker stops
-* and writes nothing more.
+* another worker took the job, or the job was cancelled by a delete or ended, or its document is
+* no longer live at the job's epoch (deleted, failed, ready, gone or restored under a newer epoch,
+* which includes a job a claim left running on a document a concurrent delete took). The worker
+* stops and writes nothing more.
 */
 declare const INGESTION_JOB_HEARTBEAT: string;
 /**
@@ -9991,7 +10011,8 @@ declare const INGESTION_JOB_HEARTBEAT: string;
 * the next step to run (it may repeat the current one but never go back), `$5` the object key of
 * the parsed intermediate, `$6` the page count, `$7` the chunk count, `$8` chunks done, `$9` the
 * lease in milliseconds. A null `$5` to `$8` leaves that value as it is. The table refuses chunks
-* done above the chunk count. No row means the claim was lost or the step would go backwards.
+* done above the chunk count. No row means the claim was lost, the document is no longer live at the job's epoch (as for
+* {@link INGESTION_JOB_HEARTBEAT}), or the step would go backwards.
 */
 declare const INGESTION_JOB_ADVANCE: string;
 /**
@@ -10128,14 +10149,14 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly QUOTA_USAGE: "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
 	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
 	readonly DOCUMENT_BY_HASH: "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null";
-	readonly DOCUMENT_GET: "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at\nfrom playbook.documents\nwhere organization_id = $1 and id = $2";
+	readonly DOCUMENT_GET: "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
 	readonly DOCUMENT_LIST: string;
 	readonly DOCUMENT_LIST_DELETED: string;
 	readonly DOCUMENT_SOFT_DELETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')\\n  returning id),\\nd as (\\n  update playbook.documents\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, state, deletion_seq, purge_due_at)\\nselect id, state, deletion_seq, purge_due_at, true as changed from d\\nunion all\\nselect id, state, deletion_seq, purge_due_at, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)";
 	readonly DOCUMENT_RESTORE: string;
 	readonly DOCUMENT_RESTORE_FOR_UPLOAD: string;
 	readonly DOCUMENT_REQUEUE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = $2 and x.state = 'failed')\\n  returning id),\\nd as (\\n  update playbook.documents\\n  set state = 'uploaded', failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'failed' and (select count(*) from j) >= 0\\n  returning organization_id, id, epoch, deletion_seq),\\nqueued as (\\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\\n  select $3::text, organization_id, id, epoch, clock_timestamp() from d)\\nselect id, 'uploaded' as state, epoch, deletion_seq, true as changed from d\\nunion all\\nselect id, state, epoch, deletion_seq, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)";
-	readonly DOCUMENT_CLEANUP_BEGIN: "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
+	readonly DOCUMENT_CLEANUP_BEGIN: "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
 	readonly DOCUMENT_CLEANUP_DONE: "update playbook.documents\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
 	readonly DOCUMENT_PURGE_CLAIM: string;
 	readonly DOCUMENT_PURGE_COMPLETE: "delete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\nreturning id, size_bytes";

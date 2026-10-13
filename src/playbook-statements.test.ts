@@ -27,6 +27,7 @@ import {
   INGESTION_JOB_COMPLETE,
   INGESTION_JOB_FAIL,
   INGESTION_JOB_GIVE_UP_SPENT,
+  INGESTION_JOB_HEARTBEAT,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
@@ -164,6 +165,23 @@ describe('the rules the statements keep', () => {
       "x.state = 'processing' and x.epoch = ingestion_jobs.epoch"
     )
     expect(INGESTION_JOB_FAIL).toContain("x.state in ('uploaded', 'processing')")
+  })
+
+  test('heartbeat and advance need the live document; cleanup waits for a running job; the claim re-checks and reports', () => {
+    for (const text of [INGESTION_JOB_HEARTBEAT, INGESTION_JOB_ADVANCE]) {
+      expect(text).toContain(
+        "x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch"
+      )
+    }
+    expect(DOCUMENT_CLEANUP_BEGIN).toContain("j.state in ('cancelled', 'running')")
+    expect(INGESTION_JOB_CLAIM).toContain(
+      "d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch"
+    )
+    expect(INGESTION_JOB_CLAIM).toContain('from claimed c join moved m on m.id = c.document_id')
+    expect(INGESTION_JOB_CLAIM).toContain('as cancelled')
+    expect(DOCUMENT_GET).toContain(
+      "(state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable"
+    )
   })
 
   test('every batch size and page size is clamped in SQL, null included', () => {

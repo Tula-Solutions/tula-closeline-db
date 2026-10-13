@@ -704,7 +704,7 @@ of `documents` skips the triggers; only the owner can run it and must truncate
 (`DOCUMENT_LIST`, at most 100 a page); deleted ones: `documents_deleted_list_idx`
 (`DOCUMENT_LIST_DELETED`). Carry the cursor as the database's `created_at::text`, not a JavaScript
 Date, which drops microseconds. `DOCUMENT_GET` reads one document with everything the service
-answers and publishes with (including `deletion_seq`). Content hash: `documents_content_hash_key`. Due for purge:
+answers and publishes with (including `deletion_seq`). Its `not_restorable` is computed by the database clock (a `deleted` document past its purge time or with a started purge), so the service never compares the purge time with its own clock: an explicit restore that returns no row for a `deleted` document is 410 `not_restorable`. Content hash: `documents_content_hash_key`. Due for purge:
 `documents_purge_idx`, which also lists an Organization's deleted documents oldest-due first (it
 leaves out documents whose purge is spent). Jobs: `ingestion_jobs_due_idx` for the claim,
 `ingestion_jobs_active_document_key` for one active job per document and
@@ -722,6 +722,16 @@ record that a re-index is needed; the role cannot delete the row.
 refused by every later statement. A claim never takes a job at the bound; `INGESTION_JOB_GIVE_UP_SPENT`
 fails it and its document with `processing_failed`, so a spent job cannot wedge a batch. The
 service gives up lower, with `INGESTION_JOB_FAIL`.
+
+A claim takes a job only while its document is live at the job's epoch and re-checks the document
+after any wait on its row, so a job is not handed out on a document a delete has just taken.
+`INGESTION_JOB_HEARTBEAT` and `INGESTION_JOB_ADVANCE` need the same live document, so a worker
+whose document was deleted loses its claim at the next heartbeat, and `DOCUMENT_CLEANUP_BEGIN`
+reports `clear` false while any cancelled or running job of the document has an unexpired lease.
+**The claim's rows:** every claimed job is a row and carries `cancelled`, the number of stale jobs
+the call cancelled. When the batch held only stale jobs, one row with a null `id` and `cancelled`
+above zero comes back: that is not an empty queue, so the worker claims again at once while
+`cancelled` is above zero (no rows at all means nothing was due).
 
 **Purge.** `DOCUMENT_PURGE_CLAIM` takes due documents under a lease and sets `purge_started_at`,
 which ends restores for good; the worker removes the file, then `DOCUMENT_PURGE_COMPLETE` removes
@@ -746,8 +756,6 @@ at least an hour old.
 are plain text, not type-checked against the schema). Every time is the database clock; callers pass
 durations. They assume READ COMMITTED. Statements that touch a job and a document lock the job
 first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry.
-
-- The playbook statements, in the order of the library's `PLAYBOOK_STATEMENTS`:
 
     `QUOTA_LOCK`:
 
@@ -792,7 +800,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
-      epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at
+      epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
+      (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable
     from playbook.documents
     where organization_id = $1 and id = $2
     ```
@@ -923,7 +932,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       not exists (
         select 1 from playbook.ingestion_jobs j
         where j.organization_id = d.organization_id and j.document_id = d.id
-          and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear
+          and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear
     from playbook.documents d
     where d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int
     ```
@@ -984,7 +993,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       update playbook.ingestion_jobs t
       set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
       from due
-      where t.organization_id = $1 and t.id = due.id and not due.live),
+      where t.organization_id = $1 and t.id = due.id and not due.live
+      returning t.id),
     claimed as (
       update playbook.ingestion_jobs j
       set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
@@ -997,9 +1007,16 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       update playbook.documents d
       set state = 'processing', updated_at = clock_timestamp()
       from claimed
-      where d.organization_id = $1 and d.id = claimed.document_id and d.state = 'uploaded')
-    select id, document_id, epoch, step, attempts, claim_token, artifact_key, page_count, chunk_count, chunks_done
-    from claimed
+      where d.organization_id = $1 and d.id = claimed.document_id
+        and d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch
+      returning d.id)
+    select c.id, c.document_id, c.epoch, c.step, c.attempts, c.claim_token, c.artifact_key, c.page_count,
+      c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled
+    from claimed c join moved m on m.id = c.document_id
+    union all
+    select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int
+    where not exists (select 1 from claimed c join moved m on m.id = c.document_id)
+      and (select count(*) from stale) > 0
     ```
 
     `INGESTION_JOB_HEARTBEAT`:
@@ -1008,6 +1025,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     update playbook.ingestion_jobs
     set next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
     where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+      and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+                  and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
     returning id
     ```
 
@@ -1020,6 +1039,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($9::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
     where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
       and array_position(array['parse', 'chunk', 'embed', 'index'], $4::text) >= array_position(array['parse', 'chunk', 'embed', 'index'], step)
+      and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+                  and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
     returning id, step, chunks_done
     ```
 
