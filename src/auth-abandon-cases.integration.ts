@@ -282,8 +282,18 @@ describe('auth.abandon_cases', () => {
   describe('the batch and the purge', () => {
     const OPEN = 3000
     const RESOLVED = 3000
+    /** Cases already due in environment a before the bulk is seeded: earlier tests add some. */
+    let dueBefore = 0
 
     beforeAll(async () => {
+      const earlier = await inAuthEnvironment(authPool, region.a.environmentId, (client) =>
+        client.query<{ n: number }>(
+          `select count(*)::int as n from auth.abandon_cases
+            where environment_id = $1 and resolved_at is null and next_attempt_at <= now()`,
+          [region.a.environmentId]
+        )
+      )
+      dueBefore = earlier.rows[0]?.n ?? 0
       // Environment a holds the bulk: most open cases are not due for days, a few are due, and
       // resolved cases are spread over a year with a few old ones.
       await inAuthEnvironment(authPool, region.a.environmentId, async (client) => {
@@ -340,7 +350,8 @@ describe('auth.abandon_cases', () => {
           [region.a.environmentId]
         )
       )
-      expect(due.rowCount).toBe(20)
+      // The 20 seeded due cases, and whatever earlier tests left due; the other 2980 are not due.
+      expect(due.rowCount).toBe(dueBefore + 20)
     })
 
     test('the purge of old resolved cases uses the purge index', async () => {
