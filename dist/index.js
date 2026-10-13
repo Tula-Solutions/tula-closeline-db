@@ -164,6 +164,12 @@ function tenantRlsStatements(schemaName, tableName) {
 
 // src/isolation.ts
 var TENANT_SCHEMAS = ["auth", "core", "playbook"];
+var ALLOWED_PREDEFINED_ROLES = [
+  "pg_monitor",
+  "pg_read_all_settings",
+  "pg_read_all_stats",
+  "pg_stat_scan_tables"
+];
 var ENVIRONMENT_SCOPED_TABLES = [
   "auth.audit_logs",
   "auth.backup_codes",
@@ -285,13 +291,14 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       from pg_auth_members am
       join pg_roles m on m.oid = am.member
       join pg_roles g on g.oid = am.roleid
-     where m.rolname like 'closeline\\_%' and g.rolname not like 'pg\\_%'
+     where m.rolname like 'closeline\\_%' and m.rolname <> ${OWNER_ROLE}
+       and g.rolname not in (${sql4.join(ALLOWED_PREDEFINED_ROLES.map((role) => sql4`${role}`), sql4`, `)})
      order by m.rolname, g.rolname`);
   for (const { role, granted } of memberships.rows) {
     gaps.push({
       schema: "pg_roles",
       table: role,
-      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role`
+      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role outside ${ALLOWED_PREDEFINED_ROLES.join(", ")}`
     });
   }
   return gaps;

@@ -11,6 +11,7 @@ const env = integrationEnv()
 const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`
 const database = `it_plans_${suffix}`
 const SETTING = 'app.organization_id'
+const STALE_AFTER_MS = 60 * 60 * 1000
 
 let seq = Math.floor(Math.random() * 1e9)
 const newId = (prefix: string): string => `${prefix}_${(++seq).toString(16).padStart(32, '0')}`
@@ -30,12 +31,17 @@ describe('deleting a large Organization does a bounded amount of work per member
   beforeAll(async () => {
     admin = new Pool({ connectionString: adminUrl(), max: 1 })
     assertLocalTestDatabase(adminUrl())
-    // A run killed before its cleanup leaves its database behind.
+    // A run killed before its cleanup leaves its database behind. Only one made over an hour ago
+    // (by the timestamp in its name) is dropped, so a second run on the same server never takes
+    // the database of a run still in progress.
     const stale = await admin.query<{ name: string }>(
       "select datname as name from pg_database where datname like 'it\\_plans\\_%'"
     )
     for (const { name } of stale.rows) {
-      await admin.query(`drop database if exists "${name}" with (force)`)
+      const createdAt = Number(name.split('_')[2])
+      if (Number.isFinite(createdAt) && Date.now() - createdAt > STALE_AFTER_MS) {
+        await admin.query(`drop database if exists "${name}" with (force)`)
+      }
     }
     await admin.query(`create database "${database}" owner closeline_owner`)
     await migrateUp(inDatabase(env.owner))

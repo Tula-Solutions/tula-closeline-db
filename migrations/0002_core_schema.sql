@@ -393,10 +393,10 @@ CREATE TRIGGER "invitations_accept_guard" BEFORE UPDATE OF "state" ON "core"."in
 -- Both functions run with plan_cache_mode = force_custom_plan: each execution plans its DELETE for the
 -- key it has, from the table's size at that moment. By default a plpgsql statement settles on one
 -- generic plan after a few runs and keeps it for the life of the connection; a plan built while the
--- directory was small and unanalysed is a sequential scan, and kept while the table grows to
+-- directory was small, even if analysed, is a sequential scan, and kept while the table grows to
 -- 100,000 rows it makes deleting a large Organization quadratic (every member's row delete scans
 -- the whole table). The directories also have no index on organization_id alone, which a
--- generic plan could pick (the primary key and the unique constraint both lead with the key).
+-- stale plan could have chosen (the primary key and the unique constraint both lead with the key).
 --
 -- A directory row holds no Organization status: that lives in organization_state, one row per
 -- Organization, so writing a member or an invitation reads and locks nothing of the Organization's,

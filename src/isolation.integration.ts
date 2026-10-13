@@ -10,7 +10,11 @@ import {
   migrateUp,
   resetTestRoles,
 } from './integration-support'
-import { assertTenantIsolation, findTenantIsolationGaps } from './isolation'
+import {
+  ALLOWED_PREDEFINED_ROLES,
+  assertTenantIsolation,
+  findTenantIsolationGaps,
+} from './isolation'
 import { TENANT_POLICY_EXPRESSION, tenantRlsStatements } from './tenant'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
@@ -412,12 +416,43 @@ describe('the role check', () => {
     expect(await roleGaps()).toEqual([])
   })
 
-  test('a service role that is a member of a predefined role is not reported here', async () => {
-    await admin.query('grant pg_monitor to closeline_core')
+  test('a service role in a monitoring role on the allow-list is not reported', async () => {
+    for (const role of ALLOWED_PREDEFINED_ROLES) {
+      await admin.query(`grant ${role} to closeline_core`)
+      try {
+        expect(await roleGaps()).toEqual([])
+      } finally {
+        await admin.query(`revoke ${role} from closeline_core`)
+      }
+    }
+  })
+
+  test.each([
+    'pg_read_all_data',
+    'pg_write_all_data',
+    'pg_execute_server_program',
+    'pg_write_server_files',
+  ])(
+    'a service role in %s is reported, because a predefined role is not safe by being predefined',
+    async (predefined) => {
+      await admin.query(`grant ${predefined} to closeline_core`)
+      try {
+        const gaps = await roleGaps()
+        expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+        expect(gaps[0]?.reason).toContain(predefined)
+      } finally {
+        await admin.query(`revoke ${predefined} from closeline_core`)
+      }
+      expect(await roleGaps()).toEqual([])
+    }
+  )
+
+  test('a role granted to the owner is not a membership of a service role', async () => {
+    await admin.query('grant closeline_core to closeline_owner')
     try {
       expect(await roleGaps()).toEqual([])
     } finally {
-      await admin.query('revoke pg_monitor from closeline_core')
+      await admin.query('revoke closeline_core from closeline_owner')
     }
   })
 

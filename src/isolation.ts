@@ -12,6 +12,19 @@ import { ORGANIZATION_SETTING, TENANT_POLICY_EXPRESSION } from './tenant'
 export const TENANT_SCHEMAS = ['auth', 'core', 'playbook'] as const
 
 /**
+ * The only roles a `closeline_*` service role may be a member of: Postgres's read-only monitoring
+ * roles. The service roles are NOINHERIT, so no other membership (a predefined role such as
+ * `pg_write_all_data` included) is visible to the table checks; {@link findTenantIsolationGaps}
+ * reports every other one.
+ */
+export const ALLOWED_PREDEFINED_ROLES: readonly string[] = [
+  'pg_monitor',
+  'pg_read_all_settings',
+  'pg_read_all_stats',
+  'pg_stat_scan_tables',
+]
+
+/**
  * The `auth` tables scoped to an auth environment, as `schema.table`. Each has no `organization_id`
  * (users are global within a Region, ADR 0005) and is instead bound by its own forced row-level
  * security: exactly one permissive policy, for all commands, with {@link ENVIRONMENT_POLICY_EXPRESSION}
@@ -261,19 +274,24 @@ export async function findTenantIsolationGaps(
 
   // The service roles are NOINHERIT, so a privilege reached through a role they belong to is
   // invisible to the privilege check above (it applies after SET ROLE). Any membership of a role
-  // that is not one of Postgres's predefined ones is therefore a gap.
+  // outside ALLOWED_PREDEFINED_ROLES is therefore a gap. The owner role is excluded by
+  // the same constant the table query uses, so a grant made to it is not reported.
   const memberships = await db.execute<MembershipRow>(sql`
     select m.rolname as role, g.rolname as granted
       from pg_auth_members am
       join pg_roles m on m.oid = am.member
       join pg_roles g on g.oid = am.roleid
-     where m.rolname like 'closeline\\_%' and g.rolname not like 'pg\\_%'
+     where m.rolname like 'closeline\\_%' and m.rolname <> ${OWNER_ROLE}
+       and g.rolname not in (${sql.join(
+         ALLOWED_PREDEFINED_ROLES.map((role) => sql`${role}`),
+         sql`, `
+       )})
      order by m.rolname, g.rolname`)
   for (const { role, granted } of memberships.rows) {
     gaps.push({
       schema: 'pg_roles',
       table: role,
-      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role`,
+      reason: `is a member of ${granted}, whose privileges the table checks do not see (the service roles are NOINHERIT); a service role belongs to no other role outside ${ALLOWED_PREDEFINED_ROLES.join(', ')}`,
     })
   }
   return gaps

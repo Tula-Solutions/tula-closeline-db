@@ -68,10 +68,12 @@ a user-to-Organization mapping or free a user). The `auth` tables are not
 skipped: each is verified under `ENVIRONMENT_SCOPED_TABLES` or `CONTROL_PLANE_TABLES` (see below),
 and an `auth` table in neither is a gap. It scans every schema except `public` and drizzle's own, so a table in a schema that is not `auth`,
 `core` or `playbook` is a gap, and so is a `closeline_*` role that is a superuser or has
-`BYPASSRLS`, or is a member of any role that is not one of Postgres's predefined ones (the service
-roles are `NOINHERIT`, so a privilege reached through such a role would not show in the table
-checks). The integration suite runs the same check, so a migration that
-forgets `tenantRlsStatements` fails CI. The tests that change role attributes connect as the
+`BYPASSRLS`, or is a member of any role other than `pg_monitor`, `pg_read_all_settings`,
+`pg_read_all_stats` and `pg_stat_scan_tables` (`ALLOWED_PREDEFINED_ROLES`; the service roles are
+`NOINHERIT`, so a privilege reached through a role such as `pg_write_all_data` would not show in the
+table checks). Roles are created and granted by an account whose name does not start with
+`closeline_`, so that a grant made on creation never makes a service role a member. The integration suite runs the same check, so a migration
+that forgets `tenantRlsStatements` fails CI. The tests that change role attributes connect as the
 compose superuser, or as `DATABASE_URL_ADMIN` when you point at another Postgres.
 
 Changing the schema: edit `src/schema/`, run `bun run db:generate`, read the SQL, commit it.

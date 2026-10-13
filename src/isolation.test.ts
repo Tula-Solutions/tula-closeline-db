@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { isPgSchema } from 'drizzle-orm/pg-core'
 import {
+  ALLOWED_PREDEFINED_ROLES,
   assertTenantIsolation,
   CONTROL_PLANE_TABLE_REASONS,
   CONTROL_PLANE_TABLES,
@@ -147,6 +148,15 @@ describe('findTenantIsolationGaps on role membership', () => {
     )
     expect(gaps.map((gap) => `${gap.schema}.${gap.table}`)).toEqual(['pg_roles.closeline_core'])
     expect(gaps[0]?.reason).toContain('ops_admin')
+  })
+
+  test('the predefined roles a service role may belong to are the four monitoring ones', () => {
+    expect([...ALLOWED_PREDEFINED_ROLES]).toEqual([
+      'pg_monitor',
+      'pg_read_all_settings',
+      'pg_read_all_stats',
+      'pg_stat_scan_tables',
+    ])
   })
 })
 
