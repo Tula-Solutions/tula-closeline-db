@@ -1,0 +1,563 @@
+import {
+  DOCUMENT_PURGE_MAX_ATTEMPTS,
+  INGESTION_JOB_MAX_ATTEMPTS,
+  INGESTION_STEPS,
+} from './schema/playbook-tables'
+
+/**
+ * The least soft-delete retention, in milliseconds, {@link DOCUMENT_SOFT_DELETE} stores: one hour.
+ * A smaller, null or negative value passed in is raised to it, so a bug cannot make a mistaken
+ * delete unrecoverable. The lead's default is 30 days (ADR 0016); the service passes it.
+ */
+export const DOCUMENT_MIN_RETENTION_MS = 3_600_000
+
+/** The least lease, in milliseconds, any claim or renewal below stores; a smaller value is raised to it. */
+export const PLAYBOOK_MIN_LEASE_MS = 1000
+
+/** The longest delay, in milliseconds, {@link INGESTION_JOB_RETRY} will impose; a longer one is cut to it. */
+export const INGESTION_MAX_RETRY_DELAY_MS = 3_600_000
+
+/** The most documents one {@link DOCUMENT_LIST} page returns, whatever limit is asked for. */
+export const DOCUMENT_LIST_MAX_PAGE = 100
+
+const LEASE = (parameter: string) =>
+  `make_interval(secs => greatest(coalesce(${parameter}::float8, 0), ${PLAYBOOK_MIN_LEASE_MS}) / 1000)`
+
+const STEP_ORDER = `array[${INGESTION_STEPS.map((step) => `'${step}'`).join(', ')}]`
+
+/**
+ * The SQL the playbook service runs against its tables, as text, in the style of the auth
+ * statements: the integration tests run exactly these strings, the README prints exactly these
+ * strings (a unit test fails when they differ), and every time is `clock_timestamp()` evaluated
+ * by the database, so the services pass durations, never points in time. The one exception is
+ * {@link CONSUMED_PURGE}, whose `before` is the kit's `ProcessedStore.purge` argument.
+ *
+ * Every statement runs inside `withOrganization` for the Organization in `$1` (or `$2` for the
+ * consumed-message ones), and names that Organization in its own `where` as well, so a statement
+ * given another Organization's id finds nothing even before row-level security. The strings are
+ * plain text, not type-checked against the schema: the integration suite is their only guard.
+ *
+ * **Lock order is job, then document.** Statements that touch both lock the job row first
+ * ({@link DOCUMENT_SOFT_DELETE} forces this with a data dependency), so a delete racing a job
+ * statement queues rather than deadlocks. A deadlock (SQLSTATE 40P01) is still possible in
+ * theory; callers retry it with a bounded, jittered retry.
+ *
+ * All statements assume READ COMMITTED, the default: several of them rely on Postgres
+ * re-checking the `where` against the newest row version once a lock is granted.
+ */
+
+/**
+ * Take the Organization's upload lock for the transaction: run it first in a transaction that
+ * inserts a document, so two uploads of one Organization queue and the quota check in
+ * {@link DOCUMENT_INSERT} (a later statement, with its own snapshot) sees the earlier upload's
+ * counts. `$1` Organization. Always returns one row; the lock ends with the transaction.
+ */
+export const QUOTA_LOCK = `select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked`
+
+/**
+ * The Organization's document and byte counts, soft-deleted documents included, from the counter
+ * row the `documents` triggers keep: one primary-key read, whatever the Organization's size. No
+ * row means no document has ever been added: both are zero. `$1` Organization. node-postgres
+ * returns the two bigints as strings.
+ */
+export const QUOTA_USAGE = `select document_count, byte_count
+from playbook.organization_usage
+where organization_id = $1`
+
+/**
+ * Add a document and queue its ingestion in one write, after {@link QUOTA_LOCK}. `$1` Organization,
+ * `$2` document id, `$3` name, `$4` SHA-256 of the content (32 bytes), `$5` size in bytes, `$6`
+ * declared type, `$7` detected type, `$8` uploader, `$9` object key, `$10` job id, `$11` the most
+ * documents and `$12` the most bytes the Organization may hold after this one (the quota, from
+ * configuration). A row back means the document exists as `uploaded` with a queued job. No row
+ * means a quota would be passed, or a document with that content hash whose purge has not
+ * started exists (the hash is unique among those): read {@link DOCUMENT_BY_HASH}; a row there is
+ * the duplicate (restore it if `deleted`, {@link DOCUMENT_REQUEUE} it if `failed`), none means the quota.
+ * A document whose purge has started does not block a new one with the same content.
+ */
+export const DOCUMENT_INSERT = `with ins as (
+  insert into playbook.documents
+    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)
+  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text
+  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint
+    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint
+  on conflict (organization_id, content_hash) where purge_started_at is null do nothing
+  returning id, organization_id, epoch),
+queued as (
+  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
+  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)
+select id, epoch from ins`
+
+/**
+ * Find the document an upload duplicates: the one with that content hash in the Organization
+ * whose purge has not started, in any state. `$1` Organization, `$2` content hash.
+ */
+export const DOCUMENT_BY_HASH = `select id, state, epoch, deletion_seq
+from playbook.documents
+where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null`
+
+/**
+ * One page of the Organization's documents that are not deleted, newest first. `$1` Organization,
+ * `$2` and `$3` the cursor, the `created_at` and `id` of the last row of the previous page (pass
+ * `'infinity'` and `''` for the first page), `$4` the page size, cut to {@link DOCUMENT_LIST_MAX_PAGE}.
+ * Served by `documents_list_idx`, read backwards, with no sort. Carry the cursor as the database's
+ * own text form of `created_at` (`created_at::text`), not a JavaScript Date, which drops the
+ * microseconds and would skip rows created within the same millisecond.
+ */
+export const DOCUMENT_LIST = `select id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at
+from playbook.documents
+where organization_id = $1 and state <> 'deleted'
+  and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit least(greatest($4::int, 1), ${DOCUMENT_LIST_MAX_PAGE})`
+
+/**
+ * Soft delete: hide the document at once and set when it may be purged, in one write. `$1`
+ * Organization, `$2` document, `$3` who deleted it, `$4` the retention in milliseconds, raised to
+ * {@link DOCUMENT_MIN_RETENTION_MS}. The purge-due time is the database clock plus the retention.
+ * The same statement cancels the document's queued or running job (a running job's lease end is
+ * kept as a fence: {@link DOCUMENT_CLEANUP_BEGIN} waits for it), bumps `epoch` and bumps
+ * `deletion_seq` by one; the returned `deletion_seq` is what the vector cleanup job is queued
+ * with. `changed` is true when this call deleted it. Deleting an already deleted document is
+ * idempotent: it returns the existing `deletion_seq` and `purge_due_at` with `changed` false and
+ * writes nothing. No row means no such document, or this call lost a race with another delete
+ * (its snapshot predates the other's commit): run it once more. Against {@link DOCUMENT_RESTORE}
+ * and {@link DOCUMENT_PURGE_CLAIM} the row lock decides: whichever takes it first wins and the
+ * other re-reads the new row; a purge never claims a document that this has not yet deleted.
+ */
+export const DOCUMENT_SOFT_DELETE = `with j as (
+  update playbook.ingestion_jobs
+  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),
+      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end
+  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')
+  returning id),
+d as (
+  update playbook.documents
+  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,
+      deleted_at = clock_timestamp(), deleted_by = $3,
+      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), ${DOCUMENT_MIN_RETENTION_MS}) / 1000),
+      failure_reason = null, updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0
+  returning id, deletion_seq, purge_due_at)
+select id, deletion_seq, purge_due_at, true as changed from d
+union all
+select id, deletion_seq, purge_due_at, false from playbook.documents
+where organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)`
+
+/**
+ * Restore a soft-deleted document and queue its re-ingestion from the kept file, in one write:
+ * it becomes `processing` with a new queued job. `$1` Organization, `$2` document, `$3` the new
+ * job's id. It succeeds only for a `deleted` document whose purge has not started; it is allowed
+ * until the purge claims the document, not only within the retention period. `changed` is true
+ * when this call restored it. Restoring a document that is not deleted is idempotent: it returns
+ * its current state with `changed` false. No row means the document is gone, its purge has
+ * started (a restore after the purge's claim is refused because the file is going or gone), or
+ * the call lost a race with another restore (its snapshot predates the other's commit): read the
+ * document to tell, which is what the service does.
+ *
+ * **Against the purge.** {@link DOCUMENT_PURGE_CLAIM} and this statement both lock the row. If the
+ * restore takes it first, the claim skips the locked row, and once the restore commits the claim
+ * no longer sees a deleted document: the restore wins. If the claim takes it first, this waits,
+ * then re-checks `purge_started_at is null` on the claimed row, finds it set and returns no row:
+ * the purge wins. The state is never both.
+ */
+export const DOCUMENT_RESTORE = `with d as (
+  update playbook.documents
+  set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,
+      purge_due_at = null, updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null
+  returning organization_id, id, epoch, deletion_seq),
+queued as (
+  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
+  select $3::text, organization_id, id, epoch, clock_timestamp() from d)
+select id, 'processing' as state, epoch, deletion_seq, true as changed from d
+union all
+select id, state, epoch, deletion_seq, false from playbook.documents
+where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from d)`
+
+/**
+ * Re-queue a `failed` document when a matching upload arrives: it goes back to `uploaded` with a
+ * new queued job. `$1` Organization, `$2` document, `$3` the new job's id. `changed` is true when
+ * this call re-queued it; a document already `uploaded`, `processing` or `ready` is returned with
+ * `changed` false and nothing written (idempotent by end state). A `deleted` document gives no
+ * row: restore it instead.
+ */
+export const DOCUMENT_REQUEUE = `with d as (
+  update playbook.documents
+  set state = 'uploaded', failure_reason = null, updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and state = 'failed'
+  returning organization_id, id, epoch),
+queued as (
+  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
+  select $3::text, organization_id, id, epoch, clock_timestamp() from d)
+select id, 'uploaded' as state, true as changed from d
+union all
+select id, state, false from playbook.documents
+where organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)`
+
+/**
+ * Begin the vector cleanup queued for one deletion. `$1` Organization, `$2` document, `$3` the
+ * `deletion_seq` the job was queued with (returned by {@link DOCUMENT_SOFT_DELETE}). A row back
+ * means the cleanup still applies: the document is deleted and that deletion is the current one.
+ * No row means it does not (the document was restored, deleted again under a later sequence, or
+ * purged): do nothing. The row carries `epoch`: remove the vectors tagged with an epoch up to it
+ * and no later one, so vectors written by a restore are never touched. `clear` is false while a
+ * worker of the cancelled job may still hold its lease: wait and run this again. The check is a
+ * read; {@link DOCUMENT_CLEANUP_DONE} is what is guarded again at the end.
+ */
+export const DOCUMENT_CLEANUP_BEGIN = `select d.id, d.epoch,
+  not exists (
+    select 1 from playbook.ingestion_jobs j
+    where j.organization_id = d.organization_id and j.document_id = d.id
+      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear
+from playbook.documents d
+where d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int`
+
+/**
+ * Record that the cleanup of one deletion finished. `$1` Organization, `$2` document, `$3` the
+ * `deletion_seq`. It applies only to that deletion: a row back means it was recorded (repeating it
+ * is idempotent); no row means the document was restored or deleted again since, and the cleanup
+ * is moot. {@link DOCUMENT_PURGE_COMPLETE} refuses a document until its current deletion's
+ * cleanup is recorded here.
+ */
+export const DOCUMENT_CLEANUP_DONE = `update playbook.documents
+set vectors_removed_seq = $3::int, updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int
+returning id`
+
+/**
+ * Claim a batch of documents due for purge as a lease, in a short transaction that commits at
+ * once; the file and vectors are removed outside any transaction. `$1` Organization, `$2` batch
+ * size, `$3` the lease in milliseconds (raised to {@link PLAYBOOK_MIN_LEASE_MS}; it must exceed
+ * the worker's time to remove one file). A document is due when it is `deleted`, its purge-due
+ * time has passed, no lease is live, and fewer than ${DOCUMENT_PURGE_MAX_ATTEMPTS} claims have
+ * been made: a spent document is never claimed (the count would pass the table's bound and abort
+ * the statement, wedging the batch) and drops out of the due index; it stays `deleted` and a person
+ * reconciles. Claiming sets `purge_started_at` once, which ends restores for good, and counts the
+ * attempt. A crash leaves the document due again when the lease ends. The rows carry
+ * `vectors_removed_seq` and `deletion_seq`: if they differ, run {@link DOCUMENT_CLEANUP_BEGIN} and
+ * {@link DOCUMENT_CLEANUP_DONE} with the `deletion_seq` before completing. Skips rows another
+ * transaction holds (`for update skip locked`); against a restore see {@link DOCUMENT_RESTORE}:
+ * a claim whose snapshot predates a restore's commit re-checks `state = 'deleted'` on the newest
+ * row version once the lock is granted and drops the row.
+ */
+export const DOCUMENT_PURGE_CLAIM = `with due as (
+  select id from playbook.documents
+  where organization_id = $1 and state = 'deleted' and purge_due_at <= clock_timestamp()
+    and purge_attempts < ${DOCUMENT_PURGE_MAX_ATTEMPTS}
+    and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
+  order by purge_due_at
+  limit $2
+  for update skip locked)
+update playbook.documents d
+set purge_started_at = coalesce(d.purge_started_at, clock_timestamp()),
+    purge_attempts = d.purge_attempts + 1,
+    purge_lease_until = clock_timestamp() + ${LEASE('$3')},
+    updated_at = clock_timestamp()
+from due
+where d.organization_id = $1 and d.id = due.id
+returning d.id, d.object_key, d.size_bytes, d.deletion_seq, d.vectors_removed_seq, d.purge_attempts`
+
+/**
+ * Finish a purge: remove the document's row (its jobs go with it by cascade, and the counters
+ * fall in the same transaction). `$1` Organization, `$2` document. It succeeds only for a
+ * `deleted` document whose purge was claimed and whose current deletion's vector cleanup is
+ * recorded; a row back means the record is gone. No row means one of those does not hold (run the
+ * cleanup statements, then again), or the document is already purged: the file removal before it
+ * is idempotent, so a repeat is safe. Run it after the file is removed from storage.
+ */
+export const DOCUMENT_PURGE_COMPLETE = `delete from playbook.documents
+where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
+  and vectors_removed_seq = deletion_seq
+returning id, size_bytes`
+
+/**
+ * Claim due ingestion jobs as a lease, in a short transaction that commits at once. `$1`
+ * Organization, `$2` batch size, `$3` the lease in milliseconds (raised to
+ * {@link PLAYBOOK_MIN_LEASE_MS}; it must exceed the time between heartbeats), `$4` one job id to
+ * claim, or null for any. A job is due when it is `queued` (its `next_attempt_at` is the due time)
+ * or `running` with a lapsed lease. Each claim counts an attempt, issues a new `claim_token` that
+ * every later statement for the job must present (a worker whose lease lapsed holds a stale
+ * token and is refused), and moves an `uploaded` document to `processing`. A job that has used
+ * all ${INGESTION_JOB_MAX_ATTEMPTS} attempts is never claimed (the count would pass the table's
+ * bound and abort the statement, wedging the batch); {@link INGESTION_JOB_GIVE_UP_SPENT}
+ * resolves it. The service gives up on its own earlier, at its own limit below the bound, with
+ * {@link INGESTION_JOB_FAIL}. A job whose document was deleted is `cancelled` and never claimed.
+ */
+export const INGESTION_JOB_CLAIM = `with due as (
+  select id from playbook.ingestion_jobs
+  where organization_id = $1 and state in ('queued', 'running')
+    and attempts < ${INGESTION_JOB_MAX_ATTEMPTS} and next_attempt_at <= clock_timestamp()
+    and ($4::text is null or id = $4::text)
+  order by next_attempt_at
+  limit $2
+  for update skip locked),
+claimed as (
+  update playbook.ingestion_jobs j
+  set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
+      next_attempt_at = clock_timestamp() + ${LEASE('$3')}, updated_at = clock_timestamp()
+  from due
+  where j.organization_id = $1 and j.id = due.id
+  returning j.id, j.document_id, j.epoch, j.step, j.attempts, j.claim_token, j.artifact_key,
+            j.page_count, j.chunk_count, j.chunks_done),
+moved as (
+  update playbook.documents d
+  set state = 'processing', updated_at = clock_timestamp()
+  from claimed
+  where d.organization_id = $1 and d.id = claimed.document_id and d.state = 'uploaded')
+select id, document_id, epoch, step, attempts, claim_token, artifact_key, page_count, chunk_count, chunks_done
+from claimed`
+
+/**
+ * Extend a job's lease while a step runs. `$1` Organization, `$2` job, `$3` the claim token, `$4`
+ * the new lease in milliseconds from now. No row means the claim was lost: the lease lapsed and
+ * another worker took the job, or the job was cancelled by a delete or ended. The worker stops
+ * and writes nothing more.
+ */
+export const INGESTION_JOB_HEARTBEAT = `update playbook.ingestion_jobs
+set next_attempt_at = clock_timestamp() + ${LEASE('$4')}, updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+returning id`
+
+/**
+ * Record progress and extend the lease. `$1` Organization, `$2` job, `$3` the claim token, `$4`
+ * the next step to run (it may repeat the current one but never go back), `$5` the object key of
+ * the parsed intermediate, `$6` the page count, `$7` the chunk count, `$8` chunks done, `$9` the
+ * lease in milliseconds. A null `$5` to `$8` leaves that value as it is. The table refuses chunks
+ * done above the chunk count. No row means the claim was lost or the step would go backwards.
+ */
+export const INGESTION_JOB_ADVANCE = `update playbook.ingestion_jobs
+set step = $4::text, artifact_key = coalesce($5::text, artifact_key), page_count = coalesce($6::int, page_count),
+    chunk_count = coalesce($7::int, chunk_count), chunks_done = coalesce($8::int, chunks_done),
+    next_attempt_at = clock_timestamp() + ${LEASE('$9')}, updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+  and array_position(${STEP_ORDER}, $4::text) >= array_position(${STEP_ORDER}, step)
+returning id, step, chunks_done`
+
+/**
+ * Give a failed attempt back for a later one. `$1` Organization, `$2` job, `$3` the claim token,
+ * `$4` the delay in milliseconds before it is due again (cut to
+ * {@link INGESTION_MAX_RETRY_DELAY_MS}; the service jitters it). The job returns to `queued` and
+ * keeps its step and counts, so it resumes. No row means the claim was lost.
+ */
+export const INGESTION_JOB_RETRY = `update playbook.ingestion_jobs
+set state = 'queued', claim_token = null,
+    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), ${INGESTION_MAX_RETRY_DELAY_MS}) / 1000),
+    updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+returning id, attempts`
+
+/**
+ * Finish a job and make its document `ready`, in one write. `$1` Organization, `$2` job, `$3`
+ * the claim token. No row means the claim was lost (including a cancel by a delete): the document
+ * is not touched. A job that wins this over a concurrent delete is impossible: the delete
+ * cancels the job and takes the job row first.
+ */
+export const INGESTION_JOB_COMPLETE = `with j as (
+  update playbook.ingestion_jobs
+  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+  returning document_id, epoch),
+d as (
+  update playbook.documents
+  set state = 'ready', updated_at = clock_timestamp()
+  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
+    and state = 'processing')
+select document_id from j`
+
+/**
+ * End a job as failed and make its document `failed` with the reason, in one write. `$1`
+ * Organization, `$2` job, `$3` the claim token, `$4` the reason (`too_many_pages`, `unreadable`,
+ * `password_protected`, `no_text` or `processing_failed`; the table rejects any other). No row
+ * means the claim was lost.
+ */
+export const INGESTION_JOB_FAIL = `with j as (
+  update playbook.ingestion_jobs
+  set state = 'failed', failure_reason = $4::text, claim_token = null,
+      finished_at = clock_timestamp(), updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+  returning document_id, epoch),
+d as (
+  update playbook.documents
+  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()
+  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
+    and state in ('uploaded', 'processing'))
+select document_id from j`
+
+/**
+ * Fail spent jobs, one bounded batch: active jobs that have used every attempt and whose lease
+ * has ended, so no worker holds them, as `failed` with `processing_failed`, and their documents
+ * too. It is the safety net behind the service's own limit (which is lower, so in normal
+ * operation this finds nothing); run it once per sweep after the claim, with a small batch.
+ * `$1` Organization, `$2` batch size. Skips rows another transaction holds.
+ */
+export const INGESTION_JOB_GIVE_UP_SPENT = `with batch as (
+  select id from playbook.ingestion_jobs
+  where organization_id = $1 and state in ('queued', 'running')
+    and attempts >= ${INGESTION_JOB_MAX_ATTEMPTS} and next_attempt_at <= clock_timestamp()
+  order by next_attempt_at
+  limit $2
+  for update skip locked),
+j as (
+  update playbook.ingestion_jobs t
+  set state = 'failed', failure_reason = 'processing_failed', claim_token = null,
+      finished_at = clock_timestamp(), updated_at = clock_timestamp()
+  from batch
+  where t.organization_id = $1 and t.id = batch.id
+  returning t.document_id, t.epoch),
+d as (
+  update playbook.documents
+  set state = 'failed', failure_reason = 'processing_failed', updated_at = clock_timestamp()
+  from j
+  where documents.organization_id = $1 and documents.id = j.document_id and documents.epoch = j.epoch
+    and documents.state in ('uploaded', 'processing'))
+select document_id from j`
+
+/**
+ * Take a message for a consumer (the kit's `ProcessedStore.claim`), in one statement. `$1`
+ * consumer, `$2` Organization (the all-zero id for a global message), `$3` message id, `$4` a new
+ * claim token (a uuid the store makes), `$5` the lease in milliseconds (raised to
+ * {@link PLAYBOOK_MIN_LEASE_MS}). A row back means `claimed` and holds the token. No row means
+ * read {@link CONSUMED_LOOKUP}: `done`, or `busy`. A claim whose lease has ended is taken over
+ * with the new token; the old holder's `renew` and `complete` then fail. Run it inside
+ * `withOrganization` for `$2`.
+ */
+export const CONSUMED_CLAIM = `insert into playbook.consumed_message as m
+  (consumer, organization_id, message_id, state, claim_token, lease_expires_at)
+values ($1, $2, $3, 'claimed', $4::uuid, clock_timestamp() + ${LEASE('$5')})
+on conflict (consumer, organization_id, message_id) do update set
+  claim_token = excluded.claim_token,
+  lease_expires_at = clock_timestamp() + ${LEASE('$5')}
+where m.state = 'claimed' and m.lease_expires_at <= clock_timestamp()
+returning claim_token`
+
+/**
+ * After a {@link CONSUMED_CLAIM} that returned no row: the record's state and, for a live claim,
+ * the whole seconds left on its lease, at least 1. `$1` consumer, `$2` Organization, `$3` message
+ * id. No row means the record was purged or released in between: claim again. A `claimed` record
+ * with `retry_after_seconds` 1 may have just lapsed; the consumer retries then.
+ */
+export const CONSUMED_LOOKUP = `select state,
+  greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int as retry_after_seconds
+from playbook.consumed_message
+where consumer = $1 and organization_id = $2 and message_id = $3`
+
+/**
+ * Extend a claim (the kit's `ProcessedStore.renew`). `$1` consumer, `$2` Organization, `$3`
+ * message id, `$4` the token, `$5` the lease in milliseconds from now. A row back means true. No
+ * row means the claim was lost: it lapsed (even if no one took it over yet) or was taken or
+ * released.
+ */
+export const CONSUMED_RENEW = `update playbook.consumed_message
+set lease_expires_at = clock_timestamp() + ${LEASE('$5')}
+where consumer = $1 and organization_id = $2 and message_id = $3
+  and claim_token = $4::uuid and state = 'claimed' and lease_expires_at > clock_timestamp()
+returning claim_token`
+
+/**
+ * Mark a message done (the kit's `ProcessedStore.complete`). `$1` consumer, `$2` Organization,
+ * `$3` message id, `$4` the token. A row back means true. No row means the claim was lost (another
+ * consumer took it after the lease lapsed): the kit's contract, which does not check the lease
+ * here, so a holder that is late but not replaced still completes.
+ */
+export const CONSUMED_COMPLETE = `update playbook.consumed_message
+set state = 'done', completed_at = clock_timestamp(), lease_expires_at = null
+where consumer = $1 and organization_id = $2 and message_id = $3
+  and claim_token = $4::uuid and state = 'claimed'
+returning claim_token`
+
+/**
+ * Give up a claim (the kit's `ProcessedStore.release`) so the next delivery can take it. `$1`
+ * consumer, `$2` Organization, `$3` message id, `$4` the token. A lost claim removes nothing.
+ */
+export const CONSUMED_RELEASE = `delete from playbook.consumed_message
+where consumer = $1 and organization_id = $2 and message_id = $3
+  and claim_token = $4::uuid and state = 'claimed'`
+
+/**
+ * Purge one bounded batch (the kit's `ProcessedStore.purge`), in **one Organization's scope**:
+ * row-level security hides every other, so the periodic job runs it once per Organization and once
+ * under the all-zero scope, splitting the limit, and repeats while a batch comes back full.
+ * Removes `done` records completed before `$2` and `claimed` records whose lease has ended, at
+ * most `$3`, skipping rows another transaction holds. `$1` Organization, `$2` the cutoff (older
+ * than the queue's retention, 14 days at most; the kit's argument, the one point in time any
+ * playbook statement takes from the caller). The row count is the number removed.
+ */
+export const CONSUMED_PURGE = `with batch as (
+  select consumer, message_id from playbook.consumed_message
+  where organization_id = $1
+    and ((state = 'done' and completed_at < $2::timestamptz)
+         or (state = 'claimed' and lease_expires_at <= clock_timestamp()))
+  limit $3
+  for update skip locked)
+delete from playbook.consumed_message c
+using batch b
+where c.organization_id = $1 and c.consumer = b.consumer and c.message_id = b.message_id`
+
+/**
+ * Record the Organization's embedding model and dimension (ADR 0010). `$1` Organization, `$2` the
+ * model name, `$3` the dimension. A row back means the settings are now those. While no vector
+ * exists a different model or dimension replaces the old; once {@link INDEX_VECTORS_MARK} has run
+ * a different one gets **no row** and nothing changes (the choice is to refuse, not to flag a
+ * re-index; a trigger refuses it for any other statement too). The same values again are
+ * idempotent and return the row.
+ */
+export const INDEX_SETTINGS_UPSERT = `insert into playbook.index_settings as s
+  (organization_id, embedding_model, embedding_dimension)
+values ($1, $2, $3::int)
+on conflict (organization_id) do update set
+  embedding_model = excluded.embedding_model, embedding_dimension = excluded.embedding_dimension,
+  updated_at = clock_timestamp()
+where s.vectors_written_at is null
+   or (s.embedding_model = excluded.embedding_model and s.embedding_dimension = excluded.embedding_dimension)
+returning embedding_model, embedding_dimension, vectors_written_at`
+
+/**
+ * Fix the Organization's model and dimension before the first vector is written, and read them
+ * back. `$1` Organization. A row back holds the model and dimension every vector must use; run it
+ * at the start of the index step. No row means no settings are recorded (run
+ * {@link INDEX_SETTINGS_UPSERT} first), or this call lost a race with another mark: run it again.
+ * A concurrent {@link INDEX_SETTINGS_UPSERT} that wants a different model and a mark exclude each
+ * other by the row lock: either the upsert commits first and the mark reads its values, or the
+ * mark does and the upsert gets no row.
+ */
+export const INDEX_VECTORS_MARK = `with m as (
+  update playbook.index_settings
+  set vectors_written_at = clock_timestamp(), updated_at = clock_timestamp()
+  where organization_id = $1 and vectors_written_at is null
+  returning embedding_model, embedding_dimension)
+select embedding_model, embedding_dimension from m
+union all
+select embedding_model, embedding_dimension from playbook.index_settings
+where organization_id = $1 and vectors_written_at is not null`
+
+/** Every statement above by name, for the README check and the integration tests. */
+export const PLAYBOOK_STATEMENTS = {
+  QUOTA_LOCK,
+  QUOTA_USAGE,
+  DOCUMENT_INSERT,
+  DOCUMENT_BY_HASH,
+  DOCUMENT_LIST,
+  DOCUMENT_SOFT_DELETE,
+  DOCUMENT_RESTORE,
+  DOCUMENT_REQUEUE,
+  DOCUMENT_CLEANUP_BEGIN,
+  DOCUMENT_CLEANUP_DONE,
+  DOCUMENT_PURGE_CLAIM,
+  DOCUMENT_PURGE_COMPLETE,
+  INGESTION_JOB_CLAIM,
+  INGESTION_JOB_HEARTBEAT,
+  INGESTION_JOB_ADVANCE,
+  INGESTION_JOB_RETRY,
+  INGESTION_JOB_COMPLETE,
+  INGESTION_JOB_FAIL,
+  INGESTION_JOB_GIVE_UP_SPENT,
+  CONSUMED_CLAIM,
+  CONSUMED_LOOKUP,
+  CONSUMED_RENEW,
+  CONSUMED_COMPLETE,
+  CONSUMED_RELEASE,
+  CONSUMED_PURGE,
+  INDEX_SETTINGS_UPSERT,
+  INDEX_VECTORS_MARK,
+} as const
