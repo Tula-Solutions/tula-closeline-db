@@ -22,8 +22,12 @@ import { TENANT_PREDICATE, tenantColumns } from './tenant-columns'
  */
 export const ABANDON_CASE_MAX_ATTEMPTS = 100
 
-/** How an abandon case ended: core removed the Organization, core refused, or the sweep gave up. */
-export const ABANDON_CASE_OUTCOMES = ['done', 'refused', 'gave_up'] as const
+/**
+ * How an abandon case ended: `done` (core removed the Organization), `not_needed` (no abandon was
+ * needed and none was made: an account exists or core holds no Organization for the attempt),
+ * `refused` (core refused, a person reconciles) or `gave_up` (attempts spent, a person reconciles).
+ */
+export const ABANDON_CASE_OUTCOMES = ['done', 'not_needed', 'refused', 'gave_up'] as const
 
 /**
  * An Organization that core made during a sign-up whose account was then never written, kept so a
@@ -82,7 +86,7 @@ export const abandonCases = authSchema.table(
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull(),
     /** Set with {@link abandonCases.outcome} when the case ends. Null while it is open. */
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-    /** How the case ended: `done`, `refused` (core's guard said no) or `gave_up`. Null while open. */
+    /** How the case ended: `done`, `not_needed`, `refused` (core's guard said no) or `gave_up`. Null while open. */
     outcome: text('outcome', { enum: ABANDON_CASE_OUTCOMES }),
     ...timestamps(),
   },
@@ -96,7 +100,10 @@ export const abandonCases = authSchema.table(
       'abandon_cases_attempts_bounds',
       sql`${t.attempts} between 0 and ${sql.raw(String(ABANDON_CASE_MAX_ATTEMPTS))}`
     ),
-    check('abandon_cases_outcome_known', sql`${t.outcome} in ('done', 'refused', 'gave_up')`),
+    check(
+      'abandon_cases_outcome_known',
+      sql`${t.outcome} in ('done', 'not_needed', 'refused', 'gave_up')`
+    ),
     check(
       'abandon_cases_resolution_whole',
       sql`(${t.resolvedAt} is null) = (${t.outcome} is null)`

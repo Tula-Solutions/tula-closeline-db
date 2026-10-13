@@ -6,6 +6,7 @@ import {
   ABANDON_GIVE_UP_SPENT,
   ABANDON_MIN_GRACE_MS,
   ABANDON_RECORD,
+  ABANDON_SETTLE,
   AUTH_STATEMENTS,
   COUNTER_MIN_PERIOD_MS,
   LOCKOUT_ATTEMPT,
@@ -80,5 +81,11 @@ describe('the rules the statements keep', () => {
     // Once in the values row and once in each of the update's two uses of the period.
     expect(floor(LOCKOUT_ATTEMPT, '\\$4::int')).toBeGreaterThanOrEqual(2)
     expect(floor(RATE_HIT, '\\$3::float8')).toBeGreaterThanOrEqual(2)
+  })
+
+  test('settling is decided by the row, only while the case is open and unclaimed', () => {
+    expect(ABANDON_SETTLE).toContain('resolved_at is null and attempts = 0')
+    expect(ABANDON_SETTLE).toContain("outcome = 'not_needed'")
+    expect(ABANDON_SETTLE).not.toMatch(/now\(\)|\$3/)
   })
 })

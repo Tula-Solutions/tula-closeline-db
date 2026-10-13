@@ -6,8 +6,12 @@ import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
 * stops a bug from counting forever.
 */
 declare const ABANDON_CASE_MAX_ATTEMPTS = 100;
-/** How an abandon case ended: core removed the Organization, core refused, or the sweep gave up. */
-declare const ABANDON_CASE_OUTCOMES: readonly ["done", "refused", "gave_up"];
+/**
+* How an abandon case ended: `done` (core removed the Organization), `not_needed` (no abandon was
+* needed and none was made: an account exists or core holds no Organization for the attempt),
+* `refused` (core refused, a person reconciles) or `gave_up` (attempts spent, a person reconciles).
+*/
+declare const ABANDON_CASE_OUTCOMES: readonly ["done", "not_needed", "refused", "gave_up"];
 /**
 * An Organization that core made during a sign-up whose account was then never written, kept so a
 * sweep can ask core to abandon it (ADR 0011, hub issue 36) and the case is not lost when a
@@ -248,14 +252,14 @@ declare const abandonCases: PgTableWithColumns_a5zn0g<{
 			tableName: "abandon_cases";
 			dataType: "string";
 			columnType: "PgText";
-			data: "done" | "gave_up" | "refused";
+			data: "done" | "gave_up" | "not_needed" | "refused";
 			driverParam: string;
 			notNull: false;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["done", "refused", "gave_up"];
+			enumValues: ["done", "not_needed", "refused", "gave_up"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

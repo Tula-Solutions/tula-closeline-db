@@ -122,8 +122,10 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     and the flow attempt id (no foreign keys to either: neither has an account or outlives its
     purge). It is environment-scoped like `flow_attempts` (written at the same point of a sign-up,
     when the environment is known), so it is in `ENVIRONMENT_SCOPED_TABLES` and needs no allowlist
-    entry. `attempts` is 0 to 100, `outcome` is `done`, `refused` or `gave_up` and is set exactly
-    when `resolved_at` is.
+    entry. `attempts` is 0 to 100, `outcome` is `done` (core removed the Organization),
+    `not_needed` (nothing to remove: an account exists or core holds no Organization for the
+    attempt), `refused` (core refused, a person reconciles) or `gave_up` (attempts spent, a person
+    reconciles), and is set exactly when `resolved_at` is.
     - **One case per Organization and one per attempt** in an environment (two unique keys).
       `core_organization_id` is nullable, for a timed-out create whose Organization id was never
       learned: that case is keyed by its attempt, and the service fills the id in once it learns
@@ -212,6 +214,22 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     update auth.abandon_cases
     set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
     where id = $1 and environment_id = $2 and resolved_at is null
+    returning id
+    ```
+
+    Settle the case, the last statement of the account transaction (`$1` case id, `$2`
+    environment): **the account transaction runs this last; no row means roll back the account and
+    tell the person to sign up again.** It locks the same row the claim does and only while
+    `attempts = 0`, so "account committed" and "case claimed by the sweep" cannot both happen,
+    whatever the clocks say. If it locks first the claim skips the row and the case is never
+    claimable; if the claim committed first it returns no row. Call it only when the request
+    recorded a case for the attempt: no case at all also returns no row. The case ends as
+    `not_needed`:
+
+    ```sql
+    update auth.abandon_cases
+    set resolved_at = clock_timestamp(), outcome = 'not_needed', updated_at = clock_timestamp()
+    where id = $1 and environment_id = $2 and resolved_at is null and attempts = 0
     returning id
     ```
 

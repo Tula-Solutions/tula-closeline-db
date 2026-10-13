@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +12,7 @@ import {
   ABANDON_PURGE_BATCH,
   ABANDON_RECORD,
   ABANDON_RESOLVE,
+  ABANDON_SETTLE,
 } from './auth-statements'
 import {
   type AuthRegion,
@@ -47,6 +48,9 @@ describe('auth.abandon_cases', () => {
   let bulk: AuthRegion
   /** Holds the spent-case and grace tests, whose claims must see no other case. */
   let extra: AuthRegion
+  /** A region of its own for each settle test (see `beforeEach` there), so no claim sees another's case. */
+  let settling: AuthRegion
+  const settlingWorkspaces: string[] = []
 
   /**
    * Insert a case in an environment. By default it is due, its attempt long over: the attempt
@@ -99,7 +103,7 @@ describe('auth.abandon_cases', () => {
 
   afterAll(async () => {
     await owner.query('delete from auth.workspaces where id = any($1)', [
-      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId],
+      [region?.workspaceId, bulk?.workspaceId, extra?.workspaceId, ...settlingWorkspaces],
     ])
     await Promise.all([owner.end(), authPool.end(), corePool.end()])
   })
@@ -126,14 +130,14 @@ describe('auth.abandon_cases', () => {
       await addCase(region.b.environmentId, { attempts })
     })
 
-    test('an outcome outside done, refused and gave_up is refused', async () => {
+    test('an outcome outside the four known ones is refused', async () => {
       const message = await rejectionOf(
         addCase(region.b.environmentId, { resolved_at: raw('now()'), outcome: 'abandoned' })
       )
       expect(message).toContain('abandon_cases_outcome_known')
     })
 
-    test.each(['done', 'refused', 'gave_up'])(
+    test.each(['done', 'not_needed', 'refused', 'gave_up'])(
       'a case resolved as %s is accepted',
       async (outcome) => {
         await addCase(region.b.environmentId, { resolved_at: raw('now()'), outcome })
@@ -165,6 +169,20 @@ describe('auth.abandon_cases', () => {
         client.query(ABANDON_RESOLVE, [id, region.b.environmentId, 'gave_up'])
       )
       expect(again.rows).toEqual([])
+    })
+
+    test('resolving accepts not_needed, and any other value is refused by the check', async () => {
+      const id = (await addCase(region.b.environmentId)).rows[0]?.id
+      const unknown = await rejectionOf(
+        inAuthEnvironment(authPool, region.b.environmentId, (client) =>
+          client.query(ABANDON_RESOLVE, [id, region.b.environmentId, 'settled'])
+        )
+      )
+      expect(unknown).toContain('abandon_cases_outcome_known')
+      const resolved = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
+        client.query(ABANDON_RESOLVE, [id, region.b.environmentId, 'not_needed'])
+      )
+      expect(resolved.rows).toEqual([{ id }])
     })
 
     test('a case is never due before its attempt has ended', async () => {
@@ -598,6 +616,192 @@ describe('auth.abandon_cases', () => {
     })
   })
 
+  describe('settling a case from the account transaction', () => {
+    beforeEach(async () => {
+      settling = await seedAuthRegion(authPool)
+      settlingWorkspaces.push(settling.workspaceId)
+    })
+
+    const environmentId = () => settling.a.environmentId
+    const add = async (columns: Record<string, unknown> = {}): Promise<string> =>
+      (await addCase(environmentId(), columns, uuid(), settling.projectId)).rows[0]?.id as string
+    const settle = (id: string, environment: string = environmentId()) =>
+      inAuthEnvironment(authPool, environment, (client) =>
+        client.query(ABANDON_SETTLE, [id, environment])
+      )
+    const claimed = async (): Promise<string[]> =>
+      (
+        await inAuthEnvironment(authPool, environmentId(), (client) =>
+          client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        )
+      ).rows.map((row) => row.id as string)
+    const stored = async (id: string) =>
+      (
+        await inAuthEnvironment(authPool, environmentId(), (client) =>
+          client.query(
+            'select attempts, outcome, resolved_at, updated_at from auth.abandon_cases where id = $1',
+            [id]
+          )
+        )
+      ).rows[0]
+
+    /** Open a transaction on its own connection, scoped to the environment like the helper. */
+    const open = async () => {
+      const client = await authPool.connect()
+      await client.query('begin')
+      await client.query('select set_config($1, $2, true)', [
+        'tula.environment_id',
+        environmentId(),
+      ])
+      const pid = (await client.query('select pg_backend_pid() as pid')).rows[0]?.pid as number
+      return { client, pid }
+    }
+
+    /** Wait until the backend `pid` is waiting for a lock (bounded by tries, not by a clock). */
+    const untilBlocked = async (pid: number): Promise<void> => {
+      for (let tries = 0; tries < 2000; tries++) {
+        const waiting = await owner.query('select 1 from pg_locks where pid = $1 and not granted', [
+          pid,
+        ])
+        if (waiting.rowCount) {
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      throw new Error(`backend ${pid} never waited for a lock`)
+    }
+
+    test('settling an open case resolves it as not_needed, and the sweep never claims it', async () => {
+      const id = await add()
+      expect((await settle(id)).rows).toEqual([{ id }])
+      const row = await stored(id)
+      expect(row).toMatchObject({ attempts: 0, outcome: 'not_needed' })
+      expect(row.resolved_at).toBeInstanceOf(Date)
+      expect(await claimed()).not.toContain(id)
+      expect(await stored(id)).toMatchObject({ attempts: 0, outcome: 'not_needed' })
+    })
+
+    test('a case the sweep claimed is not settled, and nothing changes', async () => {
+      const id = await add()
+      expect(await claimed()).toContain(id)
+      const before = await stored(id)
+      expect((await settle(id)).rowCount).toBe(0)
+      expect(await stored(id)).toEqual(before)
+      expect(before).toMatchObject({ attempts: 1, outcome: null, resolved_at: null })
+    })
+
+    test('learning the Organization does not stop a settle', async () => {
+      const id = await add({ core_organization_id: null })
+      await inAuthEnvironment(authPool, environmentId(), (client) =>
+        client.query(ABANDON_LEARN, [id, environmentId(), uuid()])
+      )
+      expect((await settle(id)).rows).toEqual([{ id }])
+    })
+
+    test('a settle holding the row keeps a claim from it', async () => {
+      const id = await add()
+      const holder = await open()
+      const sweeper = await open()
+      try {
+        expect((await holder.client.query(ABANDON_SETTLE, [id, environmentId()])).rowCount).toBe(1)
+        // Skip locked: the claim does not wait, and it does not take the held case.
+        const taken = await sweeper.client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        expect(taken.rows.map((row) => row.id)).not.toContain(id)
+        await holder.client.query('commit')
+        await sweeper.client.query('commit')
+      } finally {
+        holder.client.release()
+        sweeper.client.release()
+      }
+      expect(await stored(id)).toMatchObject({ attempts: 0, outcome: 'not_needed' })
+      expect(await claimed()).not.toContain(id)
+    })
+
+    test('a settle that waits for a claim finds the case claimed and returns no row', async () => {
+      const id = await add()
+      const sweeper = await open()
+      const request = await open()
+      try {
+        const taken = await sweeper.client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        expect(taken.rows.map((row) => row.id)).toContain(id)
+        const waiting = request.client.query(ABANDON_SETTLE, [id, environmentId()])
+        await untilBlocked(request.pid)
+        await sweeper.client.query('commit')
+        // The predicate is checked again against the claimed row: attempts is now 1.
+        expect((await waiting).rowCount).toBe(0)
+        await request.client.query('commit')
+      } finally {
+        sweeper.client.release()
+        request.client.release()
+      }
+      expect(await stored(id)).toMatchObject({ attempts: 1, outcome: null, resolved_at: null })
+    })
+
+    test('a settle that waits for a claim that rolls back settles the case', async () => {
+      const id = await add()
+      const sweeper = await open()
+      const request = await open()
+      try {
+        await sweeper.client.query(ABANDON_CLAIM, [environmentId(), 50, 600_000])
+        const waiting = request.client.query(ABANDON_SETTLE, [id, environmentId()])
+        await untilBlocked(request.pid)
+        await sweeper.client.query('rollback')
+        expect((await waiting).rows).toEqual([{ id }])
+        await request.client.query('commit')
+      } finally {
+        sweeper.client.release()
+        request.client.release()
+      }
+      expect(await stored(id)).toMatchObject({ attempts: 0, outcome: 'not_needed' })
+    })
+
+    test.each(['done', 'not_needed', 'refused', 'gave_up'])(
+      'a case already resolved as %s is not settled, and keeps its outcome',
+      async (outcome) => {
+        const id = await add({ resolved_at: raw('now()'), outcome })
+        const before = await stored(id)
+        expect((await settle(id)).rowCount).toBe(0)
+        expect(await stored(id)).toEqual(before)
+      }
+    )
+
+    test('settling twice returns a row once', async () => {
+      const id = await add()
+      expect((await settle(id)).rowCount).toBe(1)
+      expect((await settle(id)).rowCount).toBe(0)
+    })
+
+    test('the purge removes an old not_needed case like any other resolved one, and keeps a new one', async () => {
+      const old = await add({
+        resolved_at: raw(`clock_timestamp() - interval '2 days'`),
+        outcome: 'not_needed',
+      })
+      const fresh = await add()
+      expect((await settle(fresh)).rowCount).toBe(1)
+      // The purge statement returns no rows, only a count: read what is left to see which went.
+      const purged = await inAuthEnvironment(authPool, environmentId(), (client) =>
+        client.query(ABANDON_PURGE_BATCH, [environmentId(), 100])
+      )
+      expect(purged.rowCount).toBe(1)
+      const left = await inAuthEnvironment(authPool, environmentId(), (client) =>
+        client.query('select id from auth.abandon_cases where id = any($1)', [[old, fresh]])
+      )
+      expect(left.rows).toEqual([{ id: fresh }])
+      expect(await stored(fresh)).toMatchObject({ outcome: 'not_needed' })
+    })
+
+    test('no case at all returns no row, the same as a lost race', async () => {
+      expect((await settle(uuid())).rowCount).toBe(0)
+    })
+
+    test('a case of another environment is not settled', async () => {
+      const id = (await addCase(settling.b.environmentId, {}, uuid(), settling.projectId)).rows[0]
+        ?.id as string
+      expect((await settle(id)).rowCount).toBe(0)
+      expect((await settle(id, settling.b.environmentId)).rowCount).toBe(1)
+    })
+  })
+
   describe('learning the Organization of a case', () => {
     const learn = (id: string, organizationId: string) =>
       inAuthEnvironment(authPool, region.a.environmentId, (client) =>
@@ -793,6 +997,89 @@ describe('auth.abandon_cases', () => {
       await runMigrations(url)
       const found = await withOwner(url, state)
       expect(found.rows).toEqual([{ present: true, forced: true, policies: 2, selects: true }])
+    })
+
+    test('0008 applies on a database at 0007 holding a resolved row of each old outcome', async () => {
+      const upTo0007 = mkdtempSync(join(tmpdir(), 'closeline-db-at-0007-'))
+      try {
+        mkdirSync(join(upTo0007, 'meta'))
+        const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'))
+        journal.entries = journal.entries.filter((e: { tag: string }) => e.tag < '0008')
+        writeFileSync(join(upTo0007, 'meta', '_journal.json'), JSON.stringify(journal))
+        for (const entry of journal.entries as { tag: string }[]) {
+          cpSync(join(MIGRATIONS, `${entry.tag}.sql`), join(upTo0007, `${entry.tag}.sql`))
+        }
+        const url = await scratch('abandon_at0007')
+        await runMigrations(url, { migrationsFolder: upTo0007 })
+        const ids = { workspace: uuid(), project: uuid(), environment: uuid() }
+        const outcomes = ['done', 'refused', 'gave_up']
+        await withOwner(url, async (pool) => {
+          const client = await pool.connect()
+          try {
+            await client.query('begin')
+            await client.query('select set_config($1, $2, true)', [
+              'tula.environment_id',
+              ids.environment,
+            ])
+            await client.query('insert into auth.workspaces (id, name) values ($1, $2)', [
+              ids.workspace,
+              'w',
+            ])
+            await client.query(
+              'insert into auth.projects (id, workspace_id, name) values ($1, $2, $3)',
+              [ids.project, ids.workspace, 'p']
+            )
+            await client.query(
+              `insert into auth.environments (id, project_id, kind) values ($1, $2, 'development')`,
+              [ids.environment, ids.project]
+            )
+            for (const outcome of outcomes) {
+              await client.query(
+                `insert into auth.abandon_cases
+                   (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
+                    attempt_expires_at, next_attempt_at, resolved_at, outcome)
+                 values ($1, $2, $3, $4, $5, $6, now(), now(), now(), $7)`,
+                [uuid(), ids.project, ids.environment, uuid(), uuid(), uuid(), outcome]
+              )
+            }
+            await client.query('commit')
+          } finally {
+            client.release()
+          }
+        })
+        await runMigrations(url)
+        await withOwner(url, async (pool) => {
+          const client = await pool.connect()
+          try {
+            await client.query('begin')
+            await client.query('select set_config($1, $2, true)', [
+              'tula.environment_id',
+              ids.environment,
+            ])
+            const kept = await client.query<{ outcome: string }>(
+              'select outcome from auth.abandon_cases order by outcome'
+            )
+            expect(kept.rows.map((row) => row.outcome)).toEqual(['done', 'gave_up', 'refused'])
+            const add = (outcome: string) =>
+              client.query(
+                `insert into auth.abandon_cases
+                   (id, project_id, environment_id, user_id, attempt_id,
+                    attempt_expires_at, next_attempt_at, resolved_at, outcome)
+                 values ($1, $2, $3, $4, $5, now(), now(), now(), $6)`,
+                [uuid(), ids.project, ids.environment, uuid(), uuid(), outcome]
+              )
+            await client.query('savepoint s')
+            await add('not_needed')
+            await client.query('rollback to savepoint s')
+            await expect(add('settled')).rejects.toThrow('abandon_cases_outcome_known')
+            await client.query('rollback')
+          } finally {
+            client.release()
+          }
+        })
+      } finally {
+        rmSync(upTo0007, { recursive: true, force: true })
+      }
     })
 
     test('applies on a database at 0005 that already holds auth rows', async () => {
