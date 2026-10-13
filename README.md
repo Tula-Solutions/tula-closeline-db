@@ -131,8 +131,13 @@ Organizations and who belongs to them (tickets: hub issue 9). All five tenant ta
 | `organizations` | the Organization; keyed by `organization_id`; Region fixed at creation; `owner_count` is trigger-kept |
 | `memberships` | a user (opaque `usr_` id, no cross-schema key) in an Organization with one of the four roles |
 | `teams`, `team_members` | Teams; composite keys `(organization_id, id)` make a member and Team of different Organizations impossible |
-| `invitations` | email, role (never Owner), optional Team, SHA-256 of the token (never the token), expiry, `pending`/`accepted`/`revoked` |
+| `invitations` | email, role (never Owner), optional Team, SHA-256 of the token (never the token), expiry, `pending`/`accepted`/`revoked`; indexed by `invitations_state_list_idx` (below) |
 | `membership_directory`, `invitation_directory`, `organization_state` | see below |
+
+`invitations` has `invitations_state_list_idx` on `(organization_id, state, created_at, id)`, which
+serves the two queries the pending-only list index does not: a page of invitations in any one state,
+newest first (read backwards, no sort), and a capped count of those created since a time across all
+three states, revoked included.
 
 Rules held by the database:
 

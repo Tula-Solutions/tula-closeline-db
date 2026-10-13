@@ -959,6 +959,7 @@ var invitations2 = coreSchema2.table("invitations", {
   }),
   uniqueIndex2("invitations_pending_email_key").on(t.organizationId, t.email).where(sql15`${t.state} = 'pending'`),
   index21("invitations_pending_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql15`${t.state} = 'pending'`),
+  index21("invitations_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id),
   index21("invitations_team_idx").on(t.organizationId, t.teamId).where(sql15`${t.teamId} is not null`)
 ]);
 var membershipDirectory2 = coreSchema2.table("membership_directory", {

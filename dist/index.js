@@ -1,7 +1,7 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-amjz60dr.js";
+} from "./shared/chunk-5de8bjrb.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";

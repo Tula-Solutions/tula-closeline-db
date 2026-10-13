@@ -1,0 +1,1 @@
+CREATE INDEX "invitations_state_list_idx" ON "core"."invitations" USING btree ("organization_id","state","created_at","id");
