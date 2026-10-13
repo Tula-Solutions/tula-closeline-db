@@ -1,6 +1,6 @@
 {
   "name": "tula-closeline-db",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Closeline database migrations and typed schema, one Postgres schema per service",
   "private": true,
   "type": "module",
@@ -14,26 +14,41 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "import": "./dist/schema/index.js"
     }
   },
   "scripts": {
     "prepare": "husky || true",
     "build": "bunup",
-    "check": "biome check src scripts",
+    "check": "biome check src scripts drizzle.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test src",
     "test:coverage": "bun test src --coverage",
     "dist:check": "bash scripts/dist-check.sh",
     "shared:check": "bash .claude/hooks/shared-check.sh",
     "precommit:dist": "bunup && git add dist",
-    "verify": "bun run check && bun run typecheck && bun run test:coverage && bun run dist:check && bun run shared:check",
-    "verify:changed": "biome check --changed --no-errors-on-unmatched src scripts && bun run typecheck && bun run test"
+    "verify": "bun run check && bun run typecheck && bun run test:coverage && bun run db:check && bun run dist:check && bun run shared:check",
+    "verify:changed": "biome check --changed --no-errors-on-unmatched src scripts drizzle.config.ts && bun run typecheck && bun run test",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "bun run scripts/check-drift.ts && bun run scripts/check-migrations.ts",
+    "db:check:rls": "bun run scripts/check-rls.ts",
+    "db:migrate": "bun run scripts/migrate.ts",
+    "test:integration": "bun test --timeout 30000 ./src/*.integration.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@types/pg": "^8.23.1",
     "bun-types": "^1.4.2",
     "bunup": "^0.16.32",
+    "drizzle-kit": "^0.31.11",
     "husky": "^9.1.7",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "pg": "^8.23.1"
   }
 }
