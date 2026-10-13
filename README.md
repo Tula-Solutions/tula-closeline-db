@@ -212,6 +212,19 @@ stale when a member is written concurrently with a suspension, at any isolation 
 (`READ COMMITTED`, `REPEATABLE READ` or `SERIALIZABLE`): the member's directory row and the
 suspended state row are separate facts, both visible to every lookup after both commit.
 
+**Deleting an Organization is work proportional to its size, so run it as a background job.** The
+cascade removes every membership, and each one's directory row, one row at a time through the row
+triggers (a 100,000-member Organization takes a few seconds of database time in one transaction,
+holding its rows throughout), so it must never be on a request path. Suspending or reactivating it
+is not: that is the one-row status change above. Each directory row is removed by an exact key, and
+the two directory writers (`sync_membership_directory`, `sync_invitation_directory`) are pinned to
+`plan_cache_mode = force_custom_plan`. Without that, a statement in a function settles on one
+generic plan after a few runs and keeps it for the life of the connection; a plan built while the
+directory was small is a sequential scan, and kept while the table grows it made deleting a large
+Organization quadratic (100,000 members did not finish in two minutes, against about four seconds
+now; `src/core-plans.integration.ts` asserts the tuples read, not the time). For the same reason
+neither directory has an index on `organization_id` alone: nothing reads them by Organization.
+
 Look up, then `withOrganization` for the Organization it names, then read the real row. The
 catalog check (`findTenantIsolationGaps`, `bun run db:check:rls`) reports a gap if any service role
 or `PUBLIC` holds any privilege on a table on `NON_TENANT_TABLES`, at table or column level.

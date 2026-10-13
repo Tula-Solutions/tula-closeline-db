@@ -1,5 +1,5 @@
 {
-  "id": "87b8ad5a-d982-4ff0-b08a-2b7607c31667",
+  "id": "c944a445-714e-4e7e-9c95-e5df1a71bbce",
   "prevId": "9749dc7c-279c-41ed-9448-4c4ab6751bfd",
   "version": "7",
   "dialect": "postgresql",
@@ -5565,23 +5565,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "invitation_directory_organization_idx": {
-          "name": "invitation_directory_organization_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -5878,23 +5862,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "membership_directory_organization_idx": {
-          "name": "membership_directory_organization_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "membership_directory_pkey": {

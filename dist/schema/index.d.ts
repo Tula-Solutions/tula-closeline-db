@@ -7223,6 +7223,8 @@ declare const invitations: PgTableWithColumns_a5zn0g31<{
 * write it, and it holds no status of its own, so a status change never touches it. A user belongs
 * to exactly one Organization, enforced by the unique constraint on `user_id`. To allow several,
 * one migration drops `membership_directory_one_organization_per_user` and replaces the function.
+* It has no index on `organization_id` alone: nothing reads it by Organization, and with one a plan
+* cached for the delete by key could scan every member of the Organization per row.
 */
 declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
 	name: "membership_directory";
@@ -7272,7 +7274,8 @@ declare const membershipDirectory: PgTableWithColumns_a5zn0g31<{
 * only when the invitation is pending and unexpired (and, by joining {@link organizationState},
 * in an `active` Organization), without reading a tenant table. Not under row-level security; no
 * service role holds any privilege on it. The `SECURITY DEFINER` triggers on `invitations` keep
-* it, and a status change never touches it.
+* it, and a status change never touches it. It has no index on `organization_id` alone: nothing
+* reads it by Organization, and such an index is one a cached plan could pick for a delete by key.
 */
 declare const invitationDirectory: PgTableWithColumns_a5zn0g31<{
 	name: "invitation_directory";

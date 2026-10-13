@@ -968,19 +968,17 @@ var membershipDirectory2 = coreSchema2.table("membership_directory", {
   primaryKey2({ name: "membership_directory_pkey", columns: [t.userId, t.organizationId] }),
   check10("membership_directory_user_id_shape", idShape("user_id", "usr")),
   check10("membership_directory_organization_id_shape", idShape("organization_id", "org")),
-  unique21("membership_directory_one_organization_per_user").on(t.userId),
-  index21("membership_directory_organization_idx").on(t.organizationId)
+  unique21("membership_directory_one_organization_per_user").on(t.userId)
 ]);
 var invitationDirectory2 = coreSchema2.table("invitation_directory", {
   tokenHash: text30("token_hash").primaryKey(),
   organizationId: text30("organization_id").notNull(),
   invitationId: text30("invitation_id").notNull(),
   expiresAt: timestamp23("expires_at", { withTimezone: true }).notNull()
-}, (t) => [
+}, () => [
   check10("invitation_directory_token_hash_shape", sql15`"token_hash" ~ '^[0-9a-f]{64}$'`),
   check10("invitation_directory_organization_id_shape", idShape("organization_id", "org")),
-  check10("invitation_directory_invitation_id_shape", idShape("invitation_id", "inv")),
-  index21("invitation_directory_organization_idx").on(t.organizationId)
+  check10("invitation_directory_invitation_id_shape", idShape("invitation_id", "inv"))
 ]);
 var organizationState2 = coreSchema2.table("organization_state", {
   organizationId: text30("organization_id").primaryKey().references(() => organizations2.organizationId, { onDelete: "cascade" }),

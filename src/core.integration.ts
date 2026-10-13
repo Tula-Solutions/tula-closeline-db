@@ -1956,7 +1956,15 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       for (const fn of await catalog()) {
         const [definer, trigger] = FUNCTIONS[fn.name] ?? [false, false, false]
         expect([fn.name, fn.owner]).toEqual([fn.name, 'closeline_owner'])
-        expect([fn.name, fn.config]).toEqual([fn.name, ['search_path=pg_catalog, pg_temp']])
+        // The directory writers also pin their plans to one per key (see the migration).
+        const planPinned =
+          fn.name === 'sync_membership_directory' || fn.name === 'sync_invitation_directory'
+        expect([fn.name, fn.config]).toEqual([
+          fn.name,
+          planPinned
+            ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
+            : ['search_path=pg_catalog, pg_temp'],
+        ])
         expect([fn.name, fn.definer]).toEqual([fn.name, definer])
         expect([fn.name, fn.trigger]).toEqual([fn.name, trigger])
       }

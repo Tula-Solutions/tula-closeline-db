@@ -273,6 +273,8 @@ export const invitations = coreSchema.table(
  * write it, and it holds no status of its own, so a status change never touches it. A user belongs
  * to exactly one Organization, enforced by the unique constraint on `user_id`. To allow several,
  * one migration drops `membership_directory_one_organization_per_user` and replaces the function.
+ * It has no index on `organization_id` alone: nothing reads it by Organization, and with one a plan
+ * cached for the delete by key could scan every member of the Organization per row.
  */
 export const membershipDirectory = coreSchema.table(
   'membership_directory',
@@ -285,7 +287,6 @@ export const membershipDirectory = coreSchema.table(
     check('membership_directory_user_id_shape', idShape('user_id', 'usr')),
     check('membership_directory_organization_id_shape', idShape('organization_id', 'org')),
     unique('membership_directory_one_organization_per_user').on(t.userId),
-    index('membership_directory_organization_idx').on(t.organizationId),
   ]
 )
 
@@ -296,7 +297,8 @@ export const membershipDirectory = coreSchema.table(
  * only when the invitation is pending and unexpired (and, by joining {@link organizationState},
  * in an `active` Organization), without reading a tenant table. Not under row-level security; no
  * service role holds any privilege on it. The `SECURITY DEFINER` triggers on `invitations` keep
- * it, and a status change never touches it.
+ * it, and a status change never touches it. It has no index on `organization_id` alone: nothing
+ * reads it by Organization, and such an index is one a cached plan could pick for a delete by key.
  */
 export const invitationDirectory = coreSchema.table(
   'invitation_directory',
@@ -306,11 +308,10 @@ export const invitationDirectory = coreSchema.table(
     invitationId: text('invitation_id').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
-  (t) => [
+  () => [
     check('invitation_directory_token_hash_shape', sql`"token_hash" ~ '^[0-9a-f]{64}$'`),
     check('invitation_directory_organization_id_shape', idShape('organization_id', 'org')),
     check('invitation_directory_invitation_id_shape', idShape('invitation_id', 'inv')),
-    index('invitation_directory_organization_idx').on(t.organizationId),
   ]
 )
 

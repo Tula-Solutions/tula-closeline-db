@@ -120,11 +120,9 @@ ALTER TABLE "core"."organization_state" ADD CONSTRAINT "organization_state_organ
 ALTER TABLE "core"."team_members" ADD CONSTRAINT "team_members_team_fk" FOREIGN KEY ("organization_id","team_id") REFERENCES "core"."teams"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."team_members" ADD CONSTRAINT "team_members_membership_fk" FOREIGN KEY ("organization_id","membership_id") REFERENCES "core"."memberships"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "core"."teams" ADD CONSTRAINT "teams_organization_id_organizations_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "core"."organizations"("organization_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "invitation_directory_organization_idx" ON "core"."invitation_directory" USING btree ("organization_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "invitations_pending_email_key" ON "core"."invitations" USING btree ("organization_id","email") WHERE "core"."invitations"."state" = 'pending';--> statement-breakpoint
 CREATE INDEX "invitations_pending_list_idx" ON "core"."invitations" USING btree ("organization_id","created_at","id") WHERE "core"."invitations"."state" = 'pending';--> statement-breakpoint
 CREATE INDEX "invitations_team_idx" ON "core"."invitations" USING btree ("organization_id","team_id") WHERE "core"."invitations"."team_id" is not null;--> statement-breakpoint
-CREATE INDEX "membership_directory_organization_idx" ON "core"."membership_directory" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "team_members_membership_idx" ON "core"."team_members" USING btree ("organization_id","membership_id","team_id");
 --> statement-breakpoint
 -- Everything below is hand-written (Drizzle cannot express it), appended after the generated SQL
@@ -392,11 +390,20 @@ CREATE TRIGGER "invitations_accept_guard" BEFORE UPDATE OF "state" ON "core"."in
 -- insert, which is why it can see across Organizations when an index on memberships behind
 -- row-level security cannot.
 --
+-- Both functions run with plan_cache_mode = force_custom_plan: each execution plans its DELETE for the
+-- key it has, from the table's size at that moment. By default a plpgsql statement settles on one
+-- generic plan after a few runs and keeps it for the life of the connection; a plan built while the
+-- directory was small and unanalysed is a sequential scan, and kept while the table grows to
+-- 100,000 rows it makes deleting a large Organization quadratic (every member's row delete scans
+-- the whole table). The directories also have no index on organization_id alone, which a
+-- generic plan could pick (the primary key and the unique constraint both lead with the key).
+--
 -- A directory row holds no Organization status: that lives in organization_state, one row per
 -- Organization, so writing a member or an invitation reads and locks nothing of the Organization's,
 -- and a status change writes no directory row (see the lookups, below).
 CREATE FUNCTION "core"."sync_membership_directory"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = pg_catalog, pg_temp AS $$
+SET search_path = pg_catalog, pg_temp
+SET plan_cache_mode = force_custom_plan AS $$
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
     DELETE FROM "core"."membership_directory"
@@ -418,7 +425,8 @@ CREATE TRIGGER "memberships_b_sync_directory" AFTER INSERT OR DELETE OR UPDATE O
 -- Only pending invitations are in the directory: a row leaves it when its invitation is accepted or
 -- revoked, so a used token hash is not kept here.
 CREATE FUNCTION "core"."sync_invitation_directory"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
-SET search_path = pg_catalog, pg_temp AS $$
+SET search_path = pg_catalog, pg_temp
+SET plan_cache_mode = force_custom_plan AS $$
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
     DELETE FROM "core"."invitation_directory" WHERE "token_hash" = OLD."token_hash";

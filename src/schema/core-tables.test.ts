@@ -104,6 +104,24 @@ describe('the hand-written SQL of the migration', () => {
     }
   )
 
+  test.each(['sync_membership_directory', 'sync_invitation_directory'])(
+    '%s plans each statement for its key, so a plan built on a small table is not kept',
+    (name) => {
+      const text = functions.find((fn) => fn.name === name)?.text ?? ''
+      expect(text).toContain('SET plan_cache_mode = force_custom_plan')
+    }
+  )
+
+  test('the directories have no index on organization_id alone', () => {
+    expect(migration).not.toMatch(
+      /CREATE INDEX "(membership|invitation)_directory_organization_idx"/
+    )
+    for (const name of ['membership_directory', 'invitation_directory']) {
+      const config = coreTables.find((table) => table.name === name)
+      expect(config?.indexes).toEqual([])
+    }
+  })
+
   test('revokes EXECUTE on every function from PUBLIC, and grants only the lookups and the expiry rule to closeline_core', () => {
     const revoke = /REVOKE ALL ON FUNCTION ([^;]+) FROM PUBLIC;/.exec(migration)?.[1] ?? ''
     for (const fn of functions) {
