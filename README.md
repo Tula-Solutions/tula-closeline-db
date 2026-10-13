@@ -137,7 +137,10 @@ Organizations and who belongs to them (tickets: hub issue 9). All five tenant ta
 `invitations` has `invitations_state_list_idx` on `(organization_id, state, created_at, id)`, which
 serves the two queries the pending-only list index does not: a page of invitations in any one state,
 newest first (read backwards, no sort), and a capped count of those created since a time across all
-three states, revoked included.
+three states, revoked included. Migration `0003` builds it under a write lock, because migrations
+run in a transaction and cannot use `CONCURRENTLY`: apply it before core takes traffic or while
+`core.invitations` is small. A later index on a large table needs a separate step outside a
+transaction.
 
 Rules held by the database:
 
