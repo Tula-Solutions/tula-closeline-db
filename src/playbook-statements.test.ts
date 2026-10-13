@@ -7,6 +7,7 @@ import {
   CONSUMED_LOOKUP,
   CONSUMED_PURGE,
   CONSUMED_RENEW,
+  claimedJobs,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
   DOCUMENT_GET,
@@ -28,6 +29,7 @@ import {
   INGESTION_JOB_FAIL,
   INGESTION_JOB_GIVE_UP_SPENT,
   INGESTION_JOB_HEARTBEAT,
+  type IngestionJobClaimRow,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
@@ -182,6 +184,40 @@ describe('the rules the statements keep', () => {
     expect(DOCUMENT_GET).toContain(
       "(state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable"
     )
+  })
+
+  test('the claim counts the jobs it lost and documents the lock timeout', () => {
+    expect(INGESTION_JOB_CLAIM).toContain(
+      '((select count(*) from claimed) - (select count(*) from moved))::int as lost'
+    )
+    expect(INGESTION_JOB_CLAIM).toContain('(select count(*) from claimed) > 0')
+  })
+
+  test('claimedJobs drops the signal row and returns the counts', () => {
+    const blank = {
+      document_id: null,
+      epoch: null,
+      step: null,
+      attempts: null,
+      claim_token: null,
+      artifact_key: null,
+      page_count: null,
+      chunk_count: null,
+      chunks_done: null,
+    }
+    const signal: IngestionJobClaimRow = { ...blank, id: null, cancelled: 2, lost: 1 }
+    expect(claimedJobs([signal])).toEqual({ jobs: [], cancelled: 2, lost: 1 })
+    expect(claimedJobs([])).toEqual({ jobs: [], cancelled: 0, lost: 0 })
+    const job: IngestionJobClaimRow = {
+      ...blank,
+      id: 'job_1',
+      document_id: 'doc_1',
+      cancelled: 1,
+      lost: 0,
+    }
+    const result = claimedJobs([job])
+    expect(result.jobs.map((j) => j.id)).toEqual(['job_1'])
+    expect([result.cancelled, result.lost]).toEqual([1, 0])
   })
 
   test('every batch size and page size is clamped in SQL, null included', () => {

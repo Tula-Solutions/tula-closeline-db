@@ -730,8 +730,25 @@ whose document was deleted loses its claim at the next heartbeat, and `DOCUMENT_
 reports `clear` false while any cancelled or running job of the document has an unexpired lease.
 **The claim's rows:** every claimed job is a row and carries `cancelled`, the number of stale jobs
 the call cancelled. When the batch held only stale jobs, one row with a null `id` and `cancelled`
-above zero comes back: that is not an empty queue, so the worker claims again at once while
-`cancelled` is above zero (no rows at all means nothing was due).
+above zero comes back: that is not an empty queue. The row also carries `lost`, the jobs the call
+claimed whose document a concurrent delete took first (they stay `running` until their lease
+lapses). The worker claims again at once when either count is above zero (no rows at all means
+nothing was due). Read the rows with `claimedJobs`:
+
+```ts
+import { INGESTION_JOB_CLAIM, claimedJobs } from 'tula-closeline-db'
+
+for (;;) {
+  const { jobs, cancelled, lost } = claimedJobs((await claim(INGESTION_JOB_CLAIM)).rows)
+  for (const job of jobs) await run(job)
+  if (jobs.length === 0 && cancelled === 0 && lost === 0) break
+}
+```
+
+**Locks.** The claim waits on a document row lock per claimed job while it holds the batch's job
+locks, so the service runs it with a short `lock_timeout` (`set local lock_timeout = '1s'`; a longer
+wait raises `55P03` and rolls the claim back, leaving the jobs unclaimed) and keeps every
+transaction that locks a document short: no queue publish inside one.
 
 **Purge.** `DOCUMENT_PURGE_CLAIM` takes due documents under a lease and sets `purge_started_at`,
 which ends restores for good; the worker removes the file, then `DOCUMENT_PURGE_COMPLETE` removes
@@ -1011,12 +1028,14 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         and d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch
       returning d.id)
     select c.id, c.document_id, c.epoch, c.step, c.attempts, c.claim_token, c.artifact_key, c.page_count,
-      c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled
+      c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled,
+      ((select count(*) from claimed) - (select count(*) from moved))::int as lost
     from claimed c join moved m on m.id = c.document_id
     union all
-    select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int
+    select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int,
+      ((select count(*) from claimed) - (select count(*) from moved))::int
     where not exists (select 1 from claimed c join moved m on m.id = c.document_id)
-      and (select count(*) from stale) > 0
+      and ((select count(*) from stale) > 0 or (select count(*) from claimed) > 0)
     ```
 
     `INGESTION_JOB_HEARTBEAT`:
@@ -1272,3 +1291,6 @@ have due purge work, claimable jobs or consumed messages to purge (every stateme
 Organization's scope, and no function crosses tenants); erasure batches (the internal remove-all
 has only the idempotency key and the soft-delete path so far); and finding purges whose attempts
 are spent (a spent document stays `deleted` and leaves the due index).
+Hub issue 53 (an immediate purge for erasure) takes the document and then its jobs, the reverse of
+the claim's order (job, then document), so that work must respect the order or take its locks with a
+timeout.

@@ -9991,12 +9991,50 @@ declare const DOCUMENT_PURGE_COMPLETE = "delete from playbook.documents\\nwhere 
 * {@link DOCUMENT_CLEANUP_BEGIN} waits out; it is cancelled by the next claim once the lease lapses.)
 *
 * **Rows.** Each claimed job is a row; every row also carries `cancelled`, the number of stale jobs
-* this call cancelled, whose slots count against the batch. When the whole batch was stale (or its
-* documents were taken meanwhile) no job is returned, but one row comes back with a null `id` and
-* `cancelled` above zero: that is not an empty queue. The worker claims again at once while
-* `cancelled` is above zero; no rows at all means nothing was due.
+* this call cancelled (their slots count against the batch), and `lost`, the number of jobs it
+* claimed whose document a concurrent delete took before the claim could touch it (those stay
+* `running` on the deleted document until their lease lapses). When no job is returned but either
+* count is above zero, one signal row comes back with a null `id`: that is not an empty queue. The
+* worker claims again at once when either count is above zero; no rows at all means nothing was
+* due. Read the rows with {@link claimedJobs}.
+*
+* **Locks and timeouts.** The claim waits on a document row lock per claimed job while it holds the
+* batch's job locks, so the service runs it with a short `lock_timeout` (for example `set local
+* lock_timeout = '1s'` in its transaction; a wait that long raises `55P03` and rolls the claim
+* back, leaving the jobs unclaimed for the next sweep) and keeps every transaction that locks a
+* document short: no queue publish and no other network call inside one.
 */
 declare const INGESTION_JOB_CLAIM: string;
+/** One row of {@link INGESTION_JOB_CLAIM}: a claimed job, or (with a null `id`) the signal row. */
+interface IngestionJobClaimRow {
+	id: string | null;
+	document_id: string | null;
+	epoch: number | null;
+	step: string | null;
+	attempts: number | null;
+	claim_token: string | null;
+	artifact_key: string | null;
+	page_count: number | null;
+	chunk_count: number | null;
+	chunks_done: number | null;
+	cancelled: number;
+	lost: number;
+}
+/** A claimed job as {@link claimedJobs} returns it: a claim row whose `id` is known to be set. */
+type ClaimedIngestionJob = IngestionJobClaimRow & {
+	id: string;
+	document_id: string;
+};
+/**
+* Read the rows of {@link INGESTION_JOB_CLAIM}: the claimed jobs (the signal row dropped) and the
+* counts of stale jobs it `cancelled` and of jobs it `lost` to a concurrent delete. The worker
+* claims again at once when `cancelled` or `lost` is above zero, even with no job.
+*/
+declare function claimedJobs(rows: readonly IngestionJobClaimRow[]): {
+	jobs: ClaimedIngestionJob[];
+	cancelled: number;
+	lost: number;
+};
 /**
 * Extend a job's lease while a step runs. `$1` Organization, `$2` job, `$3` the claim token, `$4`
 * the new lease in milliseconds from now. No row means the claim was lost: the lease lapsed and
@@ -10217,4 +10255,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, claimedJobs, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

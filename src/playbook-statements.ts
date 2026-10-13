@@ -388,10 +388,18 @@ returning id, size_bytes`
  * {@link DOCUMENT_CLEANUP_BEGIN} waits out; it is cancelled by the next claim once the lease lapses.)
  *
  * **Rows.** Each claimed job is a row; every row also carries `cancelled`, the number of stale jobs
- * this call cancelled, whose slots count against the batch. When the whole batch was stale (or its
- * documents were taken meanwhile) no job is returned, but one row comes back with a null `id` and
- * `cancelled` above zero: that is not an empty queue. The worker claims again at once while
- * `cancelled` is above zero; no rows at all means nothing was due.
+ * this call cancelled (their slots count against the batch), and `lost`, the number of jobs it
+ * claimed whose document a concurrent delete took before the claim could touch it (those stay
+ * `running` on the deleted document until their lease lapses). When no job is returned but either
+ * count is above zero, one signal row comes back with a null `id`: that is not an empty queue. The
+ * worker claims again at once when either count is above zero; no rows at all means nothing was
+ * due. Read the rows with {@link claimedJobs}.
+ *
+ * **Locks and timeouts.** The claim waits on a document row lock per claimed job while it holds the
+ * batch's job locks, so the service runs it with a short `lock_timeout` (for example `set local
+ * lock_timeout = '1s'` in its transaction; a wait that long raises `55P03` and rolls the claim
+ * back, leaving the jobs unclaimed for the next sweep) and keeps every transaction that locks a
+ * document short: no queue publish and no other network call inside one.
  */
 export const INGESTION_JOB_CLAIM = `with due as (
   select j.id, coalesce(d.state in ('uploaded', 'processing') and d.epoch = j.epoch, false) as live
@@ -425,12 +433,49 @@ moved as (
     and d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch
   returning d.id)
 select c.id, c.document_id, c.epoch, c.step, c.attempts, c.claim_token, c.artifact_key, c.page_count,
-  c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled
+  c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled,
+  ((select count(*) from claimed) - (select count(*) from moved))::int as lost
 from claimed c join moved m on m.id = c.document_id
 union all
-select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int
+select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int,
+  ((select count(*) from claimed) - (select count(*) from moved))::int
 where not exists (select 1 from claimed c join moved m on m.id = c.document_id)
-  and (select count(*) from stale) > 0`
+  and ((select count(*) from stale) > 0 or (select count(*) from claimed) > 0)`
+
+/** One row of {@link INGESTION_JOB_CLAIM}: a claimed job, or (with a null `id`) the signal row. */
+export interface IngestionJobClaimRow {
+  id: string | null
+  document_id: string | null
+  epoch: number | null
+  step: string | null
+  attempts: number | null
+  claim_token: string | null
+  artifact_key: string | null
+  page_count: number | null
+  chunk_count: number | null
+  chunks_done: number | null
+  cancelled: number
+  lost: number
+}
+
+/** A claimed job as {@link claimedJobs} returns it: a claim row whose `id` is known to be set. */
+export type ClaimedIngestionJob = IngestionJobClaimRow & { id: string; document_id: string }
+
+/**
+ * Read the rows of {@link INGESTION_JOB_CLAIM}: the claimed jobs (the signal row dropped) and the
+ * counts of stale jobs it `cancelled` and of jobs it `lost` to a concurrent delete. The worker
+ * claims again at once when `cancelled` or `lost` is above zero, even with no job.
+ */
+export function claimedJobs(rows: readonly IngestionJobClaimRow[]): {
+  jobs: ClaimedIngestionJob[]
+  cancelled: number
+  lost: number
+} {
+  const jobs = rows.filter(
+    (row): row is ClaimedIngestionJob => row.id !== null && row.document_id !== null
+  )
+  return { jobs, cancelled: rows[0]?.cancelled ?? 0, lost: rows[0]?.lost ?? 0 }
+}
 
 /**
  * Extend a job's lease while a step runs. `$1` Organization, `$2` job, `$3` the claim token, `$4`

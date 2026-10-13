@@ -23,6 +23,7 @@ import {
   CONSUMED_PURGE,
   CONSUMED_RELEASE,
   CONSUMED_RENEW,
+  claimedJobs,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
@@ -1080,10 +1081,8 @@ describe('the playbook schema', () => {
         attempts: 1,
       })
       expect(await row(org, doc.id)).toMatchObject({ state: 'processing' })
-      expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
-      expect((await claimJobs(org, 10, 1000, doc.jobId)).rows.filter((r) => r.id !== null)).toEqual(
-        []
-      )
+      expect(claimedJobs((await claimJobs(org)).rows).jobs).toEqual([])
+      expect(claimedJobs((await claimJobs(org, 10, 1000, doc.jobId)).rows).jobs).toEqual([])
     })
 
     test('a claim by job id takes only that job, and a batch is bounded', async () => {
@@ -1208,7 +1207,7 @@ describe('the playbook schema', () => {
       )
       expect((await claimJobs(org, 10)).rows[0]).toMatchObject({ id: healthy.jobId, attempts: 20 })
       await expireLease(org, healthy.jobId)
-      expect((await claimJobs(org, 10)).rows.filter((r) => r.id !== null)).toEqual([])
+      expect(claimedJobs((await claimJobs(org, 10)).rows).jobs).toEqual([])
       // The safety net fails both, with their documents.
       const failed = await inOrg(org, (c) => c.query(INGESTION_JOB_GIVE_UP_SPENT, [org, 10]))
       expect(failed.rows.map((r) => r.document_id).sort()).toEqual([spent.id, healthy.id].sort())
@@ -1568,7 +1567,7 @@ describe('the playbook schema', () => {
       expect(await row(org, docId)).toMatchObject({ state: 'deleted' })
       // The job the delete could not see is still queued until the claim looks at its document.
       expect(await jobRow(org, jobId)).toMatchObject({ state: 'queued' })
-      expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
+      expect(claimedJobs((await claimJobs(org)).rows).jobs).toEqual([])
       expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled', claim_token: null })
       expect(await activeJobs(org, docId)).toBe(0)
     }
@@ -1632,7 +1631,7 @@ describe('the playbook schema', () => {
       expect((await remove(org, doc.id)).rows[0]).toMatchObject({ state: 'deleted', changed: true })
       expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled' })
       expect(await activeJobs(org, doc.id)).toBe(0)
-      expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
+      expect(claimedJobs((await claimJobs(org)).rows).jobs).toEqual([])
       expect((await restore(org, doc.id)).rows[0]).toMatchObject({
         state: 'processing',
         changed: true,
@@ -1768,6 +1767,87 @@ describe('the playbook schema', () => {
       const claim = await claimJobs(org)
       expect(claim.rows).toEqual([expect.objectContaining({ id: null, cancelled: 1 })])
       expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'cancelled' })
+    })
+  })
+
+  describe('a claim that loses its document to a concurrent delete', () => {
+    // Which interleavings make the claim's document update wait? Not a claim against an uncommitted
+    // delete: the delete takes the job row first, so the claim's `for update skip locked` skips that
+    // job and never reaches the document. Not a delete that arrives while the claim holds the job:
+    // the delete then waits on the job row, and the claim's document update finds the row free. The
+    // one that does is the round 2 shape: a requeue commits a job while a delete waits on the
+    // document (the delete's job step saw nothing), the delete then holds the document row
+    // uncommitted without ever having locked the job, and a claim whose snapshot falls between the
+    // two commits locks the job and waits on the document.
+    test('the claim waits on the document, loses it to the delete and returns no job but a lost count', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      const claimed = (await claimJobs(org)).rows[0]
+      await inOrg(org, (c) =>
+        c.query(INGESTION_JOB_FAIL, [org, doc.jobId, claimed.claim_token, 'unreadable'])
+      )
+      const jobId = newJob()
+      const requeueing = await open(org)
+      const deleting = await open(org)
+      const claiming = await open(org)
+      try {
+        expect(
+          (await requeueing.client.query(DOCUMENT_REQUEUE, [org, doc.id, jobId])).rowCount
+        ).toBe(1)
+        const deleted = deleting.client.query(DOCUMENT_SOFT_DELETE, [org, doc.id, newUser(), HOUR])
+        await untilBlocked(deleting.pid)
+        await requeueing.client.query('commit')
+        // The delete now holds the document row, uncommitted, and has cancelled no job.
+        expect((await deleted).rows[0]).toMatchObject({ state: 'deleted', changed: true })
+        const claim = claiming.client.query(INGESTION_JOB_CLAIM, [org, 10, 600_000, null])
+        await untilBlocked(claiming.pid)
+        await deleting.client.query('commit')
+        const result = claimedJobs((await claim).rows)
+        expect(result).toEqual({ jobs: [], cancelled: 0, lost: 1 })
+        await claiming.client.query('commit')
+      } finally {
+        releaseAll(requeueing, deleting, claiming)
+      }
+      expect(await row(org, doc.id)).toMatchObject({ state: 'deleted', epoch: 1 })
+      const job = await jobRow(org, jobId)
+      expect(job).toMatchObject({ state: 'running', epoch: 0 })
+      expect(new Date(job.next_attempt_at).getTime()).toBeGreaterThan(Date.now())
+      expect(
+        (
+          await inOrg(org, (c) =>
+            c.query(INGESTION_JOB_HEARTBEAT, [org, jobId, job.claim_token, 60_000])
+          )
+        ).rowCount
+      ).toBe(0)
+      // The cleanup waits for the lease, and the next claim after it cancels the job.
+      expect(
+        (await inOrg(org, (c) => c.query(DOCUMENT_CLEANUP_BEGIN, [org, doc.id, 1]))).rows[0]
+      ).toMatchObject({ clear: false })
+      await expireLease(org, jobId)
+      expect(claimedJobs((await claimJobs(org)).rows)).toEqual({ jobs: [], cancelled: 1, lost: 0 })
+    })
+
+    test('a claim under a short lock_timeout fails with 55P03 while another connection holds the document, and claims nothing', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      const holder = await open(org)
+      const claiming = await open(org)
+      try {
+        await holder.client.query(`select 1 from playbook.documents where id = $1 for update`, [
+          doc.id,
+        ])
+        await claiming.client.query(`set local lock_timeout = '1s'`)
+        let code: unknown
+        try {
+          await claiming.client.query(INGESTION_JOB_CLAIM, [org, 10, 600_000, null])
+        } catch (error) {
+          code = (error as { code?: string }).code
+        }
+        expect(code).toBe('55P03')
+      } finally {
+        releaseAll(holder, claiming)
+      }
+      expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'queued', attempts: 0 })
     })
   })
 
@@ -2660,7 +2740,7 @@ describe('the playbook schema', () => {
         }
         expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
         expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'cancelled' })
-        expect((await claimJobs(org)).rows.filter((r) => r.id !== null)).toEqual([])
+        expect(claimedJobs((await claimJobs(org)).rows).jobs).toEqual([])
       }
     )
 
@@ -2733,7 +2813,7 @@ describe('the playbook schema', () => {
       } finally {
         releaseAll(requeue, del)
       }
-      expect((await claimJobs(second)).rows.filter((r) => r.id !== null)).toEqual([])
+      expect(claimedJobs((await claimJobs(second)).rows).jobs).toEqual([])
       expect(await activeJobs(second, other.id)).toBe(0)
     })
 

@@ -664,12 +664,18 @@ moved as (
     and d.state in ('uploaded', 'processing') and d.epoch = claimed.epoch
   returning d.id)
 select c.id, c.document_id, c.epoch, c.step, c.attempts, c.claim_token, c.artifact_key, c.page_count,
-  c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled
+  c.chunk_count, c.chunks_done, (select count(*) from stale)::int as cancelled,
+  ((select count(*) from claimed) - (select count(*) from moved))::int as lost
 from claimed c join moved m on m.id = c.document_id
 union all
-select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int
+select null, null, null, null, null, null, null, null, null, null, (select count(*) from stale)::int,
+  ((select count(*) from claimed) - (select count(*) from moved))::int
 where not exists (select 1 from claimed c join moved m on m.id = c.document_id)
-  and (select count(*) from stale) > 0`;
+  and ((select count(*) from stale) > 0 or (select count(*) from claimed) > 0)`;
+function claimedJobs(rows) {
+  const jobs = rows.filter((row) => row.id !== null && row.document_id !== null);
+  return { jobs, cancelled: rows[0]?.cancelled ?? 0, lost: rows[0]?.lost ?? 0 };
+}
 var INGESTION_JOB_HEARTBEAT = `update playbook.ingestion_jobs
 set next_attempt_at = clock_timestamp() + ${LEASE("$4")}, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
@@ -924,6 +930,7 @@ export {
   RATE_HIT,
   TENANT_SCHEMAS,
   assertTenantIsolation,
+  claimedJobs,
   createDb,
   findTenantIsolationGaps,
   invitationForToken,
