@@ -25,7 +25,14 @@ __export(exports_schema, {
   ATTEMPT_COUNTER_MAX_HITS: () => ATTEMPT_COUNTER_MAX_HITS2,
   AUDIT_ACTOR_TYPES: () => AUDIT_ACTOR_TYPES2,
   AUDIT_RETENTION_FLOOR: () => AUDIT_RETENTION_FLOOR2,
+  CONSUMED_MESSAGE_STATES: () => CONSUMED_MESSAGE_STATES2,
   CREDENTIAL_TYPES: () => CREDENTIAL_TYPES2,
+  DOCUMENT_FAILURE_REASONS: () => DOCUMENT_FAILURE_REASONS2,
+  DOCUMENT_FILE_TYPES: () => DOCUMENT_FILE_TYPES2,
+  DOCUMENT_MAX_BYTES: () => DOCUMENT_MAX_BYTES2,
+  DOCUMENT_MAX_PAGE_COUNT: () => DOCUMENT_MAX_PAGE_COUNT2,
+  DOCUMENT_PURGE_MAX_ATTEMPTS: () => DOCUMENT_PURGE_MAX_ATTEMPTS2,
+  DOCUMENT_STATES: () => DOCUMENT_STATES2,
   ENVIRONMENT_KINDS: () => ENVIRONMENT_KINDS2,
   EVENT_RETENTION_FLOOR: () => EVENT_RETENTION_FLOOR2,
   IDEMPOTENCY_HASH_BYTES: () => IDEMPOTENCY_HASH_BYTES2,
@@ -33,6 +40,10 @@ __export(exports_schema, {
   IDEMPOTENCY_RESPONSE_MAX_BYTES: () => IDEMPOTENCY_RESPONSE_MAX_BYTES2,
   IDEMPOTENCY_ROUTE_MAX: () => IDEMPOTENCY_ROUTE_MAX2,
   IDENTITY_PROVIDERS: () => IDENTITY_PROVIDERS2,
+  INGESTION_JOB_MAX_ATTEMPTS: () => INGESTION_JOB_MAX_ATTEMPTS2,
+  INGESTION_JOB_STATES: () => INGESTION_JOB_STATES2,
+  INGESTION_MAX_CHUNKS: () => INGESTION_MAX_CHUNKS2,
+  INGESTION_STEPS: () => INGESTION_STEPS2,
   INVITATION_ROLES: () => INVITATION_ROLES2,
   INVITATION_STATES: () => INVITATION_STATES2,
   MEMBERSHIP_ROLES: () => MEMBERSHIP_ROLES2,
@@ -56,8 +67,10 @@ __export(exports_schema, {
   auditLogs: () => auditLogs2,
   authSchema: () => authSchema2,
   backupCodes: () => backupCodes2,
+  consumedMessage: () => consumedMessage2,
   coreSchema: () => coreSchema2,
   credentials: () => credentials2,
+  documents: () => documents2,
   environmentSettings: () => environmentSettings2,
   environments: () => environments2,
   events: () => events2,
@@ -66,6 +79,8 @@ __export(exports_schema, {
   hooks: () => hooks2,
   idempotencyKeys: () => idempotencyKeys2,
   identities: () => identities2,
+  indexSettings: () => indexSettings2,
+  ingestionJobs: () => ingestionJobs2,
   instanceAuditLogs: () => instanceAuditLogs2,
   invitationDirectory: () => invitationDirectory2,
   invitations: () => invitations2,
@@ -74,6 +89,7 @@ __export(exports_schema, {
   nativeApps: () => nativeApps2,
   oauthProviders: () => oauthProviders2,
   organizationState: () => organizationState2,
+  organizationUsage: () => organizationUsage2,
   organizations: () => organizations2,
   passkeyChallenges: () => passkeyChallenges2,
   passkeys: () => passkeys2,
@@ -1142,4 +1158,191 @@ var idempotencyKeys2 = coreSchema2.table("idempotency_keys", {
 // src/schema/playbook.ts
 import { pgSchema as pgSchema3 } from "drizzle-orm/pg-core";
 var playbookSchema2 = pgSchema3("playbook");
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, exports_schema };
+// src/schema/playbook-tables.ts
+import { sql as sql18 } from "drizzle-orm";
+import {
+  bigint as bigint3,
+  check as check13,
+  customType as customType4,
+  foreignKey as foreignKey5,
+  index as index24,
+  integer as integer13,
+  primaryKey as primaryKey4,
+  text as text33,
+  timestamp as timestamp26,
+  uniqueIndex as uniqueIndex3,
+  uuid as uuid23
+} from "drizzle-orm/pg-core";
+var DOCUMENT_STATES2 = ["uploaded", "processing", "ready", "failed", "deleted"];
+var DOCUMENT_FAILURE_REASONS2 = [
+  "too_many_pages",
+  "unreadable",
+  "password_protected",
+  "no_text",
+  "processing_failed"
+];
+var DOCUMENT_FILE_TYPES2 = ["pdf", "docx", "pptx", "txt", "md"];
+var DOCUMENT_MAX_BYTES2 = 26214400;
+var DOCUMENT_MAX_PAGE_COUNT2 = 1e5;
+var DOCUMENT_PURGE_MAX_ATTEMPTS2 = 20;
+var INGESTION_JOB_STATES2 = [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled"
+];
+var INGESTION_STEPS2 = ["parse", "chunk", "embed", "index"];
+var INGESTION_JOB_MAX_ATTEMPTS2 = 20;
+var INGESTION_MAX_CHUNKS2 = 1e6;
+var CONSUMED_MESSAGE_STATES2 = ["claimed", "done"];
+var bytes4 = customType4({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value)
+});
+var list2 = (values) => sql18.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape2 = (column, prefix) => sql18.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var ts = (name) => timestamp26(name, { withTimezone: true });
+var createdAt2 = () => ts("created_at").notNull().defaultNow();
+var updatedAt2 = () => ts("updated_at").notNull().defaultNow();
+var documents2 = playbookSchema2.table("documents", {
+  id: text33("id").notNull(),
+  organizationId: text33("organization_id").notNull(),
+  name: text33("name").notNull(),
+  state: text33("state", { enum: DOCUMENT_STATES2 }).notNull().default("uploaded"),
+  contentHash: bytes4("content_hash").notNull(),
+  sizeBytes: bigint3("size_bytes", { mode: "number" }).notNull(),
+  declaredType: text33("declared_type").notNull(),
+  detectedType: text33("detected_type", { enum: DOCUMENT_FILE_TYPES2 }).notNull(),
+  uploadedBy: text33("uploaded_by").notNull(),
+  objectKey: text33("object_key").notNull(),
+  failureReason: text33("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
+  epoch: integer13("epoch").notNull().default(0),
+  deletionSeq: integer13("deletion_seq").notNull().default(0),
+  vectorsRemovedSeq: integer13("vectors_removed_seq"),
+  deletedAt: ts("deleted_at"),
+  deletedBy: text33("deleted_by"),
+  purgeDueAt: ts("purge_due_at"),
+  purgeStartedAt: ts("purge_started_at"),
+  purgeLeaseUntil: ts("purge_lease_until"),
+  purgeAttempts: integer13("purge_attempts").notNull().default(0),
+  createdAt: createdAt2(),
+  updatedAt: updatedAt2()
+}, (t) => [
+  primaryKey4({ name: "documents_pkey", columns: [t.organizationId, t.id] }),
+  check13("documents_id_shape", idShape2("id", "doc")),
+  check13("documents_organization_id_shape", idShape2("organization_id", "org")),
+  check13("documents_uploaded_by_shape", idShape2("uploaded_by", "usr")),
+  check13("documents_deleted_by_shape", sql18`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
+  check13("documents_name_shape", sql18`char_length(btrim(${t.name})) between 1 and 255`),
+  check13("documents_state_known", sql18`${t.state} in (${list2(DOCUMENT_STATES2)})`),
+  check13("documents_content_hash_length", sql18`octet_length(${t.contentHash}) = 32`),
+  check13("documents_size_bounds", sql18`${t.sizeBytes} between 1 and ${sql18.raw(String(DOCUMENT_MAX_BYTES2))}`),
+  check13("documents_declared_type_shape", sql18`char_length(${t.declaredType}) between 1 and 255 and ${t.declaredType} collate "C" ~ '^[ -~]+$'`),
+  check13("documents_detected_type_known", sql18`${t.detectedType} in (${list2(DOCUMENT_FILE_TYPES2)})`),
+  check13("documents_object_key_shape", sql18`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`),
+  check13("documents_failure_reason_known", sql18`${t.failureReason} in (${list2(DOCUMENT_FAILURE_REASONS2)})`),
+  check13("documents_failed_has_reason", sql18`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check13("documents_epoch_bounds", sql18`${t.epoch} >= 0 and ${t.deletionSeq} >= 0`),
+  check13("documents_vectors_removed_seq_bounds", sql18`${t.vectorsRemovedSeq} between 0 and ${t.deletionSeq}`),
+  check13("documents_deleted_has_times", sql18`(${t.state} = 'deleted') = (${t.deletedAt} is not null)
+        and (${t.state} = 'deleted') = (${t.purgeDueAt} is not null)`),
+  check13("documents_deleted_by_when_deleted", sql18`${t.state} = 'deleted' or ${t.deletedBy} is null`),
+  check13("documents_deleted_is_counted", sql18`(${t.state} <> 'deleted') or ${t.deletionSeq} >= 1`),
+  check13("documents_purge_due_after_delete", sql18`${t.purgeDueAt} >= ${t.deletedAt}`),
+  check13("documents_purge_only_when_deleted", sql18`(${t.purgeStartedAt} is null or ${t.state} = 'deleted')
+        and (${t.purgeStartedAt} is null) = (${t.purgeLeaseUntil} is null)
+        and (${t.purgeStartedAt} is null) = (${t.purgeAttempts} = 0)`),
+  check13("documents_purge_attempts_bounds", sql18`${t.purgeAttempts} between 0 and ${sql18.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
+  uniqueIndex3("documents_content_hash_key").on(t.organizationId, t.contentHash).where(sql18`${t.purgeStartedAt} is null`),
+  index24("documents_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql18`${t.state} <> 'deleted'`),
+  index24("documents_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql18`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql18.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`)
+]);
+var organizationUsage2 = playbookSchema2.table("organization_usage", {
+  organizationId: text33("organization_id").primaryKey(),
+  documentCount: bigint3("document_count", { mode: "number" }).notNull().default(0),
+  byteCount: bigint3("byte_count", { mode: "number" }).notNull().default(0),
+  updatedAt: updatedAt2()
+}, (t) => [
+  check13("organization_usage_organization_id_shape", idShape2("organization_id", "org")),
+  check13("organization_usage_not_negative", sql18`${t.documentCount} >= 0 and ${t.byteCount} >= 0`)
+]);
+var ingestionJobs2 = playbookSchema2.table("ingestion_jobs", {
+  id: text33("id").notNull(),
+  organizationId: text33("organization_id").notNull(),
+  documentId: text33("document_id").notNull(),
+  epoch: integer13("epoch").notNull(),
+  state: text33("state", { enum: INGESTION_JOB_STATES2 }).notNull().default("queued"),
+  step: text33("step", { enum: INGESTION_STEPS2 }).notNull().default("parse"),
+  attempts: integer13("attempts").notNull().default(0),
+  nextAttemptAt: ts("next_attempt_at").notNull(),
+  claimToken: uuid23("claim_token"),
+  artifactKey: text33("artifact_key"),
+  pageCount: integer13("page_count"),
+  chunkCount: integer13("chunk_count"),
+  chunksDone: integer13("chunks_done").notNull().default(0),
+  failureReason: text33("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
+  finishedAt: ts("finished_at"),
+  createdAt: createdAt2(),
+  updatedAt: updatedAt2()
+}, (t) => [
+  primaryKey4({ name: "ingestion_jobs_pkey", columns: [t.organizationId, t.id] }),
+  foreignKey5({
+    name: "ingestion_jobs_document_fk",
+    columns: [t.organizationId, t.documentId],
+    foreignColumns: [documents2.organizationId, documents2.id]
+  }).onDelete("cascade"),
+  check13("ingestion_jobs_id_shape", idShape2("id", "job")),
+  check13("ingestion_jobs_organization_id_shape", idShape2("organization_id", "org")),
+  check13("ingestion_jobs_epoch_bounds", sql18`${t.epoch} >= 0`),
+  check13("ingestion_jobs_state_known", sql18`${t.state} in (${list2(INGESTION_JOB_STATES2)})`),
+  check13("ingestion_jobs_step_known", sql18`${t.step} in (${list2(INGESTION_STEPS2)})`),
+  check13("ingestion_jobs_attempts_bounds", sql18`${t.attempts} between 0 and ${sql18.raw(String(INGESTION_JOB_MAX_ATTEMPTS2))}`),
+  check13("ingestion_jobs_running_has_token", sql18`(${t.state} = 'running') = (${t.claimToken} is not null)`),
+  check13("ingestion_jobs_artifact_key_shape", sql18`char_length(${t.artifactKey}) between 1 and 1024 and ${t.artifactKey} collate "C" ~ '^[!-~]+$'`),
+  check13("ingestion_jobs_counts_bounds", sql18`${t.pageCount} between 1 and ${sql18.raw(String(DOCUMENT_MAX_PAGE_COUNT2))}
+        and ${t.chunkCount} between 0 and ${sql18.raw(String(INGESTION_MAX_CHUNKS2))}
+        and ${t.chunksDone} >= 0 and ${t.chunksDone} <= coalesce(${t.chunkCount}, 0)`),
+  check13("ingestion_jobs_failure_reason_known", sql18`${t.failureReason} in (${list2(DOCUMENT_FAILURE_REASONS2)})`),
+  check13("ingestion_jobs_failed_has_reason", sql18`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check13("ingestion_jobs_final_has_finish", sql18`(${t.state} in ('succeeded', 'failed', 'cancelled')) = (${t.finishedAt} is not null)`),
+  index24("ingestion_jobs_document_idx").on(t.organizationId, t.documentId),
+  uniqueIndex3("ingestion_jobs_active_document_key").on(t.organizationId, t.documentId).where(sql18`${t.state} in ('queued', 'running')`),
+  index24("ingestion_jobs_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql18`${t.state} in ('queued', 'running')`)
+]);
+var indexSettings2 = playbookSchema2.table("index_settings", {
+  organizationId: text33("organization_id").primaryKey(),
+  embeddingModel: text33("embedding_model").notNull(),
+  embeddingDimension: integer13("embedding_dimension").notNull(),
+  vectorsWrittenAt: ts("vectors_written_at"),
+  createdAt: createdAt2(),
+  updatedAt: updatedAt2()
+}, (t) => [
+  check13("index_settings_organization_id_shape", idShape2("organization_id", "org")),
+  check13("index_settings_model_shape", sql18`char_length(${t.embeddingModel}) between 1 and 200 and ${t.embeddingModel} collate "C" ~ '^[A-Za-z0-9._:/-]+$'`),
+  check13("index_settings_dimension_bounds", sql18`${t.embeddingDimension} between 1 and 16384`)
+]);
+var consumedMessage2 = playbookSchema2.table("consumed_message", {
+  consumer: text33("consumer").notNull(),
+  organizationId: text33("organization_id").notNull(),
+  messageId: text33("message_id").notNull(),
+  state: text33("state", { enum: CONSUMED_MESSAGE_STATES2 }).notNull(),
+  claimToken: uuid23("claim_token").notNull(),
+  leaseExpiresAt: ts("lease_expires_at"),
+  completedAt: ts("completed_at")
+}, (t) => [
+  primaryKey4({
+    name: "consumed_message_pkey",
+    columns: [t.consumer, t.organizationId, t.messageId]
+  }),
+  check13("consumed_message_organization_id_shape", idShape2("organization_id", "org")),
+  check13("consumed_message_consumer_shape", sql18`char_length(${t.consumer}) between 1 and 128 and ${t.consumer} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
+  check13("consumed_message_message_id_shape", sql18`char_length(${t.messageId}) between 1 and 128 and ${t.messageId} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
+  check13("consumed_message_state_known", sql18`${t.state} in (${list2(CONSUMED_MESSAGE_STATES2)})`),
+  check13("consumed_message_state_columns", sql18`(${t.state} = 'claimed' and ${t.leaseExpiresAt} is not null and ${t.completedAt} is null)
+        or (${t.state} = 'done' and ${t.leaseExpiresAt} is null and ${t.completedAt} is not null)`),
+  index24("consumed_message_done_idx").on(t.organizationId, t.completedAt).where(sql18`${t.state} = 'done'`),
+  index24("consumed_message_lease_idx").on(t.organizationId, t.leaseExpiresAt).where(sql18`${t.state} = 'claimed'`)
+]);
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, consumedMessage2, exports_schema };

@@ -179,7 +179,7 @@ declare const AUTH_STATEMENTS: {
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CREDENTIAL_TYPES, Credential, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, coreSchema, credentials, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -8275,6 +8275,1086 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g33<{
 import { PgSchema as PgSchema_mtt0uw3 } from "drizzle-orm/pg-core";
 /** The `playbook` Postgres schema, owned by the playbook service (login role `closeline_playbook`). */
 declare const playbookSchema: PgSchema_mtt0uw3<"playbook">;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g34 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp34 } from "drizzle-orm/pg-core";
+/**
+* The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
+* `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
+* `deleted` is soft-deleted and awaiting purge. A purged document is a removed row, not a state.
+* Mirrors the contract's list.
+*/
+declare const DOCUMENT_STATES: readonly ["uploaded", "processing", "ready", "failed", "deleted"];
+/** Why a document ended in `failed`; the portal shows it. Mirrors the contract's list. */
+declare const DOCUMENT_FAILURE_REASONS: readonly ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+/** The file types phase 1 accepts, as detected from the content (ADR 0016). */
+declare const DOCUMENT_FILE_TYPES: readonly ["pdf", "docx", "pptx", "txt", "md"];
+/** The largest file the table accepts, in bytes: 25 MiB, the upload limit of ADR 0016. */
+declare const DOCUMENT_MAX_BYTES = 26214400;
+/** The most pages a stored page count may hold. The 300-page limit is the job's rule, not the table's. */
+declare const DOCUMENT_MAX_PAGE_COUNT = 1e5;
+/** The most times a purge may claim one document; claims stop there and a person reconciles. */
+declare const DOCUMENT_PURGE_MAX_ATTEMPTS = 20;
+/** The states an ingestion job is in. `queued` and `running` are active; the rest are final. */
+declare const INGESTION_JOB_STATES: readonly ["queued", "running", "succeeded", "failed", "cancelled"];
+/** The steps of an ingestion job, in order; the stored step is the one to run next. */
+declare const INGESTION_STEPS: readonly ["parse", "chunk", "embed", "index"];
+/** The most times a job may be claimed: the table's bound. The service gives up below it. */
+declare const INGESTION_JOB_MAX_ATTEMPTS = 20;
+/** The most chunks one job may record. */
+declare const INGESTION_MAX_CHUNKS = 1e6;
+/** The states a consumed message is in (the kit's `ProcessedStore`). */
+declare const CONSUMED_MESSAGE_STATES: readonly ["claimed", "done"];
+/**
+* A document of an Organization's Playbook: the record of an uploaded file, never its content or
+* its text (the file is in object storage under `object_key`, the chunks in the vector store).
+*
+* Keyed by `(organization_id, id)` so the jobs can hold a composite foreign key. `epoch` is bumped
+* by every soft delete and every restore; vectors are written tagged with the epoch of the job
+* that wrote them, so a cleanup of the deletion at epoch e removes tags up to e and never the
+* vectors of a later restore. `deletion_seq` is bumped by one on every soft delete and is what a
+* queued cleanup carries and the guard compares (`vectors_removed_seq` records the cleanup done).
+* Checks tie every state to its columns: a `failed` document has a reason, a `deleted` one has its
+* deletion and purge-due times, and the purge columns exist only on a deleted document.
+*
+* Content hash: unique per Organization among documents whose purge has not started
+* (`documents_content_hash_key`, partial), so an upload that matches a soft-deleted document finds
+* it, and one that matches a document being purged does not and creates a new one.
+*
+* Lists served (keyset, `LIMIT` a page):
+* - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
+*   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
+*   backwards.
+* - By content hash: `documents_content_hash_key`.
+* - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
+* - Quota counts: `organization_usage`, one row, kept by triggers.
+*/
+declare const documents: PgTableWithColumns_a5zn0g34<{
+	name: "documents";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp34<{
+			name: "id";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		name: PgColumn_ffrhhp34<{
+			name: "name";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp34<{
+			name: "state";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: "deleted" | "failed" | "processing" | "ready" | "uploaded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["uploaded", "processing", "ready", "failed", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		contentHash: PgColumn_ffrhhp34<{
+			name: "content_hash";
+			tableName: "documents";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: Uint8Array<ArrayBufferLike>;
+			driverParam: Uint8Array<ArrayBufferLike>;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		sizeBytes: PgColumn_ffrhhp34<{
+			name: "size_bytes";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		declaredType: PgColumn_ffrhhp34<{
+			name: "declared_type";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		detectedType: PgColumn_ffrhhp34<{
+			name: "detected_type";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: "docx" | "md" | "pdf" | "pptx" | "txt";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["pdf", "docx", "pptx", "txt", "md"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		uploadedBy: PgColumn_ffrhhp34<{
+			name: "uploaded_by";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		objectKey: PgColumn_ffrhhp34<{
+			name: "object_key";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp34<{
+			name: "failure_reason";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: "no_text" | "password_protected" | "processing_failed" | "too_many_pages" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		epoch: PgColumn_ffrhhp34<{
+			name: "epoch";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletionSeq: PgColumn_ffrhhp34<{
+			name: "deletion_seq";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vectorsRemovedSeq: PgColumn_ffrhhp34<{
+			name: "vectors_removed_seq";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedBy: PgColumn_ffrhhp34<{
+			name: "deleted_by";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeDueAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeStartedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeLeaseUntil: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeAttempts: PgColumn_ffrhhp34<{
+			name: "purge_attempts";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An Organization's document and byte counts, soft-deleted documents included, so a quota check
+* reads one row. Written only by the `documents` triggers (SECURITY DEFINER), in the statement's
+* own transaction, so it cannot drift from the table; the service role can only read it. A row
+* stays, at zero, once an Organization has had a document.
+*/
+declare const organizationUsage: PgTableWithColumns_a5zn0g34<{
+	name: "organization_usage";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "organization_usage";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		documentCount: PgColumn_ffrhhp34<{
+			name: "document_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		byteCount: PgColumn_ffrhhp34<{
+			name: "byte_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "organization_usage";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An ingestion job of one document: parse, chunk, embed, index. It is resumable and holds only
+* what resuming needs: the next `step`, `attempts`, counts, and the object key of the parsed
+* intermediate; no text. `next_attempt_at` is the due time while queued and the end of the lease
+* while running, as in auth's abandon cases; `claim_token` fences a worker whose lease lapsed.
+* `attempts` is bounded by the table ({@link INGESTION_JOB_MAX_ATTEMPTS}); a claim never takes a
+* spent job and the give-up statement fails it. One active job per document
+* (`ingestion_jobs_active_document_key`).
+*/
+declare const ingestionJobs: PgTableWithColumns_a5zn0g34<{
+	name: "ingestion_jobs";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp34<{
+			name: "id";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		documentId: PgColumn_ffrhhp34<{
+			name: "document_id";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		epoch: PgColumn_ffrhhp34<{
+			name: "epoch";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp34<{
+			name: "state";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "cancelled" | "failed" | "queued" | "running" | "succeeded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["queued", "running", "succeeded", "failed", "cancelled"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		step: PgColumn_ffrhhp34<{
+			name: "step";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "chunk" | "embed" | "index" | "parse";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["parse", "chunk", "embed", "index"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		attempts: PgColumn_ffrhhp34<{
+			name: "attempts";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		nextAttemptAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		claimToken: PgColumn_ffrhhp34<{
+			name: "claim_token";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgUUID";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		artifactKey: PgColumn_ffrhhp34<{
+			name: "artifact_key";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		pageCount: PgColumn_ffrhhp34<{
+			name: "page_count";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		chunkCount: PgColumn_ffrhhp34<{
+			name: "chunk_count";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		chunksDone: PgColumn_ffrhhp34<{
+			name: "chunks_done";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp34<{
+			name: "failure_reason";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "no_text" | "password_protected" | "processing_failed" | "too_many_pages" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		finishedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An Organization's index settings: the embedding model and output dimension its vectors use
+* (ADR 0010). Once `vectors_written_at` is set a trigger refuses any change of either, and the
+* service role cannot delete the row: changing the model is a deliberate re-index, done by an
+* operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
+*/
+declare const indexSettings: PgTableWithColumns_a5zn0g34<{
+	name: "index_settings";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "index_settings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		embeddingModel: PgColumn_ffrhhp34<{
+			name: "embedding_model";
+			tableName: "index_settings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		embeddingDimension: PgColumn_ffrhhp34<{
+			name: "embedding_dimension";
+			tableName: "index_settings";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vectorsWrittenAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "index_settings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "index_settings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "index_settings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* The messages a playbook queue consumer has handled or is handling: the table behind the kit's
+* `ProcessedStore` (`claim`, `renew`, `complete`, `release`, `purge`), shaped as the kit README
+* sketches it with one difference: `organization_id` is the wire id as text (`org_` and 32 hex
+* digits), not a uuid, because every tenant table here carries the wire id and the one canonical
+* policy compares it as text; the store passes the id through, with no conversion.
+*
+* It is a tenant table. A message for an Organization is recorded under that Organization, in its
+* scope. A global message (no Organization) is recorded under the all-zero id
+* `org_00000000000000000000000000000000`, and the consumer of global messages runs under that
+* scope with the same helper; that id is not any real Organization's.
+*
+* Because of row-level security a purge sees only the scope it runs in: run
+* `CONSUMED_PURGE` once per Organization (and once under the all-zero scope), splitting the limit.
+* Indexes: the key serves `claim`, `renew`, `complete` and `release`; the two partial indexes
+* serve the purge of done records and of lapsed claims.
+*/
+declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
+	name: "consumed_message";
+	schema: "playbook";
+	columns: {
+		consumer: PgColumn_ffrhhp34<{
+			name: "consumer";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		messageId: PgColumn_ffrhhp34<{
+			name: "message_id";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp34<{
+			name: "state";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: "claimed" | "done";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["claimed", "done"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		claimToken: PgColumn_ffrhhp34<{
+			name: "claim_token";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgUUID";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		leaseExpiresAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "consumed_message";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		completedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "consumed_message";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
 /** The Drizzle schema object: every Postgres schema the services own. */
 type Schema = typeof exports_schema;
 /** A Drizzle database over a node-postgres pool. */
@@ -8509,6 +9589,317 @@ declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlis
 * @throws An error naming each offending table or role and why.
 */
 declare function assertTenantIsolation(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<void>;
+/**
+* The least soft-delete retention, in milliseconds, {@link DOCUMENT_SOFT_DELETE} stores: one hour.
+* A smaller, null or negative value passed in is raised to it, so a bug cannot make a mistaken
+* delete unrecoverable. The lead's default is 30 days (ADR 0016); the service passes it.
+*/
+declare const DOCUMENT_MIN_RETENTION_MS = 36e5;
+/** The least lease, in milliseconds, any claim or renewal below stores; a smaller value is raised to it. */
+declare const PLAYBOOK_MIN_LEASE_MS = 1e3;
+/** The longest delay, in milliseconds, {@link INGESTION_JOB_RETRY} will impose; a longer one is cut to it. */
+declare const INGESTION_MAX_RETRY_DELAY_MS = 36e5;
+/** The most documents one {@link DOCUMENT_LIST} page returns, whatever limit is asked for. */
+declare const DOCUMENT_LIST_MAX_PAGE = 100;
+/**
+* The SQL the playbook service runs against its tables, as text, in the style of the auth
+* statements: the integration tests run exactly these strings, the README prints exactly these
+* strings (a unit test fails when they differ), and every time is `clock_timestamp()` evaluated
+* by the database, so the services pass durations, never points in time. The one exception is
+* {@link CONSUMED_PURGE}, whose `before` is the kit's `ProcessedStore.purge` argument.
+*
+* Every statement runs inside `withOrganization` for the Organization in `$1` (or `$2` for the
+* consumed-message ones), and names that Organization in its own `where` as well, so a statement
+* given another Organization's id finds nothing even before row-level security. The strings are
+* plain text, not type-checked against the schema: the integration suite is their only guard.
+*
+* **Lock order is job, then document.** Statements that touch both lock the job row first
+* ({@link DOCUMENT_SOFT_DELETE} forces this with a data dependency), so a delete racing a job
+* statement queues rather than deadlocks. A deadlock (SQLSTATE 40P01) is still possible in
+* theory; callers retry it with a bounded, jittered retry.
+*
+* All statements assume READ COMMITTED, the default: several of them rely on Postgres
+* re-checking the `where` against the newest row version once a lock is granted.
+*/
+/**
+* Take the Organization's upload lock for the transaction: run it first in a transaction that
+* inserts a document, so two uploads of one Organization queue and the quota check in
+* {@link DOCUMENT_INSERT} (a later statement, with its own snapshot) sees the earlier upload's
+* counts. `$1` Organization. Always returns one row; the lock ends with the transaction.
+*/
+declare const QUOTA_LOCK = "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
+/**
+* The Organization's document and byte counts, soft-deleted documents included, from the counter
+* row the `documents` triggers keep: one primary-key read, whatever the Organization's size. No
+* row means no document has ever been added: both are zero. `$1` Organization. node-postgres
+* returns the two bigints as strings.
+*/
+declare const QUOTA_USAGE = "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+/**
+* Add a document and queue its ingestion in one write, after {@link QUOTA_LOCK}. `$1` Organization,
+* `$2` document id, `$3` name, `$4` SHA-256 of the content (32 bytes), `$5` size in bytes, `$6`
+* declared type, `$7` detected type, `$8` uploader, `$9` object key, `$10` job id, `$11` the most
+* documents and `$12` the most bytes the Organization may hold after this one (the quota, from
+* configuration). A row back means the document exists as `uploaded` with a queued job. No row
+* means a quota would be passed, or a document with that content hash whose purge has not
+* started exists (the hash is unique among those): read {@link DOCUMENT_BY_HASH}; a row there is
+* the duplicate (restore it if `deleted`, {@link DOCUMENT_REQUEUE} it if `failed`), none means the quota.
+* A document whose purge has started does not block a new one with the same content.
+*/
+declare const DOCUMENT_INSERT = "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
+/**
+* Find the document an upload duplicates: the one with that content hash in the Organization
+* whose purge has not started, in any state. `$1` Organization, `$2` content hash.
+*/
+declare const DOCUMENT_BY_HASH = "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null";
+/**
+* One page of the Organization's documents that are not deleted, newest first. `$1` Organization,
+* `$2` and `$3` the cursor, the `created_at` and `id` of the last row of the previous page (pass
+* `'infinity'` and `''` for the first page), `$4` the page size, cut to {@link DOCUMENT_LIST_MAX_PAGE}.
+* Served by `documents_list_idx`, read backwards, with no sort. Carry the cursor as the database's
+* own text form of `created_at` (`created_at::text`), not a JavaScript Date, which drops the
+* microseconds and would skip rows created within the same millisecond.
+*/
+declare const DOCUMENT_LIST = "select id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at\\nfrom playbook.documents\\nwhere organization_id = $1 and state <> 'deleted'\\n  and (created_at, id) < ($2::timestamptz, $3::text)\\norder by created_at desc, id desc\\nlimit least(greatest($4::int, 1), 100)";
+/**
+* Soft delete: hide the document at once and set when it may be purged, in one write. `$1`
+* Organization, `$2` document, `$3` who deleted it, `$4` the retention in milliseconds, raised to
+* {@link DOCUMENT_MIN_RETENTION_MS}. The purge-due time is the database clock plus the retention.
+* The same statement cancels the document's queued or running job (a running job's lease end is
+* kept as a fence: {@link DOCUMENT_CLEANUP_BEGIN} waits for it), bumps `epoch` and bumps
+* `deletion_seq` by one; the returned `deletion_seq` is what the vector cleanup job is queued
+* with. `changed` is true when this call deleted it. Deleting an already deleted document is
+* idempotent: it returns the existing `deletion_seq` and `purge_due_at` with `changed` false and
+* writes nothing. No row means no such document, or this call lost a race with another delete
+* (its snapshot predates the other's commit): run it once more. Against {@link DOCUMENT_RESTORE}
+* and {@link DOCUMENT_PURGE_CLAIM} the row lock decides: whichever takes it first wins and the
+* other re-reads the new row; a purge never claims a document that this has not yet deleted.
+*/
+declare const DOCUMENT_SOFT_DELETE = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')\\n  returning id),\\nd as (\\n  update playbook.documents\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, deletion_seq, purge_due_at)\\nselect id, deletion_seq, purge_due_at, true as changed from d\\nunion all\\nselect id, deletion_seq, purge_due_at, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)";
+/**
+* Restore a soft-deleted document and queue its re-ingestion from the kept file, in one write:
+* it becomes `processing` with a new queued job. `$1` Organization, `$2` document, `$3` the new
+* job's id. It succeeds only for a `deleted` document whose purge has not started; it is allowed
+* until the purge claims the document, not only within the retention period. `changed` is true
+* when this call restored it. Restoring a document that is not deleted is idempotent: it returns
+* its current state with `changed` false. No row means the document is gone, its purge has
+* started (a restore after the purge's claim is refused because the file is going or gone), or
+* the call lost a race with another restore (its snapshot predates the other's commit): read the
+* document to tell, which is what the service does.
+*
+* **Against the purge.** {@link DOCUMENT_PURGE_CLAIM} and this statement both lock the row. If the
+* restore takes it first, the claim skips the locked row, and once the restore commits the claim
+* no longer sees a deleted document: the restore wins. If the claim takes it first, this waits,
+* then re-checks `purge_started_at is null` on the claimed row, finds it set and returns no row:
+* the purge wins. The state is never both.
+*/
+declare const DOCUMENT_RESTORE = "with d as (\\n  update playbook.documents\\n  set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,\\n      purge_due_at = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null\\n  returning organization_id, id, epoch, deletion_seq),\\nqueued as (\\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\\n  select $3::text, organization_id, id, epoch, clock_timestamp() from d)\\nselect id, 'processing' as state, epoch, deletion_seq, true as changed from d\\nunion all\\nselect id, state, epoch, deletion_seq, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from d)";
+/**
+* Re-queue a `failed` document when a matching upload arrives: it goes back to `uploaded` with a
+* new queued job. `$1` Organization, `$2` document, `$3` the new job's id. `changed` is true when
+* this call re-queued it; a document already `uploaded`, `processing` or `ready` is returned with
+* `changed` false and nothing written (idempotent by end state). A `deleted` document gives no
+* row: restore it instead.
+*/
+declare const DOCUMENT_REQUEUE = "with d as (\\n  update playbook.documents\\n  set state = 'uploaded', failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'failed'\\n  returning organization_id, id, epoch),\\nqueued as (\\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\\n  select $3::text, organization_id, id, epoch, clock_timestamp() from d)\\nselect id, 'uploaded' as state, true as changed from d\\nunion all\\nselect id, state, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)";
+/**
+* Begin the vector cleanup queued for one deletion. `$1` Organization, `$2` document, `$3` the
+* `deletion_seq` the job was queued with (returned by {@link DOCUMENT_SOFT_DELETE}). A row back
+* means the cleanup still applies: the document is deleted and that deletion is the current one.
+* No row means it does not (the document was restored, deleted again under a later sequence, or
+* purged): do nothing. The row carries `epoch`: remove the vectors tagged with an epoch up to it
+* and no later one, so vectors written by a restore are never touched. `clear` is false while a
+* worker of the cancelled job may still hold its lease: wait and run this again. The check is a
+* read; {@link DOCUMENT_CLEANUP_DONE} is what is guarded again at the end.
+*/
+declare const DOCUMENT_CLEANUP_BEGIN = "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
+/**
+* Record that the cleanup of one deletion finished. `$1` Organization, `$2` document, `$3` the
+* `deletion_seq`. It applies only to that deletion: a row back means it was recorded (repeating it
+* is idempotent); no row means the document was restored or deleted again since, and the cleanup
+* is moot. {@link DOCUMENT_PURGE_COMPLETE} refuses a document until its current deletion's
+* cleanup is recorded here.
+*/
+declare const DOCUMENT_CLEANUP_DONE = "update playbook.documents\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+/**
+* Claim a batch of documents due for purge as a lease, in a short transaction that commits at
+* once; the file and vectors are removed outside any transaction. `$1` Organization, `$2` batch
+* size, `$3` the lease in milliseconds (raised to {@link PLAYBOOK_MIN_LEASE_MS}; it must exceed
+* the worker's time to remove one file). A document is due when it is `deleted`, its purge-due
+* time has passed, no lease is live, and fewer than ${DOCUMENT_PURGE_MAX_ATTEMPTS} claims have
+* been made: a spent document is never claimed (the count would pass the table's bound and abort
+* the statement, wedging the batch) and drops out of the due index; it stays `deleted` and a person
+* reconciles. Claiming sets `purge_started_at` once, which ends restores for good, and counts the
+* attempt. A crash leaves the document due again when the lease ends. The rows carry
+* `vectors_removed_seq` and `deletion_seq`: if they differ, run {@link DOCUMENT_CLEANUP_BEGIN} and
+* {@link DOCUMENT_CLEANUP_DONE} with the `deletion_seq` before completing. Skips rows another
+* transaction holds (`for update skip locked`); against a restore see {@link DOCUMENT_RESTORE}:
+* a claim whose snapshot predates a restore's commit re-checks `state = 'deleted'` on the newest
+* row version once the lock is granted and drops the row.
+*/
+declare const DOCUMENT_PURGE_CLAIM: string;
+/**
+* Finish a purge: remove the document's row (its jobs go with it by cascade, and the counters
+* fall in the same transaction). `$1` Organization, `$2` document. It succeeds only for a
+* `deleted` document whose purge was claimed and whose current deletion's vector cleanup is
+* recorded; a row back means the record is gone. No row means one of those does not hold (run the
+* cleanup statements, then again), or the document is already purged: the file removal before it
+* is idempotent, so a repeat is safe. Run it after the file is removed from storage.
+*/
+declare const DOCUMENT_PURGE_COMPLETE = "delete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\nreturning id, size_bytes";
+/**
+* Claim due ingestion jobs as a lease, in a short transaction that commits at once. `$1`
+* Organization, `$2` batch size, `$3` the lease in milliseconds (raised to
+* {@link PLAYBOOK_MIN_LEASE_MS}; it must exceed the time between heartbeats), `$4` one job id to
+* claim, or null for any. A job is due when it is `queued` (its `next_attempt_at` is the due time)
+* or `running` with a lapsed lease. Each claim counts an attempt, issues a new `claim_token` that
+* every later statement for the job must present (a worker whose lease lapsed holds a stale
+* token and is refused), and moves an `uploaded` document to `processing`. A job that has used
+* all ${INGESTION_JOB_MAX_ATTEMPTS} attempts is never claimed (the count would pass the table's
+* bound and abort the statement, wedging the batch); {@link INGESTION_JOB_GIVE_UP_SPENT}
+* resolves it. The service gives up on its own earlier, at its own limit below the bound, with
+* {@link INGESTION_JOB_FAIL}. A job whose document was deleted is `cancelled` and never claimed.
+*/
+declare const INGESTION_JOB_CLAIM: string;
+/**
+* Extend a job's lease while a step runs. `$1` Organization, `$2` job, `$3` the claim token, `$4`
+* the new lease in milliseconds from now. No row means the claim was lost: the lease lapsed and
+* another worker took the job, or the job was cancelled by a delete or ended. The worker stops
+* and writes nothing more.
+*/
+declare const INGESTION_JOB_HEARTBEAT: string;
+/**
+* Record progress and extend the lease. `$1` Organization, `$2` job, `$3` the claim token, `$4`
+* the next step to run (it may repeat the current one but never go back), `$5` the object key of
+* the parsed intermediate, `$6` the page count, `$7` the chunk count, `$8` chunks done, `$9` the
+* lease in milliseconds. A null `$5` to `$8` leaves that value as it is. The table refuses chunks
+* done above the chunk count. No row means the claim was lost or the step would go backwards.
+*/
+declare const INGESTION_JOB_ADVANCE: string;
+/**
+* Give a failed attempt back for a later one. `$1` Organization, `$2` job, `$3` the claim token,
+* `$4` the delay in milliseconds before it is due again (cut to
+* {@link INGESTION_MAX_RETRY_DELAY_MS}; the service jitters it). The job returns to `queued` and
+* keeps its step and counts, so it resumes. No row means the claim was lost.
+*/
+declare const INGESTION_JOB_RETRY = "update playbook.ingestion_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
+/**
+* Finish a job and make its document `ready`, in one write. `$1` Organization, `$2` job, `$3`
+* the claim token. No row means the claim was lost (including a cancel by a delete): the document
+* is not touched. A job that wins this over a concurrent delete is impossible: the delete
+* cancels the job and takes the job row first.
+*/
+declare const INGESTION_JOB_COMPLETE = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'ready', updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state = 'processing')\\nselect document_id from j";
+/**
+* End a job as failed and make its document `failed` with the reason, in one write. `$1`
+* Organization, `$2` job, `$3` the claim token, `$4` the reason (`too_many_pages`, `unreadable`,
+* `password_protected`, `no_text` or `processing_failed`; the table rejects any other). No row
+* means the claim was lost.
+*/
+declare const INGESTION_JOB_FAIL = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'failed', failure_reason = $4::text, claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state in ('uploaded', 'processing'))\\nselect document_id from j";
+/**
+* Fail spent jobs, one bounded batch: active jobs that have used every attempt and whose lease
+* has ended, so no worker holds them, as `failed` with `processing_failed`, and their documents
+* too. It is the safety net behind the service's own limit (which is lower, so in normal
+* operation this finds nothing); run it once per sweep after the claim, with a small batch.
+* `$1` Organization, `$2` batch size. Skips rows another transaction holds.
+*/
+declare const INGESTION_JOB_GIVE_UP_SPENT = "with batch as (\\n  select id from playbook.ingestion_jobs\\n  where organization_id = $1 and state in ('queued', 'running')\\n    and attempts >= 20 and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked),\\nj as (\\n  update playbook.ingestion_jobs t\\n  set state = 'failed', failure_reason = 'processing_failed', claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  from batch\\n  where t.organization_id = $1 and t.id = batch.id\\n  returning t.document_id, t.epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = 'processing_failed', updated_at = clock_timestamp()\\n  from j\\n  where documents.organization_id = $1 and documents.id = j.document_id and documents.epoch = j.epoch\\n    and documents.state in ('uploaded', 'processing'))\\nselect document_id from j";
+/**
+* Take a message for a consumer (the kit's `ProcessedStore.claim`), in one statement. `$1`
+* consumer, `$2` Organization (the all-zero id for a global message), `$3` message id, `$4` a new
+* claim token (a uuid the store makes), `$5` the lease in milliseconds (raised to
+* {@link PLAYBOOK_MIN_LEASE_MS}). A row back means `claimed` and holds the token. No row means
+* read {@link CONSUMED_LOOKUP}: `done`, or `busy`. A claim whose lease has ended is taken over
+* with the new token; the old holder's `renew` and `complete` then fail. Run it inside
+* `withOrganization` for `$2`.
+*/
+declare const CONSUMED_CLAIM: string;
+/**
+* After a {@link CONSUMED_CLAIM} that returned no row: the record's state and, for a live claim,
+* the whole seconds left on its lease, at least 1. `$1` consumer, `$2` Organization, `$3` message
+* id. No row means the record was purged or released in between: claim again. A `claimed` record
+* with `retry_after_seconds` 1 may have just lapsed; the consumer retries then.
+*/
+declare const CONSUMED_LOOKUP = "select state,\n  greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int as retry_after_seconds\nfrom playbook.consumed_message\nwhere consumer = $1 and organization_id = $2 and message_id = $3";
+/**
+* Extend a claim (the kit's `ProcessedStore.renew`). `$1` consumer, `$2` Organization, `$3`
+* message id, `$4` the token, `$5` the lease in milliseconds from now. A row back means true. No
+* row means the claim was lost: it lapsed (even if no one took it over yet) or was taken or
+* released.
+*/
+declare const CONSUMED_RENEW: string;
+/**
+* Mark a message done (the kit's `ProcessedStore.complete`). `$1` consumer, `$2` Organization,
+* `$3` message id, `$4` the token. A row back means true. No row means the claim was lost (another
+* consumer took it after the lease lapsed): the kit's contract, which does not check the lease
+* here, so a holder that is late but not replaced still completes.
+*/
+declare const CONSUMED_COMPLETE = "update playbook.consumed_message\\nset state = 'done', completed_at = clock_timestamp(), lease_expires_at = null\\nwhere consumer = $1 and organization_id = $2 and message_id = $3\\n  and claim_token = $4::uuid and state = 'claimed'\\nreturning claim_token";
+/**
+* Give up a claim (the kit's `ProcessedStore.release`) so the next delivery can take it. `$1`
+* consumer, `$2` Organization, `$3` message id, `$4` the token. A lost claim removes nothing.
+*/
+declare const CONSUMED_RELEASE = "delete from playbook.consumed_message\\nwhere consumer = $1 and organization_id = $2 and message_id = $3\\n  and claim_token = $4::uuid and state = 'claimed'";
+/**
+* Purge one bounded batch (the kit's `ProcessedStore.purge`), in **one Organization's scope**:
+* row-level security hides every other, so the periodic job runs it once per Organization and once
+* under the all-zero scope, splitting the limit, and repeats while a batch comes back full.
+* Removes `done` records completed before `$2` and `claimed` records whose lease has ended, at
+* most `$3`, skipping rows another transaction holds. `$1` Organization, `$2` the cutoff (older
+* than the queue's retention, 14 days at most; the kit's argument, the one point in time any
+* playbook statement takes from the caller). The row count is the number removed.
+*/
+declare const CONSUMED_PURGE = "with batch as (\\n  select consumer, message_id from playbook.consumed_message\\n  where organization_id = $1\\n    and ((state = 'done' and completed_at < $2::timestamptz)\\n         or (state = 'claimed' and lease_expires_at <= clock_timestamp()))\\n  limit $3\\n  for update skip locked)\\ndelete from playbook.consumed_message c\\nusing batch b\\nwhere c.organization_id = $1 and c.consumer = b.consumer and c.message_id = b.message_id";
+/**
+* Record the Organization's embedding model and dimension (ADR 0010). `$1` Organization, `$2` the
+* model name, `$3` the dimension. A row back means the settings are now those. While no vector
+* exists a different model or dimension replaces the old; once {@link INDEX_VECTORS_MARK} has run
+* a different one gets **no row** and nothing changes (the choice is to refuse, not to flag a
+* re-index; a trigger refuses it for any other statement too). The same values again are
+* idempotent and return the row.
+*/
+declare const INDEX_SETTINGS_UPSERT = "insert into playbook.index_settings as s\n  (organization_id, embedding_model, embedding_dimension)\nvalues ($1, $2, $3::int)\non conflict (organization_id) do update set\n  embedding_model = excluded.embedding_model, embedding_dimension = excluded.embedding_dimension,\n  updated_at = clock_timestamp()\nwhere s.vectors_written_at is null\n   or (s.embedding_model = excluded.embedding_model and s.embedding_dimension = excluded.embedding_dimension)\nreturning embedding_model, embedding_dimension, vectors_written_at";
+/**
+* Fix the Organization's model and dimension before the first vector is written, and read them
+* back. `$1` Organization. A row back holds the model and dimension every vector must use; run it
+* at the start of the index step. No row means no settings are recorded (run
+* {@link INDEX_SETTINGS_UPSERT} first), or this call lost a race with another mark: run it again.
+* A concurrent {@link INDEX_SETTINGS_UPSERT} that wants a different model and a mark exclude each
+* other by the row lock: either the upsert commits first and the mark reads its values, or the
+* mark does and the upsert gets no row.
+*/
+declare const INDEX_VECTORS_MARK = "with m as (\n  update playbook.index_settings\n  set vectors_written_at = clock_timestamp(), updated_at = clock_timestamp()\n  where organization_id = $1 and vectors_written_at is null\n  returning embedding_model, embedding_dimension)\nselect embedding_model, embedding_dimension from m\nunion all\nselect embedding_model, embedding_dimension from playbook.index_settings\nwhere organization_id = $1 and vectors_written_at is not null";
+/** Every statement above by name, for the README check and the integration tests. */
+declare const PLAYBOOK_STATEMENTS: {
+	readonly QUOTA_LOCK: "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
+	readonly QUOTA_USAGE: "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
+	readonly DOCUMENT_BY_HASH: "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null";
+	readonly DOCUMENT_LIST: "select id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at\\nfrom playbook.documents\\nwhere organization_id = $1 and state <> 'deleted'\\n  and (created_at, id) < ($2::timestamptz, $3::text)\\norder by created_at desc, id desc\\nlimit least(greatest($4::int, 1), 100)";
+	readonly DOCUMENT_SOFT_DELETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')\\n  returning id),\\nd as (\\n  update playbook.documents\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, deletion_seq, purge_due_at)\\nselect id, deletion_seq, purge_due_at, true as changed from d\\nunion all\\nselect id, deletion_seq, purge_due_at, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)";
+	readonly DOCUMENT_RESTORE: "with d as (\\n  update playbook.documents\\n  set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,\\n      purge_due_at = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null\\n  returning organization_id, id, epoch, deletion_seq),\\nqueued as (\\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\\n  select $3::text, organization_id, id, epoch, clock_timestamp() from d)\\nselect id, 'processing' as state, epoch, deletion_seq, true as changed from d\\nunion all\\nselect id, state, epoch, deletion_seq, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from d)";
+	readonly DOCUMENT_REQUEUE: "with d as (\\n  update playbook.documents\\n  set state = 'uploaded', failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'failed'\\n  returning organization_id, id, epoch),\\nqueued as (\\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\\n  select $3::text, organization_id, id, epoch, clock_timestamp() from d)\\nselect id, 'uploaded' as state, true as changed from d\\nunion all\\nselect id, state, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)";
+	readonly DOCUMENT_CLEANUP_BEGIN: "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state = 'cancelled' and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
+	readonly DOCUMENT_CLEANUP_DONE: "update playbook.documents\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+	readonly DOCUMENT_PURGE_CLAIM: string;
+	readonly DOCUMENT_PURGE_COMPLETE: "delete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\nreturning id, size_bytes";
+	readonly INGESTION_JOB_CLAIM: string;
+	readonly INGESTION_JOB_HEARTBEAT: string;
+	readonly INGESTION_JOB_ADVANCE: string;
+	readonly INGESTION_JOB_RETRY: "update playbook.ingestion_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
+	readonly INGESTION_JOB_COMPLETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'ready', updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state = 'processing')\\nselect document_id from j";
+	readonly INGESTION_JOB_FAIL: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'failed', failure_reason = $4::text, claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state in ('uploaded', 'processing'))\\nselect document_id from j";
+	readonly INGESTION_JOB_GIVE_UP_SPENT: "with batch as (\\n  select id from playbook.ingestion_jobs\\n  where organization_id = $1 and state in ('queued', 'running')\\n    and attempts >= 20 and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked),\\nj as (\\n  update playbook.ingestion_jobs t\\n  set state = 'failed', failure_reason = 'processing_failed', claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  from batch\\n  where t.organization_id = $1 and t.id = batch.id\\n  returning t.document_id, t.epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = 'processing_failed', updated_at = clock_timestamp()\\n  from j\\n  where documents.organization_id = $1 and documents.id = j.document_id and documents.epoch = j.epoch\\n    and documents.state in ('uploaded', 'processing'))\\nselect document_id from j";
+	readonly CONSUMED_CLAIM: string;
+	readonly CONSUMED_LOOKUP: "select state,\n  greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int as retry_after_seconds\nfrom playbook.consumed_message\nwhere consumer = $1 and organization_id = $2 and message_id = $3";
+	readonly CONSUMED_RENEW: string;
+	readonly CONSUMED_COMPLETE: "update playbook.consumed_message\\nset state = 'done', completed_at = clock_timestamp(), lease_expires_at = null\\nwhere consumer = $1 and organization_id = $2 and message_id = $3\\n  and claim_token = $4::uuid and state = 'claimed'\\nreturning claim_token";
+	readonly CONSUMED_RELEASE: "delete from playbook.consumed_message\\nwhere consumer = $1 and organization_id = $2 and message_id = $3\\n  and claim_token = $4::uuid and state = 'claimed'";
+	readonly CONSUMED_PURGE: "with batch as (\\n  select consumer, message_id from playbook.consumed_message\\n  where organization_id = $1\\n    and ((state = 'done' and completed_at < $2::timestamptz)\\n         or (state = 'claimed' and lease_expires_at <= clock_timestamp()))\\n  limit $3\\n  for update skip locked)\\ndelete from playbook.consumed_message c\\nusing batch b\\nwhere c.organization_id = $1 and c.consumer = b.consumer and c.message_id = b.message_id";
+	readonly INDEX_SETTINGS_UPSERT: "insert into playbook.index_settings as s\n  (organization_id, embedding_model, embedding_dimension)\nvalues ($1, $2, $3::int)\non conflict (organization_id) do update set\n  embedding_model = excluded.embedding_model, embedding_dimension = excluded.embedding_dimension,\n  updated_at = clock_timestamp()\nwhere s.vectors_written_at is null\n   or (s.embedding_model = excluded.embedding_model and s.embedding_dimension = excluded.embedding_dimension)\nreturning embedding_model, embedding_dimension, vectors_written_at";
+	readonly INDEX_VECTORS_MARK: "with m as (\n  update playbook.index_settings\n  set vectors_written_at = clock_timestamp(), updated_at = clock_timestamp()\n  where organization_id = $1 and vectors_written_at is null\n  returning embedding_model, embedding_dimension)\nselect embedding_model, embedding_dimension from m\nunion all\nselect embedding_model, embedding_dimension from playbook.index_settings\nwhere organization_id = $1 and vectors_written_at is not null";
+};
 /** The one database role that owns every schema and table and runs every migration. */
 declare const OWNER_ROLE = "closeline_owner";
 /** The transaction-local Postgres setting every row-level-security policy compares against. */
@@ -8546,4 +9937,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, DEFAULT_POOL_OPTIONS, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
