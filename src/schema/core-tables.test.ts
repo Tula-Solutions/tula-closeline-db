@@ -4,7 +4,14 @@ import { is } from 'drizzle-orm'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
 import { NON_TENANT_TABLES } from '../isolation'
 import { tenantRlsStatements } from '../tenant'
-import { INVITATION_ROLES, MEMBERSHIP_ROLES } from './core-tables'
+import {
+  IDEMPOTENCY_HASH_BYTES,
+  IDEMPOTENCY_KEY_MAX,
+  IDEMPOTENCY_RESPONSE_MAX_BYTES,
+  IDEMPOTENCY_ROUTE_MAX,
+  INVITATION_ROLES,
+  MEMBERSHIP_ROLES,
+} from './core-tables'
 import * as schemas from './index'
 
 const coreTables = Object.values<unknown>(schemas)
@@ -17,11 +24,23 @@ const migration = readFileSync(
   'utf8'
 )
 
-const TENANT = ['invitations', 'memberships', 'organizations', 'team_members', 'teams']
+const idempotencyMigration = readFileSync(
+  new URL('../../migrations/0004_core_idempotency_keys.sql', import.meta.url),
+  'utf8'
+)
+
+const TENANT = [
+  'idempotency_keys',
+  'invitations',
+  'memberships',
+  'organizations',
+  'team_members',
+  'teams',
+]
 const NO_ACCESS = ['invitation_directory', 'membership_directory', 'organization_state']
 
 describe('the core schema', () => {
-  test('has the five tenant tables, the two directories and the status table, and nothing else', () => {
+  test('has the six tenant tables, the two directories and the status table, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual([...NO_ACCESS, ...TENANT].sort())
   })
 
@@ -39,7 +58,7 @@ describe('the core schema', () => {
     'the migration runs the canonical row-level-security statements for %s',
     (name) => {
       for (const statement of tenantRlsStatements('core', name)) {
-        expect(migration).toContain(statement)
+        expect(migration + idempotencyMigration).toContain(statement)
       }
     }
   )
@@ -86,6 +105,75 @@ describe('the core schema', () => {
     expect<string[]>([...INVITATION_ROLES]).toEqual(
       MEMBERSHIP_ROLES.filter((role) => role !== 'owner')
     )
+  })
+})
+
+describe('idempotency keys', () => {
+  const config = coreTables.find((table) => table.name === 'idempotency_keys')
+  const columnNames = (indexName: string) =>
+    config?.indexes
+      .find((i) => i.config.name === indexName)
+      ?.config.columns.map((column) => ('name' in column ? column.name : ''))
+
+  test('the key is (organization_id, user_id, route, key), in that order', () => {
+    expect(config?.primaryKeys.map((pk) => pk.columns.map((column) => column.name))).toEqual([
+      ['organization_id', 'user_id', 'route', 'key'],
+    ])
+    expect(config?.primaryKeys[0]?.getName()).toBe('idempotency_keys_pkey')
+  })
+
+  test('the purge is served by an index on (organization_id, created_at) and no other index exists', () => {
+    expect(columnNames('idempotency_keys_purge_idx')).toEqual(['organization_id', 'created_at'])
+    expect(config?.indexes.map((i) => i.config.name)).toEqual(['idempotency_keys_purge_idx'])
+  })
+
+  test('a request is in flight while status and response are null', () => {
+    const byName = (name: string) => config?.columns.find((column) => column.name === name)
+    expect(byName('status')?.notNull).toBe(false)
+    expect(byName('response')?.notNull).toBe(false)
+    for (const name of [
+      'route',
+      'key',
+      'request_hash',
+      'user_id',
+      'organization_id',
+      'created_at',
+    ]) {
+      expect([name, byName(name)?.notNull]).toEqual([name, true])
+    }
+  })
+
+  test('the bounds the checks use are exported', () => {
+    expect([
+      IDEMPOTENCY_ROUTE_MAX,
+      IDEMPOTENCY_KEY_MAX,
+      IDEMPOTENCY_HASH_BYTES,
+      IDEMPOTENCY_RESPONSE_MAX_BYTES,
+    ]).toEqual([64, 255, 32, 16_384])
+  })
+
+  test('its migration is written for this table alone and never rewrites an earlier one', () => {
+    expect(idempotencyMigration).toContain('CREATE TABLE "core"."idempotency_keys"')
+    expect(idempotencyMigration).not.toContain('SECURITY DEFINER')
+    expect(idempotencyMigration).not.toMatch(/DROP |ALTER TABLE "core"\."(?!idempotency_keys)/)
+  })
+
+  test('its trigger function pins search_path and is revoked from PUBLIC', () => {
+    expect(idempotencyMigration).toContain(
+      'CREATE FUNCTION "core"."refuse_idempotency_rewrite"() RETURNS trigger LANGUAGE plpgsql\nSET search_path = pg_catalog, pg_temp'
+    )
+    expect(idempotencyMigration).toContain(
+      'REVOKE ALL ON FUNCTION "core"."refuse_idempotency_rewrite"() FROM PUBLIC;'
+    )
+  })
+
+  test('it grants nothing: closeline_core has the schema defaults and no other role has any', () => {
+    const statements = idempotencyMigration
+      .split('\n')
+      .filter((line) => !line.startsWith('--'))
+      .join('\n')
+    expect(statements).not.toMatch(/\bGRANT\b/)
+    expect(statements).not.toContain('closeline_')
   })
 })
 

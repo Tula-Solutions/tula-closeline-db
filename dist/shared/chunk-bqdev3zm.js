@@ -23,6 +23,10 @@ __export(exports_schema, {
   CREDENTIAL_TYPES: () => CREDENTIAL_TYPES2,
   ENVIRONMENT_KINDS: () => ENVIRONMENT_KINDS2,
   EVENT_RETENTION_FLOOR: () => EVENT_RETENTION_FLOOR2,
+  IDEMPOTENCY_HASH_BYTES: () => IDEMPOTENCY_HASH_BYTES2,
+  IDEMPOTENCY_KEY_MAX: () => IDEMPOTENCY_KEY_MAX2,
+  IDEMPOTENCY_RESPONSE_MAX_BYTES: () => IDEMPOTENCY_RESPONSE_MAX_BYTES2,
+  IDEMPOTENCY_ROUTE_MAX: () => IDEMPOTENCY_ROUTE_MAX2,
   IDENTITY_PROVIDERS: () => IDENTITY_PROVIDERS2,
   INVITATION_ROLES: () => INVITATION_ROLES2,
   INVITATION_STATES: () => INVITATION_STATES2,
@@ -52,6 +56,7 @@ __export(exports_schema, {
   flowAttempts: () => flowAttempts2,
   hookCallCounts: () => hookCallCounts2,
   hooks: () => hooks2,
+  idempotencyKeys: () => idempotencyKeys2,
   identities: () => identities2,
   instanceAuditLogs: () => instanceAuditLogs2,
   invitationDirectory: () => invitationDirectory2,
@@ -832,10 +837,13 @@ var coreSchema2 = pgSchema2("core");
 import { sql as sql15 } from "drizzle-orm";
 import {
   check as check10,
+  customType as customType2,
   foreignKey as foreignKey3,
   index as index21,
   integer as integer10,
+  jsonb as jsonb10,
   primaryKey as primaryKey2,
+  smallint,
   text as text30,
   timestamp as timestamp23,
   unique as unique21,
@@ -846,6 +854,15 @@ var INVITATION_ROLES2 = ["admin", "manager", "rep"];
 var ORGANIZATION_REGIONS2 = ["us", "eu"];
 var ORGANIZATION_STATUSES2 = ["active", "suspended", "deleted"];
 var INVITATION_STATES2 = ["pending", "accepted", "revoked"];
+var IDEMPOTENCY_ROUTE_MAX2 = 64;
+var IDEMPOTENCY_KEY_MAX2 = 255;
+var IDEMPOTENCY_HASH_BYTES2 = 32;
+var IDEMPOTENCY_RESPONSE_MAX_BYTES2 = 16384;
+var bytes2 = customType2({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value)
+});
 var list = (values) => sql15.raw(values.map((v) => `'${v}'`).join(", "));
 var idShape = (column, prefix) => sql15.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
 var createdAt = () => timestamp23("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -988,7 +1005,33 @@ var organizationState2 = coreSchema2.table("organization_state", {
   check10("organization_state_organization_id_shape", idShape("organization_id", "org")),
   check10("organization_state_status_known", sql15`${t.status} in (${list(ORGANIZATION_STATUSES2)})`)
 ]);
+var idempotencyKeys2 = coreSchema2.table("idempotency_keys", {
+  organizationId: text30("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  userId: text30("user_id").notNull(),
+  route: text30("route").notNull(),
+  key: text30("key").notNull(),
+  requestHash: bytes2("request_hash").notNull(),
+  status: smallint("status"),
+  response: jsonb10("response").$type(),
+  createdAt: createdAt()
+}, (t) => [
+  primaryKey2({
+    name: "idempotency_keys_pkey",
+    columns: [t.organizationId, t.userId, t.route, t.key]
+  }),
+  check10("idempotency_keys_organization_id_shape", idShape("organization_id", "org")),
+  check10("idempotency_keys_user_id_shape", idShape("user_id", "usr")),
+  check10("idempotency_keys_route_shape", sql15`char_length(${t.route}) between 1 and ${sql15.raw(String(IDEMPOTENCY_ROUTE_MAX2))}
+        and ${t.route} collate "C" ~ '^[a-z0-9._]+$'`),
+  check10("idempotency_keys_key_shape", sql15`char_length(${t.key}) between 1 and ${sql15.raw(String(IDEMPOTENCY_KEY_MAX2))}
+        and ${t.key} collate "C" ~ '^[!-~]+$'`),
+  check10("idempotency_keys_request_hash_length", sql15`octet_length(${t.requestHash}) = ${sql15.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
+  check10("idempotency_keys_status_range", sql15`${t.status} between 100 and 599`),
+  check10("idempotency_keys_response_matches_status", sql15`(${t.status} is null) = (${t.response} is null)`),
+  check10("idempotency_keys_response_size", sql15`octet_length(${t.response}::text) <= ${sql15.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
+  index21("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
+]);
 // src/schema/playbook.ts
 import { pgSchema as pgSchema3 } from "drizzle-orm/pg-core";
 var playbookSchema2 = pgSchema3("playbook");
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, API_KEY_KINDS2, apiKeys2, TENANT_SETTING, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, playbookSchema2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, API_KEY_KINDS2, apiKeys2, TENANT_SETTING, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, exports_schema };

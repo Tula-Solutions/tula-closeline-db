@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { adminUrl, assertLocalTestDatabase, integrationEnv, migrateUp } from './integration-support'
 
@@ -147,6 +148,7 @@ describe('deleting a large Organization does a bounded amount of work per member
 interface PlanNode {
   'Node Type': string
   'Index Name'?: string
+  'Index Cond'?: string
   Plans?: PlanNode[]
 }
 
@@ -295,5 +297,195 @@ describe('listing and counting invitations by state reads the state index', () =
     )
     expect(nodes.map((n) => n['Index Name'])).toContain(INDEX)
     expect(nodes.map((n) => n['Node Type'])).not.toContain('Seq Scan')
+  })
+})
+
+/** An `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` root: the plan, with the buffers it touched. */
+interface AnalysedPlan extends PlanNode {
+  'Shared Hit Blocks'?: number
+  'Shared Read Blocks'?: number
+  'Actual Rows'?: number
+  'Index Cond'?: string
+  Relation?: string
+}
+
+describe('looking up and purging idempotency keys read one index each, in a bounded number of buffers', () => {
+  const orgId = newId('org')
+  const KEY_INDEX = 'idempotency_keys_pkey'
+  const PURGE_INDEX = 'idempotency_keys_purge_idx'
+  /** Rows of the Organization under test, and of each of the six others. */
+  const OWN_ROWS = 20_000
+  const OTHER_ROWS = 4_000
+  const BATCH = 500
+  /** Row 7 of the seed: user `n % 4`, route number `1 + n % 3` and key `md5(n)`. */
+  const SEEDED_USER = `usr_${createHash('md5').update('u3').digest('hex')}`
+  const SEEDED_ROUTE = 'invitations.revoke'
+  const SEEDED_KEY = `key-${createHash('md5').update('7').digest('hex')}`
+  /** The purge reads the oldest `BATCH` rows of the Organization: half of its rows are older than this. */
+  const CUTOFF = '2026-01-08 00:00:00+00'
+  let admin: Pool
+  let owner: Pool
+  let core: Pool
+  let planDatabase: string
+
+  beforeAll(async () => {
+    admin = new Pool({ connectionString: adminUrl(), max: 1 })
+    assertLocalTestDatabase(adminUrl())
+    // Its own database, as the suites above: the statistics must be this table's alone.
+    planDatabase = `it_plans_${suffix}_idem`
+    await admin.query(`create database "${planDatabase}" owner closeline_owner`)
+    const url = new URL(env.owner)
+    url.pathname = `/${planDatabase}`
+    await migrateUp(url.toString())
+    owner = new Pool({ connectionString: url.toString(), max: 1 })
+    const coreUrl = new URL(env.core)
+    coreUrl.pathname = `/${planDatabase}`
+    core = new Pool({ connectionString: coreUrl.toString(), max: 1 })
+    // Row-level security binds the owner too, so the rows go in as the service role, scoped to each
+    // Organization in turn: this one and six others.
+    const orgs = [orgId, ...Array.from({ length: 6 }, () => newId('org'))]
+    for (const id of orgs) {
+      const c = await core.connect()
+      try {
+        await c.query('begin')
+        await c.query('select set_config($1, $2, true)', [SETTING, id])
+        await c.query(
+          'insert into core.organizations (organization_id, name, region) values ($1, $1, $2)',
+          [id, 'us']
+        )
+        await c.query(
+          "insert into core.memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')",
+          [newId('mem'), id, newId('usr')]
+        )
+        // Four users, three routes, a distinct key per row. Creation times run one minute apart
+        // from the first of January, so a cutoff splits the rows by age. A tenth are in flight.
+        await c.query(
+          `insert into core.idempotency_keys
+             (organization_id, user_id, route, key, request_hash, status, response, created_at)
+           select $1::text,
+                  'usr_' || md5('u' || n % 4),
+                  (array['invitations.create', 'invitations.revoke', 'teams.create'])[1 + n % 3],
+                  'key-' || md5(n::text),
+                  sha256(convert_to(n::text, 'UTF8')),
+                  case when n % 10 = 0 then null else 201 end,
+                  case when n % 10 = 0 then null else '{"ok":true}'::jsonb end,
+                  timestamptz '2026-01-01 00:00:00+00' + n * interval '1 minute'
+             from generate_series(1, $2::int) n`,
+          [id, id === orgId ? OWN_ROWS : OTHER_ROWS]
+        )
+        await c.query('commit')
+      } catch (error) {
+        await c.query('rollback').catch(() => undefined)
+        throw error
+      } finally {
+        c.release()
+      }
+    }
+    await owner.query('analyze core.idempotency_keys')
+  }, 120_000)
+
+  afterAll(async () => {
+    await Promise.all([core?.end(), owner?.end()])
+    await admin?.query(`drop database if exists "${planDatabase}" with (force)`)
+    await admin?.end()
+  })
+
+  /** The root of the analysed plan, as the service role scoped to the seeded Organization runs `sql`. */
+  async function analyse(sql: string, params: unknown[]): Promise<AnalysedPlan> {
+    const c = await core.connect()
+    try {
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      const result = await c.query<{ 'QUERY PLAN': { Plan: AnalysedPlan }[] }>(
+        `explain (analyze, buffers, format json) ${sql}`,
+        params
+      )
+      const root = result.rows[0]?.['QUERY PLAN'][0]?.Plan
+      if (!root) {
+        throw new Error('no plan returned')
+      }
+      return root
+    } finally {
+      // The purge really deletes, so every run rolls back and the next sees the same table.
+      await c.query('rollback').catch(() => undefined)
+      c.release()
+    }
+  }
+
+  const buffers = (plan: AnalysedPlan): number =>
+    (plan['Shared Hit Blocks'] ?? 0) + (plan['Shared Read Blocks'] ?? 0)
+
+  test('seeds an Organization among others', async () => {
+    const total = await owner.query<{ n: string }>(
+      'select reltuples::bigint::text as n from pg_class where oid = $1::regclass',
+      ['core.idempotency_keys']
+    )
+    expect(Number(total.rows[0]?.n)).toBeGreaterThan(OWN_ROWS + 5 * OTHER_ROWS)
+  })
+
+  test('the lookup of one key uses the primary key and nothing else, in a handful of buffers', async () => {
+    const plan = await analyse(
+      `select request_hash, status, response from core.idempotency_keys
+        where organization_id = $1 and user_id = $2 and route = $3 and key = $4`,
+      [orgId, SEEDED_USER, SEEDED_ROUTE, SEEDED_KEY]
+    )
+    const nodes = planNodes(plan)
+    expect(nodes.map((n) => n['Index Name']).filter(Boolean)).toEqual([KEY_INDEX])
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Seq Scan')
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Bitmap Heap Scan')
+    expect(plan['Actual Rows']).toBe(1)
+    expect(buffers(plan)).toBeLessThanOrEqual(8)
+  })
+
+  test('the purge of one batch uses the purge index and nothing else, in a bounded number of buffers', async () => {
+    const plan = await analyse(
+      `delete from core.idempotency_keys
+        where ctid = any(array(
+          select ctid from core.idempotency_keys
+           where organization_id = $1 and created_at < $2::timestamptz
+           order by created_at
+           limit ${BATCH}))`,
+      [orgId, CUTOFF]
+    )
+    const nodes = planNodes(plan)
+    expect(nodes.map((n) => n['Index Name']).filter(Boolean)).toEqual([PURGE_INDEX])
+    // The index is read by its leading column: the Organization comes first in the condition, so
+    // only that Organization's range is walked, oldest first. The same two columns the other way
+    // round would be read across every Organization's expired rows.
+    const condition = nodes.find((n) => n['Index Name'] === PURGE_INDEX)?.['Index Cond'] ?? ''
+    expect(condition).toMatch(/^\(\(?[\w.]*organization_id = /)
+    expect(condition.indexOf('organization_id')).toBeLessThan(condition.indexOf('created_at'))
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Seq Scan')
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Sort')
+    expect(nodes.map((n) => n['Node Type'])).not.toContain('Incremental Sort')
+    // A batch touches its own rows, their pages and the entries of the indexes it maintains. It is
+    // about two buffers per row, and does not grow with the 20,000 rows of the Organization or the
+    // 44,000 of the table (a scan of the table alone would read a thousand pages or more).
+    expect(buffers(plan)).toBeLessThanOrEqual(BATCH * 3)
+  })
+
+  test('the purge statement removes one batch of the oldest rows of this Organization only', async () => {
+    const c = await core.connect()
+    try {
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      const removed = await c.query(
+        `delete from core.idempotency_keys
+          where ctid = any(array(
+            select ctid from core.idempotency_keys
+             where organization_id = $1 and created_at < $2::timestamptz
+             order by created_at
+             limit ${BATCH}))`,
+        [orgId, CUTOFF]
+      )
+      expect(removed.rowCount).toBe(BATCH)
+      const left = await c.query<{ n: string }>(
+        'select count(*)::text as n from core.idempotency_keys'
+      )
+      expect(Number(left.rows[0]?.n)).toBe(OWN_ROWS - BATCH)
+    } finally {
+      await c.query('rollback').catch(() => undefined)
+      c.release()
+    }
   })
 })
