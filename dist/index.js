@@ -1,7 +1,7 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-efa37bc9.js";
+} from "./shared/chunk-fde3054r.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -171,6 +171,7 @@ var ALLOWED_PREDEFINED_ROLES = [
   "pg_stat_scan_tables"
 ];
 var ENVIRONMENT_SCOPED_TABLES = [
+  "auth.abandon_cases",
   "auth.audit_logs",
   "auth.backup_codes",
   "auth.credentials",

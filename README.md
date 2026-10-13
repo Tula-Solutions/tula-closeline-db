@@ -95,7 +95,7 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
 - Auth users are global within a Region, so no auth table has `organization_id` and none is under
   the Organization policy. Organizations, Teams and roles live in core.
 - The check verifies every auth table, in one of two exported categories. `ENVIRONMENT_SCOPED_TABLES`
-  (25) must have row-level security enabled and forced, no `organization_id`, and exactly one
+  (26) must have row-level security enabled and forced, no `organization_id`, and exactly one
   permissive policy: for all commands, with `ENVIRONMENT_POLICY_EXPRESSION` as both its USING and
   WITH CHECK, reading the setting `tula.environment_id` (`ENVIRONMENT_SETTING`). Restrictive
   policies (retention floors) may be added to it. `CONTROL_PLANE_TABLES` (5: `api_keys`,
@@ -113,6 +113,33 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
   `tenantConstraints` policy plus `FORCE ROW LEVEL SECURITY` by hand) or to
   `CONTROL_PLANE_TABLE_REASONS` (with a reason) in `src/isolation.ts`, and add its grant to
   `TABLE_GRANTS` in `src/auth.integration.ts`. Without a category the isolation check, and CI, fail.
+- **Tables added since `0001`** (not tula-auth's; they keep auth's conventions):
+  - `auth.abandon_cases` (migration `0006`, hub issue 36, ADR 0011): an Organization core made
+    during a sign-up whose account was never written, kept so a sweep can ask core to abandon it
+    and the case is not lost when a process stops. **Ids only, no personal data**: the Organization
+    (`core_organization_id`, a uuid the service formats as `org_<32 hex>`; not named
+    `organization_id` because no auth table may carry that column), the user id the attempt fixed
+    and the flow attempt id (no foreign keys to either: neither has an account or outlives its
+    purge). It is environment-scoped like `flow_attempts` (written at the same point of a sign-up,
+    when the environment is known), so it is in `ENVIRONMENT_SCOPED_TABLES` and needs no allowlist
+    entry. One row per Organization per environment, so `insert ... on conflict
+    (environment_id, core_organization_id) do nothing` records a case once. `attempts` is 0 to 100,
+    `outcome` is `done`, `refused` or `gave_up` and is set exactly when `resolved_at` is. The
+    sweep takes a batch with `for update skip locked` (index `abandon_cases_due_idx`, partial on
+    open cases):
+
+    ```sql
+    select id, core_organization_id, user_id, attempt_id, attempts from auth.abandon_cases
+     where environment_id = $1 and resolved_at is null and next_attempt_at <= $2
+     order by next_attempt_at limit $3 for update skip locked
+    ```
+
+    then, per case, one `update ... set attempts = attempts + 1, next_attempt_at = $4,
+    updated_at = $2` or, when the case ends, `set resolved_at = $2, outcome = $5, attempts = ...`.
+    Purge resolved rows in bounded batches (index `abandon_cases_purge_idx`); the service role
+    cannot delete an open case (`abandon_cases_resolved_only`), and may update only `attempts`,
+    `next_attempt_at`, `resolved_at`, `outcome` and `updated_at`. The sweep runs once per
+    environment inside `withEnvironment`.
 - One fixed project per Region is data, not schema: nothing in the tables limits a Region to one
   project. The auth service must bootstrap one workspace and one project, with a development and a
   production environment, and refuse to create more.

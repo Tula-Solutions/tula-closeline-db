@@ -32,6 +32,7 @@ export const ALLOWED_PREDEFINED_ROLES: readonly string[] = [
  * permissive one. {@link findTenantIsolationGaps} verifies every one against the live catalog.
  */
 export const ENVIRONMENT_SCOPED_TABLES: readonly string[] = [
+  'auth.abandon_cases',
   'auth.audit_logs',
   'auth.backup_codes',
   'auth.credentials',

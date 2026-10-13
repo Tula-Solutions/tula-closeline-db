@@ -17,6 +17,7 @@ const env = integrationEnv()
 
 /** What `closeline_auth` may do to each table: tula-auth's runtime grants, at its latest migration. */
 const TABLE_GRANTS: Record<string, string> = {
+  abandon_cases: 'DELETE,INSERT,SELECT',
   api_keys: 'INSERT,SELECT,UPDATE',
   audit_logs: 'DELETE,INSERT,SELECT',
   backup_codes: 'DELETE,INSERT,SELECT,UPDATE',
@@ -51,6 +52,7 @@ const TABLE_GRANTS: Record<string, string> = {
 
 /** The columns `closeline_auth` may UPDATE on a table where it holds no table-wide UPDATE. */
 const COLUMN_GRANTS: Record<string, string> = {
+  abandon_cases: 'attempts,next_attempt_at,outcome,resolved_at,updated_at',
   events: 'delivered_at',
   hook_call_counts: 'calls,last_at,updated_at',
   hooks: 'deadline_ms,enabled,failure_mode,last_failed_at,last_failure_reason,updated_at,url',
@@ -535,6 +537,13 @@ describe('the auth schema, against Postgres', () => {
         columns: 'day, prefix, sent',
         values: `(now() at time zone 'utc')::date - 30, '+9', 1`,
         update: 'sent = 5',
+      },
+      {
+        // Deleted rows must be resolved, so the case is written resolved to reach the delete check.
+        table: 'abandon_cases',
+        columns: 'core_organization_id, user_id, attempt_id, resolved_at, outcome',
+        values: `gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), now(), 'done'`,
+        update: 'attempts = 5',
       },
     ]
 

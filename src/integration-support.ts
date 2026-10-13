@@ -1,4 +1,5 @@
-import type { Pool } from 'pg'
+import type { Pool, PoolClient } from 'pg'
+import { ENVIRONMENT_SETTING } from './environment'
 import { runMigrations } from './migrate'
 
 /** The connection strings the integration tests need; see `.env.example`. */
@@ -191,5 +192,79 @@ export async function resetTestRoles(admin: Pool, adminConnectionUrl: string): P
   )
   for (const { name } of leftover.rows) {
     await admin.query(`drop role if exists "${name}"`)
+  }
+}
+
+/** Two environments of one project, seeded for an `auth` integration test. */
+export interface AuthRegion {
+  workspaceId: string
+  projectId: string
+  a: { environmentId: string; projectId: string }
+  b: { environmentId: string; projectId: string }
+}
+
+/**
+ * Seed a workspace, a project and two environments through the auth role, as the service's
+ * bootstrap does. The owner removes them by deleting the workspace; the rest goes by cascade.
+ *
+ * @param authPool - A pool connected as `closeline_auth`.
+ * @returns The ids.
+ */
+export async function seedAuthRegion(authPool: Pool): Promise<AuthRegion> {
+  const ids = {
+    workspaceId: crypto.randomUUID(),
+    projectId: crypto.randomUUID(),
+    a: crypto.randomUUID(),
+    b: crypto.randomUUID(),
+  }
+  await authPool.query('insert into auth.workspaces (id, name) values ($1, $2)', [
+    ids.workspaceId,
+    `it-${Date.now()}`,
+  ])
+  await authPool.query('insert into auth.projects (id, workspace_id, name) values ($1, $2, $3)', [
+    ids.projectId,
+    ids.workspaceId,
+    'it-project',
+  ])
+  await authPool.query(
+    `insert into auth.environments (id, project_id, kind) values ($1, $3, 'development'), ($2, $3, 'production')`,
+    [ids.a, ids.b, ids.projectId]
+  )
+  return {
+    workspaceId: ids.workspaceId,
+    projectId: ids.projectId,
+    a: { environmentId: ids.a, projectId: ids.projectId },
+    b: { environmentId: ids.b, projectId: ids.projectId },
+  }
+}
+
+/**
+ * Run `fn` on one connection of `pool` in a transaction scoped to an auth environment (or to none
+ * when `environmentId` is null), committing on success and rolling back on a throw.
+ *
+ * @param pool - A pool connected as any `auth` role.
+ * @param environmentId - The environment to set, or null to set none.
+ * @param fn - Work to run on the connection.
+ * @returns What `fn` returns.
+ */
+export async function inAuthEnvironment<T>(
+  pool: Pool,
+  environmentId: string | null,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect()
+  try {
+    await client.query('begin')
+    if (environmentId) {
+      await client.query('select set_config($1, $2, true)', [ENVIRONMENT_SETTING, environmentId])
+    }
+    const result = await fn(client)
+    await client.query('commit')
+    return result
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    throw error
+  } finally {
+    client.release()
   }
 }

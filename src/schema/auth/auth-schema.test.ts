@@ -16,6 +16,7 @@ describe('the auth schema', () => {
   test('has exactly the tables tula-auth has, in the auth Postgres schema', () => {
     expect(names).toEqual(
       [
+        'abandon_cases',
         'api_keys',
         'audit_logs',
         'backup_codes',
