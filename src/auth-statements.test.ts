@@ -85,7 +85,7 @@ describe('the rules the statements keep', () => {
 
   test('settling is decided by the row, only while the case is open and unclaimed', () => {
     expect(ABANDON_SETTLE).toContain('resolved_at is null and attempts = 0')
-    expect(ABANDON_SETTLE).toContain("outcome = 'refused'")
+    expect(ABANDON_SETTLE).toContain("outcome = 'not_needed'")
     expect(ABANDON_SETTLE).not.toMatch(/now\(\)|\$3/)
   })
 })

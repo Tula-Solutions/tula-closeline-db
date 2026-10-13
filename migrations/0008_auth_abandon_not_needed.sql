@@ -1,0 +1,2 @@
+ALTER TABLE "auth"."abandon_cases" DROP CONSTRAINT "abandon_cases_outcome_known";--> statement-breakpoint
+ALTER TABLE "auth"."abandon_cases" ADD CONSTRAINT "abandon_cases_outcome_known" CHECK ("auth"."abandon_cases"."outcome" in ('done', 'not_needed', 'refused', 'gave_up'));

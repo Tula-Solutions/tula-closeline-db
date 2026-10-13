@@ -179,7 +179,8 @@ returning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts`
 
 /**
  * Record the outcome in a second short transaction. `$1` case id, `$2` environment, `$3` the
- * outcome (`done`, `refused` or `gave_up`). No row back means the case was already resolved.
+ * outcome (`done`, `not_needed`, `refused` or `gave_up`; the table's check rejects any other).
+ * No row back means the case was already resolved.
  * This is also what sets `gave_up` when the service reaches its own attempt limit. No row back
  * means the case is already resolved, for example `gave_up` by {@link ABANDON_GIVE_UP_SPENT}
  * while a worker slower than its lease was still calling core: the worker treats that as "already
@@ -218,14 +219,15 @@ returning id`
  * {@link ABANDON_LEARN} changes only `core_organization_id` and the lease update only
  * `next_attempt_at`, so neither disturbs `attempts = 0`.
  *
- * The case is closed as `refused`, the outcome that leaves the Organization in place; `done`
- * would mean core removed it. A distinct value such as `settled` needs a migration for the
- * `abandon_cases_outcome_known` check. It runs on the existing column grants (select, and update
- * of `resolved_at`, `outcome` and `updated_at`) under forced row-level security. Run it inside
+ * The case is closed as `not_needed`: no abandon was needed and none was made. The other
+ * outcomes mean `done` (core removed the Organization), `refused` (core refused, a person
+ * reconciles) and `gave_up` (attempts spent, a person reconciles), so a settled case never sends
+ * anyone to look at a healthy Organization. It runs on the existing column grants (select, and
+ * update of `resolved_at`, `outcome` and `updated_at`) under forced row-level security. Run it inside
  * `withEnvironment`, in the same transaction as the account.
  */
 export const ABANDON_SETTLE = `update auth.abandon_cases
-set resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()
+set resolved_at = clock_timestamp(), outcome = 'not_needed', updated_at = clock_timestamp()
 where id = $1 and environment_id = $2 and resolved_at is null and attempts = 0
 returning id`
 

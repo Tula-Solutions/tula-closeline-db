@@ -2,7 +2,7 @@ import {
   TENANT_SETTING,
   ABANDON_CASE_MAX_ATTEMPTS2,
   exports_schema
-} from "./shared/chunk-xsn6xs9b.js";
+} from "./shared/chunk-8car2tr3.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -78,7 +78,7 @@ set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp(
 where id = $1 and environment_id = $2 and resolved_at is null
 returning id`;
 var ABANDON_SETTLE = `update auth.abandon_cases
-set resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()
+set resolved_at = clock_timestamp(), outcome = 'not_needed', updated_at = clock_timestamp()
 where id = $1 and environment_id = $2 and resolved_at is null and attempts = 0
 returning id`;
 var ABANDON_GIVE_UP_SPENT = `with batch as (

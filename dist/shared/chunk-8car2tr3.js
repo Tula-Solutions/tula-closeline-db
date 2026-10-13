@@ -201,7 +201,7 @@ function tenantParentKey(table, t) {
 
 // src/schema/auth/abandon-cases.ts
 var ABANDON_CASE_MAX_ATTEMPTS2 = 100;
-var ABANDON_CASE_OUTCOMES2 = ["done", "refused", "gave_up"];
+var ABANDON_CASE_OUTCOMES2 = ["done", "not_needed", "refused", "gave_up"];
 var abandonCases2 = authSchema2.table("abandon_cases", {
   id: primaryKey(),
   ...tenantColumns(),
@@ -219,7 +219,7 @@ var abandonCases2 = authSchema2.table("abandon_cases", {
   unique3("abandon_cases_environment_attempt_key").on(t.environmentId, t.attemptId),
   check("abandon_cases_due_after_expiry", sql2`${t.nextAttemptAt} >= ${t.attemptExpiresAt}`),
   check("abandon_cases_attempts_bounds", sql2`${t.attempts} between 0 and ${sql2.raw(String(ABANDON_CASE_MAX_ATTEMPTS2))}`),
-  check("abandon_cases_outcome_known", sql2`${t.outcome} in ('done', 'refused', 'gave_up')`),
+  check("abandon_cases_outcome_known", sql2`${t.outcome} in ('done', 'not_needed', 'refused', 'gave_up')`),
   check("abandon_cases_resolution_whole", sql2`(${t.resolvedAt} is null) = (${t.outcome} is null)`),
   index4("abandon_cases_due_idx").on(t.environmentId, t.nextAttemptAt).where(sql2`${t.resolvedAt} is null`),
   index4("abandon_cases_purge_idx").on(t.environmentId, t.resolvedAt).where(sql2`${t.resolvedAt} is not null`),

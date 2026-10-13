@@ -80,7 +80,8 @@ declare const ABANDON_RECORD = "insert into auth.abandon_cases\n  (id, project_i
 declare const ABANDON_CLAIM = "with due as (\n  select id from auth.abandon_cases\n  where environment_id = $1 and resolved_at is null and attempts < 100\n    and next_attempt_at <= clock_timestamp()\n  order by next_attempt_at\n  limit $2\n  for update skip locked)\nupdate auth.abandon_cases c\nset attempts = c.attempts + 1,\n    next_attempt_at = clock_timestamp() + make_interval(secs => $3::float8 / 1000),\n    updated_at = clock_timestamp()\nfrom due\nwhere c.id = due.id\nreturning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts";
 /**
 * Record the outcome in a second short transaction. `$1` case id, `$2` environment, `$3` the
-* outcome (`done`, `refused` or `gave_up`). No row back means the case was already resolved.
+* outcome (`done`, `not_needed`, `refused` or `gave_up`; the table's check rejects any other).
+* No row back means the case was already resolved.
 * This is also what sets `gave_up` when the service reaches its own attempt limit. No row back
 * means the case is already resolved, for example `gave_up` by {@link ABANDON_GIVE_UP_SPENT}
 * while a worker slower than its lease was still calling core: the worker treats that as "already
@@ -115,13 +116,14 @@ declare const ABANDON_RESOLVE = "update auth.abandon_cases\nset resolved_at = cl
 * {@link ABANDON_LEARN} changes only `core_organization_id` and the lease update only
 * `next_attempt_at`, so neither disturbs `attempts = 0`.
 *
-* The case is closed as `refused`, the outcome that leaves the Organization in place; `done`
-* would mean core removed it. A distinct value such as `settled` needs a migration for the
-* `abandon_cases_outcome_known` check. It runs on the existing column grants (select, and update
-* of `resolved_at`, `outcome` and `updated_at`) under forced row-level security. Run it inside
+* The case is closed as `not_needed`: no abandon was needed and none was made. The other
+* outcomes mean `done` (core removed the Organization), `refused` (core refused, a person
+* reconciles) and `gave_up` (attempts spent, a person reconciles), so a settled case never sends
+* anyone to look at a healthy Organization. It runs on the existing column grants (select, and
+* update of `resolved_at`, `outcome` and `updated_at`) under forced row-level security. Run it inside
 * `withEnvironment`, in the same transaction as the account.
 */
-declare const ABANDON_SETTLE = "update auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()\\nwhere id = $1 and environment_id = $2 and resolved_at is null and attempts = 0\\nreturning id";
+declare const ABANDON_SETTLE = "update auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'not_needed', updated_at = clock_timestamp()\\nwhere id = $1 and environment_id = $2 and resolved_at is null and attempts = 0\\nreturning id";
 /**
 * Resolve spent cases as `gave_up`, one bounded batch: open cases that have used every attempt
 * and whose lease has ended, so no worker holds them. It is the safety net behind the service's
@@ -160,7 +162,7 @@ declare const AUTH_STATEMENTS: {
 	readonly ABANDON_RECORD: "insert into auth.abandon_cases\n  (id, project_id, environment_id, core_organization_id, user_id, attempt_id,\n   attempt_expires_at, next_attempt_at)\nvalues ($1, $2, $3, $4, $5, $6, $7::timestamptz,\n        $7::timestamptz + make_interval(secs => greatest($8::int, 10000)::float8 / 1000))\non conflict do nothing\nreturning id";
 	readonly ABANDON_CLAIM: "with due as (\n  select id from auth.abandon_cases\n  where environment_id = $1 and resolved_at is null and attempts < 100\n    and next_attempt_at <= clock_timestamp()\n  order by next_attempt_at\n  limit $2\n  for update skip locked)\nupdate auth.abandon_cases c\nset attempts = c.attempts + 1,\n    next_attempt_at = clock_timestamp() + make_interval(secs => $3::float8 / 1000),\n    updated_at = clock_timestamp()\nfrom due\nwhere c.id = due.id\nreturning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts";
 	readonly ABANDON_RESOLVE: "update auth.abandon_cases\nset resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()\nwhere id = $1 and environment_id = $2 and resolved_at is null\nreturning id";
-	readonly ABANDON_SETTLE: "update auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'refused', updated_at = clock_timestamp()\\nwhere id = $1 and environment_id = $2 and resolved_at is null and attempts = 0\\nreturning id";
+	readonly ABANDON_SETTLE: "update auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'not_needed', updated_at = clock_timestamp()\\nwhere id = $1 and environment_id = $2 and resolved_at is null and attempts = 0\\nreturning id";
 	readonly ABANDON_PURGE_BATCH: "with batch as (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is not null\\n    and resolved_at < clock_timestamp() - interval '1 day'\\n  order by resolved_at\\n  limit $2\\n  for update skip locked)\\ndelete from auth.abandon_cases\\nwhere id in (select id from batch)";
 	readonly ABANDON_GIVE_UP_SPENT: "with batch as (\\n  select id from auth.abandon_cases\\n  where environment_id = $1 and resolved_at is null and attempts >= 100\\n    and next_attempt_at <= clock_timestamp()\\n  order by next_attempt_at\\n  limit $2\\n  for update skip locked)\\nupdate auth.abandon_cases\\nset resolved_at = clock_timestamp(), outcome = 'gave_up', updated_at = clock_timestamp()\\nwhere id in (select id from batch)\\nreturning id";
 	readonly ABANDON_LEARN: "update auth.abandon_cases\nset core_organization_id = $3, updated_at = clock_timestamp()\nwhere id = $1 and environment_id = $2 and core_organization_id is null and resolved_at is null\nreturning id";
@@ -177,8 +179,12 @@ import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
 * stops a bug from counting forever.
 */
 declare const ABANDON_CASE_MAX_ATTEMPTS = 100;
-/** How an abandon case ended: core removed the Organization, core refused, or the sweep gave up. */
-declare const ABANDON_CASE_OUTCOMES: readonly ["done", "refused", "gave_up"];
+/**
+* How an abandon case ended: `done` (core removed the Organization), `not_needed` (no abandon was
+* needed and none was made: an account exists or core holds no Organization for the attempt),
+* `refused` (core refused, a person reconciles) or `gave_up` (attempts spent, a person reconciles).
+*/
+declare const ABANDON_CASE_OUTCOMES: readonly ["done", "not_needed", "refused", "gave_up"];
 /**
 * An Organization that core made during a sign-up whose account was then never written, kept so a
 * sweep can ask core to abandon it (ADR 0011, hub issue 36) and the case is not lost when a
@@ -419,14 +425,14 @@ declare const abandonCases: PgTableWithColumns_a5zn0g<{
 			tableName: "abandon_cases";
 			dataType: "string";
 			columnType: "PgText";
-			data: "done" | "gave_up" | "refused";
+			data: "done" | "gave_up" | "not_needed" | "refused";
 			driverParam: string;
 			notNull: false;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["done", "refused", "gave_up"];
+			enumValues: ["done", "not_needed", "refused", "gave_up"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
