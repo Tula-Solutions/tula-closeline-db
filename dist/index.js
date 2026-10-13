@@ -1,7 +1,7 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-fde3054r.js";
+} from "./shared/chunk-nyfzmwdv.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -200,6 +200,7 @@ var ENVIRONMENT_SCOPED_TABLES = [
 ];
 var CONTROL_PLANE_TABLE_REASONS = {
   "auth.api_keys": "control plane: resolving a key is what determines the auth environment, so it cannot be under environment row-level security; stored as SHA-256 hashes only",
+  "auth.attempt_counters": "control plane: sign-in lockout and rate-limit counters, counted before any account, user or Organization is known; keyed by a keyed hash of the address (the key never reaches the database), so it holds no address and no IP address, and no environment-scoped read is needed to count; the service role reads, inserts, deletes and updates only the four counter columns, nothing else (hub issue 30, ADR 0014)",
   "auth.environments": "control plane: the auth environment is itself the tenant boundary tula-auth scopes by, one per kind in the Region's fixed project",
   "auth.instance_audit_logs": "control plane: operator actions outside any one environment, with no tenant columns; the service role may append and delete (for the retention job) but not update, and no retention floor bounds the delete",
   "auth.projects": "control plane: the app the Region secures (one fixed project per Region, ADR 0005), above the environments, not tenant data",

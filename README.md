@@ -98,8 +98,8 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
   (26) must have row-level security enabled and forced, no `organization_id`, and exactly one
   permissive policy: for all commands, with `ENVIRONMENT_POLICY_EXPRESSION` as both its USING and
   WITH CHECK, reading the setting `tula.environment_id` (`ENVIRONMENT_SETTING`). Restrictive
-  policies (retention floors) may be added to it. `CONTROL_PLANE_TABLES` (5: `api_keys`,
-  `workspaces`, `projects`, `environments`, `instance_audit_logs`) have no such policy, only no
+  policies (retention floors) may be added to it. `CONTROL_PLANE_TABLES` (6: `api_keys`,
+  `attempt_counters`, `workspaces`, `projects`, `environments`, `instance_audit_logs`) have no such policy, only no
   `organization_id`, each with its reason in `CONTROL_PLANE_TABLE_REASONS`. Run auth queries
   inside `withEnvironment(db, environmentId, fn)`.
 - Only `closeline_auth` can reach the schema, with tula-auth's least-privilege grants: no
@@ -140,6 +140,74 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     cannot delete an open case (`abandon_cases_resolved_only`), and may update only `attempts`,
     `next_attempt_at`, `resolved_at`, `outcome` and `updated_at`. The sweep runs once per
     environment inside `withEnvironment`.
+  - `auth.attempt_counters` (migration `0007`, hub issue 30, ADR 0014): the sign-in lockout and
+    rate-limit counters, moved from process memory so every instance shares one budget. **One
+    table for both ports**, `kind` being `lockout` or `rate_limit`: a lockout row is failures, a
+    lock and a forgetting time; a rate-limit row is requests and a fixed window; both are a count
+    with a start and an end, so a second table would only repeat the columns. The key is
+    `(environment_id, kind, key_hash)`, a composite primary key and no surrogate id (an `id` would
+    only add an index to a table written on every sign-in). `key_hash` is 32 bytes, an HMAC-SHA-256
+    of the port's key computed by the service with a key that never reaches the database: **no
+    address and no IP address is stored**, and a guess at one cannot be tested against the rows.
+    Rotating the key restarts every counter, and rows live for hours, so nothing is migrated. It has
+    no row-level security and no `organization_id` (a sign-in is counted before any account is
+    known), so it is a `CONTROL_PLANE_TABLES` entry with its reason, not an Organization-allowlist
+    entry (those forbid every service-role privilege, and the service must write this one). Its
+    reach is the grants: `SELECT`, `INSERT`, `DELETE`, and `UPDATE` of `hits`, `started_at`,
+    `locked_until` and `expires_at` only. Checks: kind known, `key_hash` 32 bytes, `hits` 1 to
+    1,000,000, `expires_at > started_at`, a lock exactly on `lockout` rows and within
+    `started_at .. expires_at`.
+
+    One failed or attempted sign-in is one statement. `$1` environment, `$2` key hash, `$3` the
+    time from the port, `$4` the wait in milliseconds after failure 1, 2, 3, ... as an `int[]`
+    built from `lockoutDelayMs` (the last element applies to every later failure, so the policy
+    stays in the service), `$5` the forgetting period in milliseconds. No row back means locked
+    (a refused attempt is not counted); read `locked_until` for the retry time.
+
+    ```sql
+    insert into auth.attempt_counters as c
+      (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
+    values ($1, 'lockout', $2, 1, $3,
+            $3 + make_interval(secs => ($4::int[])[1]::float8 / 1000),
+            $3 + make_interval(secs => (($4::int[])[1] + $5::int)::float8 / 1000))
+    on conflict (environment_id, kind, key_hash) do update set
+      hits = least(N, 1000000),
+      started_at = case when c.expires_at <= $3 then $3 else c.started_at end,
+      locked_until = $3 + make_interval(secs =>
+        ($4::int[])[least(N, cardinality($4::int[]))]::float8 / 1000),
+      expires_at = $3 + make_interval(secs =>
+        (($4::int[])[least(N, cardinality($4::int[]))] + $5::int)::float8 / 1000)
+    where c.locked_until <= $3
+    returning hits, locked_until
+    -- N is: case when c.expires_at <= $3 then 1 else c.hits + 1 end
+    ```
+
+    Postgres serialises concurrent statements on the row (a second instance waits for the first
+    to commit, then adds to its result), so two instances never lose a count; a first failure that
+    races for a new row is counted by the loser's `do update`. A right password removes the row:
+    `delete from auth.attempt_counters where environment_id = $1 and kind = 'lockout' and key_hash = $2`.
+    A rate-limit hit (`$4` is the window in milliseconds; allowed when `hits <= limit`; requests
+    over the limit are counted too, as the memory adapter does):
+
+    ```sql
+    insert into auth.attempt_counters as c (environment_id, kind, key_hash, hits, started_at, expires_at)
+    values ($1, 'rate_limit', $2, 1, $3, $3 + make_interval(secs => $4::float8 / 1000))
+    on conflict (environment_id, kind, key_hash) do update set
+      hits = case when c.expires_at <= $3 then 1 else least(c.hits + 1, 1000000) end,
+      started_at = case when c.expires_at <= $3 then $3 else c.started_at end,
+      expires_at = case when c.expires_at <= $3
+                        then $3 + make_interval(secs => $4::float8 / 1000) else c.expires_at end
+    returning hits, expires_at
+    ```
+
+    The times are the service's clock (the port passes `now`), so instances whose clocks differ
+    by a few seconds shift a window by that much; run NTP. **Purge**: a row is dead once
+    `expires_at` has passed (the next attempt restarts it), so remove expired rows in bounded
+    batches over `attempt_counters_purge_idx`, a minute or more behind the clock:
+    `delete from auth.attempt_counters where (environment_id, kind, key_hash) in (select
+    environment_id, kind, key_hash from auth.attempt_counters where expires_at < $1 order by
+    expires_at limit $2 for update skip locked)`, repeating while a batch comes back full. The
+    **known-device cookie** (ADR 0014) is signed and verified in the service and needs no table.
 - One fixed project per Region is data, not schema: nothing in the tables limits a Region to one
   project. The auth service must bootstrap one workspace and one project, with a development and a
   production environment, and refuse to create more.
