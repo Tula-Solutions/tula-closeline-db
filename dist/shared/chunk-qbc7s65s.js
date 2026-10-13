@@ -1428,7 +1428,8 @@ import { sql as sql21 } from "drizzle-orm";
 import { check as check16, text as text36, timestamp as timestamp29 } from "drizzle-orm/pg-core";
 var playbookOrphanSweeps2 = playbookSchema2.table("orphan_sweeps", {
   organizationId: text36("organization_id").primaryKey(),
-  sweptThrough: timestamp29("swept_through", { withTimezone: true }).notNull()
+  sweptThrough: timestamp29("swept_through", { withTimezone: true }).notNull(),
+  erasedAttemptAt: timestamp29("erased_attempt_at", { withTimezone: true })
 }, () => [
   check16("orphan_sweeps_organization_id_shape", sql21.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
   check16("orphan_sweeps_organization_not_global", sql21.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`))

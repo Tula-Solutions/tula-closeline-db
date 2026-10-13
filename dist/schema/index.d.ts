@@ -8409,6 +8409,11 @@ import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 * keys (`created_at`), and the work hint holds the oldest unswept one; the discovery function
 * reports an Organization when an attempt is newer than `swept_through`. The role can read its row
 * and cannot write it directly.
+*
+* `erased_attempt_at` is the only trace of upload attempts whose idempotency keys erasure
+* (`remove_organization_rest`) deleted: the creation time of the latest one, null when none. It is
+* written only by that function and read by the discovery function and `orphan_sweep_done`, which
+* treat it as a pending attempt until `swept_through` covers it. It holds a time and no content.
 */
 declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 	name: "orphan_sweeps";
@@ -8439,6 +8444,23 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			data: Date;
 			driverParam: string;
 			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		erasedAttemptAt: PgColumn_ffrhhp36<{
+			name: "erased_attempt_at";
+			tableName: "orphan_sweeps";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;

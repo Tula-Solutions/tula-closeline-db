@@ -7,7 +7,7 @@ import {
   PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-d0hb7s9h.js";
+} from "./shared/chunk-qbc7s65s.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -503,7 +503,9 @@ var PLAYBOOK_MIN_LEASE_MS = 1000;
 var INGESTION_MAX_RETRY_DELAY_MS = 3600000;
 var DOCUMENT_LIST_MAX_PAGE = 100;
 var PLAYBOOK_MAX_BATCH = 500;
-var IDEMPOTENCY_MIN_PURGE_AGE_MS = 3600000;
+var ORPHAN_SWEEP_AGE_MS = 25 * 60 * 60 * 1000;
+var IDEMPOTENCY_PURGE_AGE_MS = ORPHAN_SWEEP_AGE_MS + 60 * 60 * 1000;
+var IDEMPOTENCY_MIN_PURGE_AGE_MS = IDEMPOTENCY_PURGE_AGE_MS;
 var CLAMP = (parameter, max) => `least(greatest(coalesce(${parameter}::int, 1), 1), ${max})`;
 var BATCH = (parameter) => CLAMP(parameter, PLAYBOOK_MAX_BATCH);
 var LEASE = (parameter) => `make_interval(secs => greatest(coalesce(${parameter}::float8, 0), ${PLAYBOOK_MIN_LEASE_MS}) / 1000)`;
@@ -874,8 +876,6 @@ delete from playbook.idempotency_keys k
 using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`;
 var CONSUMED_PURGE_AGE_MS = 15 * 24 * 60 * 60 * 1000;
-var ORPHAN_SWEEP_AGE_MS = 25 * 60 * 60 * 1000;
-var IDEMPOTENCY_PURGE_AGE_MS = ORPHAN_SWEEP_AGE_MS + 60 * 60 * 1000;
 var REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
 var DOCUMENT_ERASE_BATCH = `with t as (select clock_timestamp() as now),
 cand as (

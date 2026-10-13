@@ -28,6 +28,7 @@ import {
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
   discoveredOrganizations,
+  IDEMPOTENCY_MIN_PURGE_AGE_MS,
   IDEMPOTENCY_PURGE,
   IDEMPOTENCY_PURGE_AGE_MS,
   INDEX_SETTINGS_UPSERT,
@@ -462,10 +463,41 @@ describe('pending cleanups and the orphan sweep', () => {
     expect(migration).toContain(
       `min(k."created_at") + ${hours(IDEMPOTENCY_PURGE_AGE_MS)} INTO v_next`
     )
-    // Erasure deletes only keys at least the orphan age old.
-    expect(migration).toContain(
-      `k."created_at" <= clock_timestamp() - ${hours(ORPHAN_SWEEP_AGE_MS)}`
+    // Erasure keeps no key (the kept route's aside) and records the latest one's time first.
+    const erase = migration.slice(
+      migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."remove_organization_rest"')
     )
+    expect(erase).not.toContain(`k."created_at" <= clock_timestamp()`)
+    const record = erase.indexOf('SET "erased_attempt_at" = greatest(')
+    const wipe = erase.indexOf('DELETE FROM "playbook"."idempotency_keys" k')
+    expect(record).toBeGreaterThan(0)
+    expect(wipe).toBeGreaterThan(record)
+  })
+
+  test('erasure locks the orphan_sweeps row before the upload lock; done takes the row before the hint', () => {
+    const erase = migration.slice(
+      migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."remove_organization_rest"')
+    )
+    const row = erase.indexOf('INSERT INTO "playbook"."orphan_sweeps" AS s')
+    expect(row).toBeGreaterThan(0)
+    expect(row).toBeLessThan(erase.indexOf('pg_advisory_xact_lock'))
+    // Erasure never locks or moves the orphan_sweep hint.
+    expect(erase).toContain(`w."kind" NOT IN ('idempotency_purge', 'orphan_sweep')`)
+    expect(erase).not.toContain('note_work')
+    const done = migration.slice(
+      migration.indexOf('CREATE FUNCTION "playbook"."orphan_sweep_done"')
+    )
+    expect(done.indexOf('INSERT INTO "playbook"."orphan_sweeps"')).toBeLessThan(
+      done.indexOf('FOR UPDATE')
+    )
+    // Both the discovery function and done count the erased attempt while uncovered.
+    expect(done).toContain('v_erased > v_swept')
+    expect(migration).toContain(`s."erased_attempt_at" > s."swept_through"`)
+  })
+
+  test('the purge is floored at the purge age, a constant the statement and the README share', () => {
+    expect(IDEMPOTENCY_MIN_PURGE_AGE_MS).toBe(IDEMPOTENCY_PURGE_AGE_MS)
+    expect(IDEMPOTENCY_PURGE).toContain(`${IDEMPOTENCY_PURGE_AGE_MS}) / 1000`)
   })
 
   test('done removes the row only with the hint, and only when no key and no document remain', () => {

@@ -2605,13 +2605,13 @@ describe('the playbook schema', () => {
             [o, newUserFixed, ROUTE, freshKey(), hashOf(hex()), age]
           )
         )
-      for (const age of ['3 hours', '4 hours', '5 hours', '2 minutes']) {
+      for (const age of ['27 hours', '28 hours', '29 hours', '2 minutes']) {
         await put(org, age)
       }
-      await put(other, '3 hours')
+      await put(other, '27 hours')
       const purge = (o: string, n: number | null, age = 0) =>
         inOrg(o, (c) => c.query(IDEMPOTENCY_PURGE, [o, age, n]))
-      // An age of zero is raised to the hour, so the two-minute key stays.
+      // An age of zero is raised to the purge age (26 hours), so the two-minute key stays.
       expect((await purge(org, null)).rowCount).toBe(1)
       expect((await purge(org, 2_000_000_000)).rowCount).toBe(2)
       expect((await purge(org, 10)).rowCount).toBe(0)
@@ -2620,6 +2620,25 @@ describe('the playbook schema', () => {
       ).toBe(1)
       expect(
         (await inOrg(other, (c) => c.query('select 1 from playbook.idempotency_keys'))).rowCount
+      ).toBe(1)
+    })
+
+    test('an age below the purge age is raised to it: a 2-hour age leaves a 25.5-hour-old key and takes a 27-hour-old one', async () => {
+      const org = newOrg()
+      const put = (hours: number) =>
+        inOrg(org, (c) =>
+          c.query(
+            `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+             values ($1, $2, $3, $4, $5, clock_timestamp() - ($6::float8 * interval '1 hour'))`,
+            [org, newUserFixed, ROUTE, freshKey(), hashOf(hex()), hours]
+          )
+        )
+      await put(25.5)
+      await put(27)
+      const purge = await inOrg(org, (c) => c.query(IDEMPOTENCY_PURGE, [org, 2 * 3_600_000, 10]))
+      expect(purge.rowCount).toBe(1)
+      expect(
+        (await inOrg(org, (c) => c.query('select 1 from playbook.idempotency_keys'))).rowCount
       ).toBe(1)
     })
 
@@ -2905,7 +2924,7 @@ describe('the playbook schema', () => {
         name: 'IDEMPOTENCY_PURGE',
         text: IDEMPOTENCY_PURGE,
         prepare: async (a) => {
-          await idempotencyRow(a, true, '3 hours')
+          await idempotencyRow(a, true, '27 hours')
           return [a, 0, 10]
         },
       },

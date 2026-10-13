@@ -12,12 +12,18 @@ import { GLOBAL_SCOPE_ORGANIZATION_ID } from './playbook-tables'
  * keys (`created_at`), and the work hint holds the oldest unswept one; the discovery function
  * reports an Organization when an attempt is newer than `swept_through`. The role can read its row
  * and cannot write it directly.
+ *
+ * `erased_attempt_at` is the only trace of upload attempts whose idempotency keys erasure
+ * (`remove_organization_rest`) deleted: the creation time of the latest one, null when none. It is
+ * written only by that function and read by the discovery function and `orphan_sweep_done`, which
+ * treat it as a pending attempt until `swept_through` covers it. It holds a time and no content.
  */
 export const playbookOrphanSweeps = playbookSchema.table(
   'orphan_sweeps',
   {
     organizationId: text('organization_id').primaryKey(),
     sweptThrough: timestamp('swept_through', { withTimezone: true }).notNull(),
+    erasedAttemptAt: timestamp('erased_attempt_at', { withTimezone: true }),
   },
   () => [
     check(

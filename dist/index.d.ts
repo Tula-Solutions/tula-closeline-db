@@ -8592,6 +8592,11 @@ import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 * keys (`created_at`), and the work hint holds the oldest unswept one; the discovery function
 * reports an Organization when an attempt is newer than `swept_through`. The role can read its row
 * and cannot write it directly.
+*
+* `erased_attempt_at` is the only trace of upload attempts whose idempotency keys erasure
+* (`remove_organization_rest`) deleted: the creation time of the latest one, null when none. It is
+* written only by that function and read by the discovery function and `orphan_sweep_done`, which
+* treat it as a pending attempt until `swept_through` covers it. It holds a time and no content.
 */
 declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 	name: "orphan_sweeps";
@@ -8622,6 +8627,23 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			data: Date;
 			driverParam: string;
 			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		erasedAttemptAt: PgColumn_ffrhhp36<{
+			name: "erased_attempt_at";
+			tableName: "orphan_sweeps";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
@@ -9948,8 +9970,29 @@ declare const DOCUMENT_LIST_MAX_PAGE = 100;
 * claim, the give-up, and the two purges. A null, zero or negative size is raised to 1.
 */
 declare const PLAYBOOK_MAX_BATCH = 500;
-/** The least age, in milliseconds, {@link IDEMPOTENCY_PURGE} removes a key at: one hour. */
-declare const IDEMPOTENCY_MIN_PURGE_AGE_MS = 36e5;
+/**
+* How old an upload attempt is when its stored object may be an orphan worth sweeping, in
+* milliseconds: 25 hours. The service deletes an orphan object only when it is older than 24 hours;
+* the extra hour covers the time between an attempt's start (its key's `created_at`) and the object
+* being written. `organizations_with_work` reports `orphan_sweep` at this age after the oldest
+* attempt not yet marked swept, and {@link ORPHAN_SWEEP_DONE} cuts the swept-through time to this
+* long before now, so an attempt counts as swept only when its object was surely old enough to be
+* deleted.
+*/
+declare const ORPHAN_SWEEP_AGE_MS: number;
+/**
+* How old an idempotency key is when it becomes purgeable, in milliseconds: 26 hours, one hour more
+* than {@link ORPHAN_SWEEP_AGE_MS}, so the key of an upload attempt is still there when its orphan
+* sweep is due. Core documents no age for its own keys, so this is the playbook's.
+* `organizations_with_work` hints `idempotency_purge` at this age, and {@link IDEMPOTENCY_PURGE}
+* is floored at this age in SQL, so a younger age passed to it is raised to this one.
+*/
+declare const IDEMPOTENCY_PURGE_AGE_MS: number;
+/**
+* The least age, in milliseconds, {@link IDEMPOTENCY_PURGE} removes a key at: the same 26 hours as
+* {@link IDEMPOTENCY_PURGE_AGE_MS}, so no caller can purge the keys of unswept upload attempts.
+*/
+declare const IDEMPOTENCY_MIN_PURGE_AGE_MS: number;
 /**
 * The SQL the playbook service runs against its tables, as text, in the style of the auth
 * statements: the integration tests run exactly these strings, the README prints exactly these
@@ -10425,7 +10468,8 @@ declare const IDEMPOTENCY_LOOKUP = "select request_hash, status, response, creat
 declare const IDEMPOTENCY_COMPLETE = "update playbook.idempotency_keys\nset status = $5::smallint, response = $6::jsonb\nwhere organization_id = $1 and user_id = $2 and route = $3 and key = $4 and status is null\nreturning key";
 /**
 * Purge one bounded batch of an Organization's old keys, inside its scope. `$1` Organization, `$2`
-* the least age in milliseconds (raised to {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}), `$3` batch size,
+* the least age in milliseconds (raised to {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}, 26 hours: a key
+* is the evidence of an upload attempt whose orphan sweep may not have run), `$3` batch size,
 * clamped to 1..{@link PLAYBOOK_MAX_BATCH}. Oldest first on `idempotency_keys_purge_idx`, skipping
 * rows another transaction holds; repeat until a batch removes none (a short batch does not mean
 * the backlog is empty). The row count is the number removed.
@@ -10439,25 +10483,6 @@ declare const IDEMPOTENCY_PURGE: string;
 * younger.
 */
 declare const CONSUMED_PURGE_AGE_MS: number;
-/**
-* How old an upload attempt is when its stored object may be an orphan worth sweeping, in
-* milliseconds: 25 hours. The service deletes an orphan object only when it is older than 24 hours;
-* the extra hour covers the time between an attempt's start (its key's `created_at`) and the object
-* being written. `organizations_with_work` reports `orphan_sweep` at this age after the oldest
-* attempt not yet marked swept, and {@link ORPHAN_SWEEP_DONE} cuts the swept-through time to this
-* long before now, so an attempt counts as swept only when its object was surely old enough to be
-* deleted.
-*/
-declare const ORPHAN_SWEEP_AGE_MS: number;
-/**
-* How old an idempotency key is when it becomes purgeable, in milliseconds: 26 hours, one hour more
-* than {@link ORPHAN_SWEEP_AGE_MS}, so the key of an upload attempt is still there when its orphan
-* sweep is due. Core documents no age for its own keys, so this is the playbook's.
-* `organizations_with_work` hints `idempotency_purge` at this age; {@link IDEMPOTENCY_PURGE} still
-* accepts any age above {@link IDEMPOTENCY_MIN_PURGE_AGE_MS}, but a service that purges younger keys
-* loses the evidence of attempts not yet swept: pass this.
-*/
-declare const IDEMPOTENCY_PURGE_AGE_MS: number;
 /**
 * The route the remove-all call stores its idempotency key under. Pass it to
 * {@link ORGANIZATION_REMOVE_REST} so the call's own key survives the removal it belongs to.
@@ -10498,9 +10523,13 @@ declare const REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
 declare const DOCUMENT_ERASE_BATCH: string;
 /**
 * Remove what an Organization has left once it has no document: index settings, the usage row,
-* consumed messages, idempotency keys and work hints (except the orphan sweep's marker and hint, which stay). `$1` Organization, `$2` a route whose
+* consumed messages, every idempotency key and the work hints (except the orphan sweep's hint, and
+* the purge hint of the kept key, which stay). `$1` Organization, `$2` a route whose
 * idempotency keys are kept (pass {@link REMOVE_ALL_IDEMPOTENCY_ROUTE}, so the remove-all call's own
-* key survives; kept keys age out through {@link IDEMPOTENCY_PURGE}). Run it inside the
+* key survives; it ages out through {@link IDEMPOTENCY_PURGE}). Before the keys go it records the
+* creation time of the latest upload attempt among them in `orphan_sweeps.erased_attempt_at`, so
+* the Organization is still reported for `orphan_sweep` until a sweep covers it; no key content
+* remains. Run it inside the
 * Organization's scope, in a transaction of its own after the last purge. The one row has `removed`:
 * true when nothing is left (also when called again), false, with nothing deleted, while any
 * document row exists, soft-deleted ones included. It is a `SECURITY DEFINER` function
@@ -10565,7 +10594,9 @@ declare const ORGANIZATIONS_WITH_WORK: string;
 /**
 * Mark an Organization's orphan sweep done through a time: `$1` Organization, `$2` the time through
 * which stored objects were examined (every object that an upload attempt at or before `$2` could
-* have stored was looked at). Run it in that Organization's scope (any other scope is refused),
+* have stored was looked at). **Compute `$2` when the sweep starts, not when this is called**: an
+* object stored while the sweep ran may have been missed, and a time taken at the end would count
+* it as examined. Run it in that Organization's scope (any other scope is refused),
 * after the sweep. The database cuts `$2` to {@link ORPHAN_SWEEP_AGE_MS} (25 hours) before now (an
 * object younger than that is never counted as swept) and never moves the recorded time back, so a repeat or an older time is harmless.
 * Returns `swept_through` (what is recorded) and `more`: true while an upload attempt newer than

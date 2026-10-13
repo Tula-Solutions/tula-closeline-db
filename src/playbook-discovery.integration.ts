@@ -1078,8 +1078,7 @@ describe('work discovery, erasure and spent purges', () => {
         no_messages: true,
         removed: true,
       })
-      // Idempotent by end state; the remove-all call's own key survives, and so does no upload key
-      // older than 25 hours (a younger one would stay for the sweep; the next test covers it).
+      // Idempotent by end state; the remove-all call's own key survives, the upload key does not.
       expect(
         (
           await inOrg(org, (c) =>
@@ -1094,12 +1093,16 @@ describe('work discovery, erasure and spent purges', () => {
       )) {
         expect(await hintOf(kind, org)).toBeUndefined()
       }
-      // The upload attempt may have left an object only the sweep removes: its hint stays. An
-      // attempt writes no orphan_sweeps row any more (only orphan_sweep_done does), so there is none.
+      // The upload attempt may have left an object only the sweep removes: its hint stays, and the
+      // row records the erased attempt's time (the 30-hour-old key's), nothing else of it.
       expect(await hintOf('orphan_sweep', org)).toBeDefined()
-      expect(
-        (await asOwner(org, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
-      ).toBe(0)
+      const swept = await asOwner(org, (c) =>
+        c.query('select erased_attempt_at from playbook.orphan_sweeps')
+      )
+      expect(swept.rowCount).toBe(1)
+      expect(Date.now() - (swept.rows[0].erased_attempt_at as Date).getTime()).toBeGreaterThan(
+        29.9 * 3_600_000
+      )
 
       // The second Organization: every row and its counter exactly as before.
       expect(await snapshot(other)).toEqual(otherBefore)
@@ -1730,21 +1733,38 @@ describe('work discovery, erasure and spent purges', () => {
       expect(await hintOf('orphan_sweep', later)).toBeUndefined()
     })
 
-    test('K2: erasure keeps the keys younger than 25 hours, so a later attempt is still swept', async () => {
+    test('L1: erasure deletes every key but the kept route and records the latest attempt; the Organization stays reported until a sweep covers it', async () => {
       const org = newOrg()
-      // Now is the first attempt's due time; the second was 30 minutes after it.
+      // Now is the first attempt's due time; the second was made 30 minutes after it.
       await insertKey(org, 25.01)
       await insertKey(org, 25.01 - 0.5)
+      await asOwner(org, (c) =>
+        c.query(
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
+           values ($1, $2, $3, 'internal', $4)`,
+          [org, ZERO_USER, REMOVE_ALL_IDEMPOTENCY_ROUTE, hashOf('x')]
+        )
+      )
       const rest = await inOrg(org, (c) =>
         c.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
       )
       expect(rest.rows[0]).toEqual({ removed: true })
-      // The old key is gone with the erasure; the younger one is the evidence that stays.
-      expect(
-        (await inOrg(org, (c) => c.query('select 1 from playbook.idempotency_keys'))).rowCount
-      ).toBe(1)
+      // No upload key remains, young or old: only the kept route's own key.
+      const left = await asOwner(org, (c) => c.query('select route from playbook.idempotency_keys'))
+      expect(left.rows).toEqual([{ route: REMOVE_ALL_IDEMPOTENCY_ROUTE }])
+      // The row holds two times and nothing else; the erased time is the later attempt's.
+      const row = (
+        await asOwner(org, (c) =>
+          c.query(`select swept_through, erased_attempt_at, to_jsonb(s) - 'organization_id' as j
+                   from playbook.orphan_sweeps s`)
+        )
+      ).rows[0]
+      expect(Object.keys(row.j).sort()).toEqual(['erased_attempt_at', 'swept_through'])
+      const erased = (row.erased_attempt_at as Date).getTime()
+      expect(Date.now() - erased).toBeGreaterThan(24.4 * 3_600_000)
+      expect(Date.now() - erased).toBeLessThan(24.6 * 3_600_000)
+      // The first attempt is due: reported. The sweep covers it, but not the later one.
       expect(await named(org)).toBe(true)
-      // The sweep covers the first; the second stays pending and keeps the hint.
       expect((await done(org, new Date())).rows[0]).toMatchObject({ more: true })
       const hint = await hintOf('orphan_sweep', org)
       expect(hint).toBeDefined()
@@ -1752,6 +1772,82 @@ describe('work discovery, erasure and spent purges', () => {
       expect(wait).toBeGreaterThan(20 * 60_000)
       expect(wait).toBeLessThan(40 * 60_000)
       expect(await named(org)).toBe(false)
+      // The row is kept while the erased time is uncovered. Once it is (the clock cannot be moved,
+      // so the erased time and the hint, which stands for that attempt, are moved back as the
+      // owner), the next done removes hint and row.
+      await asOwner(org, async (c) => {
+        await c.query(
+          `update playbook.orphan_sweeps set erased_attempt_at = clock_timestamp() - interval '26 hours'`
+        )
+        await c.query(
+          `update playbook.work_hints set due_at = clock_timestamp() - interval '1 hour' where kind = 'orphan_sweep'`
+        )
+      })
+      expect(await named(org)).toBe(false)
+      await asOwner(org, (c) =>
+        c.query(`delete from playbook.idempotency_keys where route = $1`, [
+          REMOVE_ALL_IDEMPOTENCY_ROUTE,
+        ])
+      )
+      expect((await done(org, new Date())).rows[0]).toMatchObject({ more: false })
+      expect(await hintOf('orphan_sweep', org)).toBeUndefined()
+      expect(
+        (await asOwner(org, (c) => c.query('select 1 from playbook.orphan_sweeps'))).rowCount
+      ).toBe(0)
+    })
+
+    test('L1: a done racing an erasure waits for it, then counts the erased attempt', async () => {
+      const org = newOrg()
+      await insertKey(org, 24.9)
+      const erasing = await open(org)
+      const marking = await open(org)
+      try {
+        await erasing.client.query(ORGANIZATION_REMOVE_REST, [org, REMOVE_ALL_IDEMPOTENCY_ROUTE])
+        const finished = marking.client.query(ORPHAN_SWEEP_DONE, [org, new Date()])
+        await untilBlocked(marking.pid)
+        await erasing.client.query('commit')
+        const result = await finished
+        // The key is gone, yet the attempt is pending: it is newer than the cut.
+        expect(result.rows[0]).toMatchObject({ more: true })
+        await marking.client.query('commit')
+      } finally {
+        await finish(erasing, marking)
+      }
+      expect(await hintOf('orphan_sweep', org)).toBeDefined()
+    })
+
+    test('L1: no cycle among an upload attempt, a done and an erasure', async () => {
+      const org = newOrg()
+      await insertKey(org, 30)
+      const upload = await open(org)
+      const marking = await open(org)
+      const erasing = await open(org)
+      try {
+        // The upload holds the hint (key-share); done takes the row and waits for the hint; the
+        // erasure waits for the row; the upload then asks for the upload lock, which nobody holds.
+        await upload.client.query(IDEMPOTENCY_BEGIN, [
+          org,
+          newUser(),
+          'documents.upload',
+          `k-${hex()}`,
+          hashOf('x'),
+        ])
+        const marked = marking.client.query(ORPHAN_SWEEP_DONE, [org, new Date()])
+        await untilBlocked(marking.pid)
+        const erased = erasing.client.query(ORGANIZATION_REMOVE_REST, [
+          org,
+          REMOVE_ALL_IDEMPOTENCY_ROUTE,
+        ])
+        await untilBlocked(erasing.pid)
+        await upload.client.query(QUOTA_LOCK, [org])
+        await upload.client.query('commit')
+        expect((await marked).rows[0]).toMatchObject({ more: true })
+        await marking.client.query('commit')
+        expect((await erased).rows[0]).toEqual({ removed: true })
+        await erasing.client.query('commit')
+      } finally {
+        await finish(upload, marking, erasing)
+      }
     })
 
     test('K3: after erasure, a sweep and done leave neither the hint nor the row; a document keeps the row', async () => {

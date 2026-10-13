@@ -1,6 +1,7 @@
 CREATE TABLE "playbook"."orphan_sweeps" (
 	"organization_id" text PRIMARY KEY NOT NULL,
 	"swept_through" timestamp with time zone NOT NULL,
+	"erased_attempt_at" timestamp with time zone,
 	CONSTRAINT "orphan_sweeps_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
 	CONSTRAINT "orphan_sweeps_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000')
 );
@@ -75,15 +76,17 @@ $$;
 --> statement-breakpoint
 
 -- Record that the service swept an Organization's stored objects for orphans through a time, and
--- keep the hint right. It must run in that Organization's scope. `p_through` is cut to 25 hours
+-- keep the hint right. It must run in that Organization's scope. The caller computes `p_through`
+-- when the sweep starts (an object stored while it ran may have been missed). `p_through` is cut to 25 hours
 -- before now (ORPHAN_SWEEP_AGE_MS: an attempt's key is created when its transaction starts and its
 -- object is written later, and the service deletes only objects older than 24 hours, so an attempt
 -- counts as swept only when its object was surely old enough; no upload transaction lives that
 -- long), and the recorded time never goes back. It then takes the hint FOR UPDATE, which waits for
 -- every open upload attempt of the Organization (they hold the hint FOR KEY SHARE), reads the
 -- attempts again (a fresh snapshot, so it sees the ones that committed meanwhile) and decides:
---   * an attempt newer than the swept time exists (or the hint stands for one): the hint is due 25
---     hours after the oldest such attempt (inserted if missing), and `more` is true;
+--   * an attempt newer than the swept time exists (or the hint stands for one, or erasure deleted
+--     the key of one: orphan_sweeps.erased_attempt_at is newer than the swept time): the hint is due
+--     25 hours after the oldest such attempt (inserted if missing), and `more` is true;
 --   * none: the hint is removed, `more` is false; and when the Organization then has no idempotency
 --     key and no document at all, its orphan_sweeps row is removed too (a later attempt starts again
 --     from -infinity, which is right because there is nothing older to count).
@@ -96,12 +99,20 @@ $$;
 -- reads: that is case (a), the attempt holds the lock. The upload attempts write nothing else this
 -- function could wait on or conflict with, so it cannot deadlock with them: the hint is their last
 -- lock.
+--
+-- Lock order. This function takes the orphan_sweeps row, then the hint. remove_organization_rest
+-- takes the orphan_sweeps row first of all (before the upload lock), and an upload attempt never
+-- touches the row, so: this function waits for erasure only on the row, which erasure holds
+-- without waiting for anything this function holds; erasure waits for the upload lock only after it
+-- has the row, so an upload that holds the hint and waits for the upload lock waits for an
+-- erasure that is not waiting for the row or for this function. No cycle.
 CREATE FUNCTION "playbook"."orphan_sweep_done"(p_organization_id text, p_through timestamptz)
   RETURNS TABLE ("swept_through" timestamptz, "more" boolean) LANGUAGE plpgsql SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_column
 DECLARE
   v_swept timestamptz;
+  v_erased timestamptz;
   v_due timestamptz;
   v_next timestamptz;
 BEGIN
@@ -115,13 +126,14 @@ BEGIN
   INSERT INTO "playbook"."orphan_sweeps" AS s ("organization_id", "swept_through")
   VALUES (p_organization_id, least(coalesce(p_through, '-infinity'), clock_timestamp() - interval '25 hours'))
   ON CONFLICT ("organization_id") DO UPDATE SET "swept_through" = greatest(s."swept_through", EXCLUDED."swept_through")
-  RETURNING s."swept_through" INTO v_swept;
+  RETURNING s."swept_through", s."erased_attempt_at" INTO v_swept, v_erased;
   SELECT h."due_at" INTO v_due FROM "playbook"."work_hints" h
     WHERE h."kind" = 'orphan_sweep' AND h."organization_id" = p_organization_id FOR UPDATE;
   SELECT least(
     (SELECT min(k."created_at") + interval '25 hours' FROM "playbook"."idempotency_keys" k
       WHERE k."organization_id" = p_organization_id AND k."created_at" > v_swept),
-    CASE WHEN v_due - interval '25 hours' > v_swept THEN v_due END) INTO v_next;
+    CASE WHEN v_due - interval '25 hours' > v_swept THEN v_due END,
+    CASE WHEN v_erased > v_swept THEN v_erased + interval '25 hours' END) INTO v_next;
   IF v_next IS NULL THEN
     DELETE FROM "playbook"."work_hints" w WHERE w."kind" = 'orphan_sweep' AND w."organization_id" = p_organization_id;
     IF NOT EXISTS (SELECT 1 FROM "playbook"."idempotency_keys" k WHERE k."organization_id" = p_organization_id)
@@ -230,7 +242,9 @@ BEGIN
       -- idempotency keys, which are purged after IDEMPOTENCY_PURGE_AGE_MS (26 hours), an hour after
       -- an attempt is due (25 hours), so its key is normally still there; the hint's own time is
       -- evidence too, for a sweep that runs late: a hint due at d stands
-      -- for an attempt at d - 25 hours, and counts while that is newer than the sweep.
+      -- for an attempt at d - 25 hours, and counts while that is newer than the sweep. Erasure
+      -- deletes the keys of an Organization, so the creation time of the latest one it deleted is
+      -- kept in orphan_sweeps.erased_attempt_at and counts as an attempt until the sweep covers it.
       SELECT least(
         (SELECT min(k."created_at") + interval '25 hours' FROM "playbook"."idempotency_keys" k
           WHERE k."organization_id" = v_hint.org
@@ -238,7 +252,9 @@ BEGIN
                                             WHERE s."organization_id" = v_hint.org), '-infinity')),
         CASE WHEN v_hint.due - interval '25 hours' > coalesce((SELECT s."swept_through" FROM "playbook"."orphan_sweeps" s
                                                                  WHERE s."organization_id" = v_hint.org), '-infinity')
-             THEN v_hint.due END) INTO v_next;
+             THEN v_hint.due END,
+        (SELECT s."erased_attempt_at" + interval '25 hours' FROM "playbook"."orphan_sweeps" s
+          WHERE s."organization_id" = v_hint.org AND s."erased_attempt_at" > s."swept_through")) INTO v_next;
     ELSE
       SELECT min(d."updated_at") INTO v_next FROM "playbook"."documents" d
         WHERE d."organization_id" = v_hint.org AND d."state" = 'deleted' AND d."purge_attempts" >= 20;
@@ -284,31 +300,47 @@ BEGIN
   IF current_setting('app.organization_id', true) IS DISTINCT FROM p_organization_id THEN
     RAISE EXCEPTION 'playbook.remove_rest_scope: the transaction is not scoped to this Organization' USING ERRCODE = 'insufficient_privilege';
   END IF;
+  -- The orphan_sweeps row is locked FIRST, before the upload lock. orphan_sweep_done takes that row
+  -- and then the hint (waiting for every open upload attempt, which holds the hint); an upload
+  -- attempt holds the hint and may then wait for the upload lock; so taking the upload lock before
+  -- the row would let this function wait on a done that waits on an upload that waits on this
+  -- function. With the row first, nothing that holds the row ever waits for the upload lock.
+  INSERT INTO "playbook"."orphan_sweeps" AS s ("organization_id", "swept_through")
+    VALUES (p_organization_id, '-infinity')
+    ON CONFLICT ("organization_id") DO UPDATE SET "swept_through" = s."swept_through";
   PERFORM pg_advisory_xact_lock(hashtextextended(p_organization_id, 0));
   IF EXISTS (SELECT 1 FROM "playbook"."documents" d WHERE d."organization_id" = p_organization_id) THEN
+    -- Nothing is erased: drop the row again if it only exists for this lock.
+    DELETE FROM "playbook"."orphan_sweeps" s
+      WHERE s."organization_id" = p_organization_id AND s."swept_through" = '-infinity' AND s."erased_attempt_at" IS NULL;
     RETURN false;
   END IF;
   DELETE FROM "playbook"."index_settings" s WHERE s."organization_id" = p_organization_id;
   DELETE FROM "playbook"."consumed_message" c WHERE c."organization_id" = p_organization_id;
-  -- Keys older than ORPHAN_SWEEP_AGE_MS (25 hours) go; younger ones stay and age out through the
-  -- normal purge (26 hours). They are the only evidence of upload attempts whose objects are not yet
-  -- old enough to sweep; the sweep that follows covers every attempt older than 25 hours, so those
-  -- keys are no longer needed. (Moving the hint to the latest deleted attempt instead would need the
-  -- hint row's lock, which a concurrent upload waiting for the upload lock above could close into
-  -- a cycle with orphan_sweep_done, and a hint can only be lowered by attempts, not moved later, in
-  -- the existing semantics.)
+  -- Every idempotency key goes (the kept route's aside): each holds a user id, the client's key, a
+  -- request hash and a stored response. The only thing the keys are still needed for is the time of
+  -- the latest upload attempt, because an object it stored may still await the orphan sweep; that
+  -- one time is recorded in the row locked above (written only here and by nobody else, so an
+  -- upload attempt never waits for it), and the discovery function and orphan_sweep_done count it
+  -- as a pending attempt until swept_through covers it.
+  UPDATE "playbook"."orphan_sweeps" s SET "erased_attempt_at" = greatest(s."erased_attempt_at", m.t)
+    FROM (SELECT max(k."created_at") AS t FROM "playbook"."idempotency_keys" k
+            WHERE k."organization_id" = p_organization_id AND k."route" IS DISTINCT FROM p_keep_route) m
+    WHERE s."organization_id" = p_organization_id AND m.t > s."swept_through";
   DELETE FROM "playbook"."idempotency_keys" k
-    WHERE k."organization_id" = p_organization_id AND k."route" IS DISTINCT FROM p_keep_route
-      AND k."created_at" <= clock_timestamp() - interval '25 hours';
+    WHERE k."organization_id" = p_organization_id AND k."route" IS DISTINCT FROM p_keep_route;
   DELETE FROM "playbook"."organization_usage" u WHERE u."organization_id" = p_organization_id;
   DELETE FROM "playbook"."work_hints" w
     WHERE w."organization_id" = p_organization_id AND w."kind" NOT IN ('idempotency_purge', 'orphan_sweep');
+  DELETE FROM "playbook"."orphan_sweeps" s
+    WHERE s."organization_id" = p_organization_id AND s."swept_through" = '-infinity' AND s."erased_attempt_at" IS NULL;
   RETURN true;
 END
 $$;
--- (0014: the orphan_sweep hint and the orphan_sweeps row stay, like the remove-all key's purge hint:
--- an upload attempt of this Organization may have left an object that only the sweep removes. The
--- row goes when orphan_sweep_done finds nothing left.)
+-- (0014: every idempotency key but the kept route's goes. What stays for the orphan sweep is the
+-- orphan_sweep hint and the orphan_sweeps row, which holds two times and no content: swept_through and
+-- erased_attempt_at, the creation time of the latest erased upload attempt. orphan_sweep_done removes
+-- both once a sweep covers it.)
 --> statement-breakpoint
 -- The replaced functions keep their signatures, so their grants stand; they are stated again so
 -- the migration is the whole truth about who may call them.
