@@ -655,6 +655,78 @@ describe('work discovery, erasure and spent purges', () => {
       expect(await page('idempotency_purge', org.slice(0, -1), 500)).toContain(org)
     })
 
+    test('two writers each noting a later and then an earlier time on one hint do not deadlock, and the hint ends at the earliest', async () => {
+      const org = newOrg()
+      await mustAdd(org)
+      const { rows } = await owner.query(
+        `select due_at from playbook.work_hints where kind = 'jobs_due' and organization_id = $1`,
+        [org]
+      )
+      const base = new Date(rows[0].due_at)
+      const at = (minutes: number) => new Date(base.getTime() + minutes * 60_000)
+      const note = (c: PoolClient, t: Date) =>
+        c.query(`select playbook.note_work('jobs_due', $1, $2::timestamptz)`, [org, t])
+      const first = await open(org)
+      const second = await open(org)
+      try {
+        for (const tx of [first, second]) {
+          await tx.client.query(`set local lock_timeout = '2s'`)
+        }
+        // Both hold the key share lock by noting a later time, then both note an earlier one.
+        await note(first.client, at(10))
+        await note(second.client, at(10))
+        await note(first.client, at(-5))
+        await note(second.client, at(-8))
+        // The sweeper skips the hint while either transaction is open.
+        expect(await page('jobs_due', org.slice(0, -1), 500)).not.toContain(org)
+        await first.client.query('commit')
+        await second.client.query('commit')
+      } finally {
+        await finish(first, second)
+      }
+      const after = await owner.query(
+        `select due_at from playbook.work_hints where kind = 'jobs_due' and organization_id = $1`,
+        [org]
+      )
+      expect(new Date(after.rows[0].due_at)).toEqual(at(-8))
+    })
+
+    test('purge_due: a sweeper that moves the hint later does not lose the writer earlier time', async () => {
+      const org = newOrg()
+      const first = await mustAdd(org)
+      await remove(org, first.id)
+      await owner.query(
+        `update playbook.work_hints set due_at = clock_timestamp() - interval '1 minute' where kind = 'purge_due' and organization_id = $1`,
+        [org]
+      )
+      const second = await mustAdd(org)
+      const sweeper = await owner.connect()
+      const writer = await open(org)
+      try {
+        await sweeper.query('begin')
+        await sweeper.query(
+          `select 1 from playbook.work_hints where kind = 'purge_due' and organization_id = $1 for update`,
+          [org]
+        )
+        const writing = writer.client.query(DOCUMENT_SOFT_DELETE, [org, second.id, newUser(), 0])
+        await untilBlocked(writer.pid)
+        await sweeper.query(
+          `update playbook.work_hints set due_at = clock_timestamp() + interval '1 day' where kind = 'purge_due' and organization_id = $1`,
+          [org]
+        )
+        await sweeper.query('commit')
+        await writing
+        await writer.client.query('commit')
+      } finally {
+        await sweeper.query('rollback').catch(() => undefined)
+        sweeper.release()
+        await finish(writer)
+      }
+      const hint = await hintOf('purge_due', org)
+      expect(hint).toBeDefined()
+      expect(new Date(hint.due_at)).toEqual(new Date((await row(org, second.id)).purge_due_at))
+    })
+
     describe('a writer racing the sweeper that is about to remove the hint', () => {
       // The sweeper holds the hint FOR UPDATE and removes it; a writer noting work in the meantime
       // takes its share lock first-come or waits for the sweeper. With the share-lock path the

@@ -817,10 +817,11 @@ partial index: `documents_purge_idx` (purge), `ingestion_jobs_due_idx` (jobs), `
 (cleanup), `consumed_message_done_idx` and `consumed_message_lease_idx` (messages),
 `idempotency_keys_purge_idx` (keys) and `documents_spent_purge_idx` (spent). The cost of the registry is
 one hint note per delete, job state change, consumed message and idempotency key: the note first looks
-for a hint that is already early enough and takes a share lock on it (share locks do not conflict, so
-writers of one Organization and kind do not queue behind each other, while the sweeper's exclusive
-lock still conflicts with them), and writes the row only when none is. A writer holding the share
-lock keeps the sweeper from removing the hint; a writer queued behind the sweeper re-checks after it
+for a hint that is already early enough and takes a key share lock on it (key share locks do not
+conflict with each other or with the later update of the time, which is not a key column, so writers
+of one Organization and kind neither queue behind each other nor deadlock, while the sweeper's
+exclusive lock and delete still conflict with them), and writes the row only when none is. A writer
+holding the key share lock keeps the sweeper from removing the hint; a writer queued behind the sweeper re-checks after it
 commits and writes the hint again if it was removed, so no hint is lost. The registry is not a tenant table, so it has an entry in
 `NON_TENANT_TABLES` (the decision record belongs in the hub).
 

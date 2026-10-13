@@ -36,19 +36,26 @@ REVOKE ALL ON "playbook"."work_hints" FROM closeline_playbook;
 -- registry says where to look; the discovery function then looks in that Organization's own scope.
 
 -- Record that an Organization may have work of a kind from a time on. Only ever moves the time
--- earlier. It first looks for a hint that is already early enough and takes a SHARE lock on it:
--- share locks do not conflict with each other, so writers of one Organization and kind do not queue
--- behind each other, and they still conflict with the sweeper's FOR UPDATE. Only when no such row
--- exists does it upsert (which locks the row it writes).
+-- earlier. It first looks for a hint that is already early enough and takes a KEY SHARE lock on it:
+-- key share locks do not conflict with each other, so writers of one Organization and kind do not
+-- queue behind each other, and they still conflict with the sweeper's FOR UPDATE and its DELETE.
+-- Only when no such row exists does it upsert.
+--
+-- Why KEY SHARE and not SHARE: two writers each holding SHARE on one hint, each then noting an
+-- earlier time, would each need to upgrade to a row update and deadlock (40P01). "due_at" is not a
+-- key column, so the upsert's UPDATE takes only the no-key-exclusive lock, which does not conflict
+-- with key share; the writers pass each other. The sweeper's FOR UPDATE (also when it only moves
+-- "due_at" later: it selects the row FOR UPDATE first, then updates it) conflicts with key share, as
+-- does its DELETE, so it still excludes every writer holding the row.
 --
 -- Why this cannot lose a hint the sweeper is about to remove. The sweeper (organizations_with_work)
 -- holds a hint FOR UPDATE while it decides, and deletes it only when it saw no work.
---   * The sweeper holds the row first: the writer's FOR SHARE waits for the sweeper's commit. If the
---     hint was deleted, the re-checked SELECT finds no row, so the writer upserts a new one; if the
---     hint was moved later than the writer's time, the re-checked qual fails and the upsert moves it
---     earlier; if it was kept, the writer finds it and skips, correctly.
---   * The writer holds the share lock first: the sweeper's FOR UPDATE SKIP LOCKED skips the row, so
---     it can neither delete nor move it while the writer's transaction (which holds the new tenant
+--   * The sweeper holds the row first: the writer's FOR KEY SHARE waits for the sweeper's commit. If
+--     the hint was deleted, the re-checked SELECT finds no row, so the writer upserts a new one; if
+--     the hint was moved later than the writer's time, the re-checked qual fails and the upsert moves
+--     it earlier; if it was kept, the writer finds it and skips, correctly.
+--   * The writer holds the key share lock first: the sweeper's FOR UPDATE SKIP LOCKED skips the row,
+--     so it can neither delete nor move it while the writer's transaction (which holds the new tenant
 --     row, not yet visible to the sweeper) is open.
 -- Lock order is unchanged: a hint row is the last lock any transaction takes.
 CREATE FUNCTION "playbook"."note_work"(p_kind text, p_organization_id text, p_due_at timestamptz) RETURNS void
@@ -56,7 +63,7 @@ CREATE FUNCTION "playbook"."note_work"(p_kind text, p_organization_id text, p_du
 BEGIN
   PERFORM 1 FROM "playbook"."work_hints" h
     WHERE h."kind" = p_kind AND h."organization_id" = p_organization_id AND h."due_at" <= p_due_at
-    FOR SHARE;
+    FOR KEY SHARE;
   IF FOUND THEN
     RETURN;
   END IF;

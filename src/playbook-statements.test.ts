@@ -366,7 +366,7 @@ describe('review round 1 of the work discovery', () => {
     expect(migration).toContain('v_limit integer := least(v_batch * 4, 2000)')
     expect(migration).toContain('EXIT WHEN cardinality(v_ids) >= v_batch OR v_visited >= v_limit')
     const note = migration.slice(migration.indexOf('CREATE FUNCTION "playbook"."note_work"'))
-    expect(note.indexOf('FOR SHARE')).toBeLessThan(
+    expect(note.indexOf('FOR KEY SHARE')).toBeLessThan(
       note.indexOf('INSERT INTO "playbook"."work_hints"')
     )
   })
