@@ -8634,6 +8634,7 @@ declare const GLOBAL_SCOPE_ORGANIZATION_ID = "org_000000000000000000000000000000
 * - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
 *   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
 *   backwards.
+* - One live state, newest first, same keyset: `documents_state_list_idx`.
 * - Deleted documents, newest first, same keyset: `documents_deleted_list_idx`.
 * - By content hash: `documents_content_hash_key`.
 * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
@@ -8828,6 +8829,23 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		pageCount: PgColumn_ffrhhp36<{
+			name: "page_count";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -9928,12 +9946,41 @@ declare const DOCUMENT_INSERT = "with ins as (\n  insert into playbook.documents
 */
 declare const DOCUMENT_BY_HASH = "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null";
 /**
+* The public columns of a document, in the order every document read returns them:
+* {@link DOCUMENT_GET}, {@link DOCUMENT_LIST}, {@link DOCUMENT_LIST_DELETED} and
+* {@link DOCUMENT_LIST_FILTERED} select exactly these plus `not_restorable`, so a listed row is
+* never read a second time and the reads cannot drift apart.
+*/
+declare const DOCUMENT_ROW_FIELDS: readonly ["id", "name", "state", "size_bytes", "declared_type", "detected_type", "uploaded_by", "failure_reason", "epoch", "deletion_seq", "deleted_at", "deleted_by", "purge_due_at", "purge_started_at", "page_count", "created_at", "updated_at", "not_restorable"];
+/** One row of {@link DOCUMENT_GET} or of any document list; times are the database's own values. */
+interface DocumentRow {
+	id: string;
+	name: string;
+	state: "uploaded" | "processing" | "ready" | "failed" | "deleted";
+	size_bytes: number | string;
+	declared_type: string;
+	detected_type: string;
+	uploaded_by: string;
+	failure_reason: string | null;
+	epoch: number;
+	deletion_seq: number;
+	deleted_at: Date | null;
+	deleted_by: string | null;
+	purge_due_at: Date | null;
+	purge_started_at: Date | null;
+	page_count: number | null;
+	created_at: Date;
+	updated_at: Date;
+	not_restorable: boolean;
+}
+/**
 * One page of the Organization's documents that are not deleted, newest first. `$1` Organization,
 * `$2` and `$3` the cursor, the `created_at` and `id` of the last row of the previous page (pass
 * `'infinity'` and `''` for the first page), `$4` the page size, cut to {@link DOCUMENT_LIST_MAX_PAGE}.
 * Served by `documents_list_idx`, read backwards, with no sort. Carry the cursor as the database's
 * own text form of `created_at` (`created_at::text`), not a JavaScript Date, which drops the
-* microseconds and would skip rows created within the same millisecond.
+* microseconds and would skip rows created within the same millisecond. Rows carry every column
+* of {@link DOCUMENT_ROW_FIELDS}, as {@link DOCUMENT_GET} does.
 */
 declare const DOCUMENT_LIST: string;
 /**
@@ -9941,13 +9988,31 @@ declare const DOCUMENT_LIST: string;
 * the same keyset and cursor rules as {@link DOCUMENT_LIST}, with the deletion fields. `$1`
 * Organization, `$2` and `$3` the cursor (`'infinity'` and `''` for the first page), `$4` the page
 * size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}, null included. Served by
-* `documents_deleted_list_idx`, read backwards, with no sort.
+* `documents_deleted_list_idx`, read backwards, with no sort. Rows carry every column of
+* {@link DOCUMENT_ROW_FIELDS}, including the database-computed `not_restorable`.
 */
 declare const DOCUMENT_LIST_DELETED: string;
 /**
-* One document by id with everything the service answers and publishes with: the public columns,
-* `failure_reason`, `epoch`, `deletion_seq`, `deleted_at`, `deleted_by`, `purge_due_at` and
-* `purge_started_at`. `$1` Organization, `$2` document. No row means no such document (never
+* One page of the Organization's documents with an optional state filter, in one call: `$1`
+* Organization, `$2` and `$3` the cursor (`'infinity'` and `''` for the first page), `$4` the page
+* size (clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}), `$5` the state or null. Null lists every
+* document that is not deleted, as {@link DOCUMENT_LIST}; `uploaded`, `processing`, `ready` and
+* `failed` list that state; `deleted` lists the deleted documents, as {@link DOCUMENT_LIST_DELETED};
+* any other value lists nothing. Newest first by `created_at` then `id`, the same keyset and cursor
+* rules as {@link DOCUMENT_LIST}, every row with all of {@link DOCUMENT_ROW_FIELDS}. Each value is
+* served by one index read backwards with no sort and no pass over other states' rows: null by
+* `documents_list_idx`, a live state by `documents_state_list_idx` (equality on the state, then the
+* keyset), `deleted` by `documents_deleted_list_idx`. The three branches are guarded by `$5`, so
+* only the matching one runs. The state branch repeats the literal `state <> 'deleted'` of the partial
+* index's predicate: under a generic plan `state = $5` alone does not prove it, and the index would
+* be unusable.
+*/
+declare const DOCUMENT_LIST_FILTERED: string;
+/**
+* One document by id with everything the service answers and publishes with: every column of
+* {@link DOCUMENT_ROW_FIELDS} (the public columns, `failure_reason`, `page_count`, `epoch`,
+* `deletion_seq`, `deleted_at`, `deleted_by`, `purge_due_at` and `purge_started_at`). `$1`
+* Organization, `$2` document. No row means no such document (never
 * existed, or purged). `not_restorable` is computed by the database clock, so the service never
 * compares the purge time with its own: it is true for a `deleted` document whose `purge_due_at`
 * has passed, whose purge has started or that erasure barred from restore. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
@@ -9956,7 +10021,7 @@ declare const DOCUMENT_LIST_DELETED: string;
 * document due between them can show `not_restorable` false right after a refused restore: ask
 * again.)
 */
-declare const DOCUMENT_GET = "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
+declare const DOCUMENT_GET: string;
 /**
 * Soft delete: hide the document at once and set when it may be purged, in one write. `$1`
 * Organization, `$2` document, `$3` who deleted it, `$4` the retention in milliseconds, raised to
@@ -10168,19 +10233,22 @@ declare const INGESTION_JOB_ADVANCE: string;
 */
 declare const INGESTION_JOB_RETRY = "update playbook.ingestion_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
 /**
-* Finish a job and make its document `ready`, in one write. `$1` Organization, `$2` job, `$3`
-* the claim token. No row means the claim was lost (including a cancel by a delete) or the document is
+* Finish a job and make its document `ready`, in one write, with the document's `page_count` set
+* from the job's (the count the worker recorded with {@link INGESTION_JOB_ADVANCE}; null if none).
+* `$1` Organization, `$2` job, `$3` the claim token. No row means the claim was lost (including a cancel by a delete) or the document is
 * no longer `processing` at the job's epoch: the document is not touched. A job that wins this over a concurrent delete is impossible: the delete
 * cancels the job and takes the job row first.
 */
-declare const INGESTION_JOB_COMPLETE = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'ready', updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state = 'processing')\\nselect document_id from j";
+declare const INGESTION_JOB_COMPLETE = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch, page_count),\\nd as (\\n  update playbook.documents\\n  set state = 'ready', page_count = coalesce((select page_count from j), page_count), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state = 'processing')\\nselect document_id from j";
 /**
 * End a job as failed and make its document `failed` with the reason, in one write. `$1`
 * Organization, `$2` job, `$3` the claim token, `$4` the reason (`too_many_pages`, `unreadable`,
-* `password_protected`, `no_text` or `processing_failed`; the table rejects any other). No row
+* `password_protected`, `no_text` or `processing_failed`; the table rejects any other). The
+* document's `page_count` is set from the job's in the same write, so a `too_many_pages` failure
+* shows the count when the worker recorded it first with {@link INGESTION_JOB_ADVANCE}. No row
 * means the claim was lost.
 */
-declare const INGESTION_JOB_FAIL = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'failed', failure_reason = $4::text, claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state in ('uploaded', 'processing'))\\nselect document_id from j";
+declare const INGESTION_JOB_FAIL = "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'failed', failure_reason = $4::text, claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch, page_count),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = $4::text, page_count = coalesce((select page_count from j), page_count),\\n      updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state in ('uploaded', 'processing'))\\nselect document_id from j";
 /**
 * Fail spent jobs, one bounded batch: active jobs that have used every attempt and whose lease
 * has ended, so no worker holds them, as `failed` with `processing_failed`, and their documents
@@ -10425,7 +10493,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly QUOTA_USAGE: "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
 	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
 	readonly DOCUMENT_BY_HASH: "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null";
-	readonly DOCUMENT_GET: "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
+	readonly DOCUMENT_GET: string;
 	readonly DOCUMENT_LIST: string;
 	readonly DOCUMENT_LIST_DELETED: string;
 	readonly DOCUMENT_SOFT_DELETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')\\n  returning id),\\nd as (\\n  update playbook.documents\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, state, deletion_seq, purge_due_at)\\nselect id, state, deletion_seq, purge_due_at, true as changed from d\\nunion all\\nselect id, state, deletion_seq, purge_due_at, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)";
@@ -10440,8 +10508,8 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly INGESTION_JOB_HEARTBEAT: string;
 	readonly INGESTION_JOB_ADVANCE: string;
 	readonly INGESTION_JOB_RETRY: "update playbook.ingestion_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
-	readonly INGESTION_JOB_COMPLETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'ready', updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state = 'processing')\\nselect document_id from j";
-	readonly INGESTION_JOB_FAIL: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'failed', failure_reason = $4::text, claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state in ('uploaded', 'processing'))\\nselect document_id from j";
+	readonly INGESTION_JOB_COMPLETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch, page_count),\\nd as (\\n  update playbook.documents\\n  set state = 'ready', page_count = coalesce((select page_count from j), page_count), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state = 'processing')\\nselect document_id from j";
+	readonly INGESTION_JOB_FAIL: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'failed', failure_reason = $4::text, claim_token = null,\\n      finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\n    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id\\n                and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)\\n  returning document_id, epoch, page_count),\\nd as (\\n  update playbook.documents\\n  set state = 'failed', failure_reason = $4::text, page_count = coalesce((select page_count from j), page_count),\\n      updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)\\n    and state in ('uploaded', 'processing'))\\nselect document_id from j";
 	readonly INGESTION_JOB_GIVE_UP_SPENT: string;
 	readonly CONSUMED_CLAIM: string;
 	readonly CONSUMED_LOOKUP: "select state,\\n  case when state = 'claimed'\\n       then greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int end as retry_after_seconds\\nfrom playbook.consumed_message\\nwhere consumer = $1 and organization_id = $2 and message_id = $3";
@@ -10499,4 +10567,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

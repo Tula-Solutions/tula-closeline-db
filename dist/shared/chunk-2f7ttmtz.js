@@ -1229,6 +1229,7 @@ var documents2 = playbookSchema2.table("documents", {
   uploadedBy: text33("uploaded_by").notNull(),
   objectKey: text33("object_key").notNull(),
   failureReason: text33("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
+  pageCount: integer13("page_count"),
   epoch: integer13("epoch").notNull().default(0),
   deletionSeq: integer13("deletion_seq").notNull().default(0),
   vectorsRemovedSeq: integer13("vectors_removed_seq"),
@@ -1257,6 +1258,7 @@ var documents2 = playbookSchema2.table("documents", {
   check13("documents_object_key_shape", sql18`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`),
   check13("documents_failure_reason_known", sql18`${t.failureReason} in (${list2(DOCUMENT_FAILURE_REASONS2)})`),
   check13("documents_failed_has_reason", sql18`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check13("documents_page_count_positive", sql18`${t.pageCount} > 0`),
   check13("documents_epoch_bounds", sql18`${t.epoch} >= 0 and ${t.deletionSeq} >= 0`),
   check13("documents_vectors_removed_seq_bounds", sql18`${t.vectorsRemovedSeq} between 0 and ${t.deletionSeq}`),
   check13("documents_deleted_has_times", sql18`(${t.state} = 'deleted') = (${t.deletedAt} is not null)
@@ -1271,6 +1273,7 @@ var documents2 = playbookSchema2.table("documents", {
   check13("documents_barred_only_when_deleted", sql18`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`),
   uniqueIndex3("documents_content_hash_key").on(t.organizationId, t.contentHash).where(sql18`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
   index24("documents_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql18`${t.state} <> 'deleted'`),
+  index24("documents_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id).where(sql18`${t.state} <> 'deleted'`),
   index24("documents_deleted_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql18`${t.state} = 'deleted'`),
   index24("documents_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql18`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql18.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
   index24("documents_unbarred_idx").on(t.organizationId, t.id).where(sql18`${t.restoreBarredAt} is null`),

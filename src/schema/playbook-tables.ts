@@ -92,6 +92,7 @@ const updatedAt = () => ts('updated_at').notNull().defaultNow()
  * - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
  *   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
  *   backwards.
+ * - One live state, newest first, same keyset: `documents_state_list_idx`.
  * - Deleted documents, newest first, same keyset: `documents_deleted_list_idx`.
  * - By content hash: `documents_content_hash_key`.
  * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
@@ -111,6 +112,8 @@ export const documents = playbookSchema.table(
     uploadedBy: text('uploaded_by').notNull(),
     objectKey: text('object_key').notNull(),
     failureReason: text('failure_reason', { enum: DOCUMENT_FAILURE_REASONS }),
+    // Set by the ingestion job's complete or fail write from the job's own count; null until then.
+    pageCount: integer('page_count'),
     epoch: integer('epoch').notNull().default(0),
     deletionSeq: integer('deletion_seq').notNull().default(0),
     vectorsRemovedSeq: integer('vectors_removed_seq'),
@@ -158,6 +161,7 @@ export const documents = playbookSchema.table(
       'documents_failed_has_reason',
       sql`(${t.state} = 'failed') = (${t.failureReason} is not null)`
     ),
+    check('documents_page_count_positive', sql`${t.pageCount} > 0`),
     check('documents_epoch_bounds', sql`${t.epoch} >= 0 and ${t.deletionSeq} >= 0`),
     check(
       'documents_vectors_removed_seq_bounds',
@@ -193,6 +197,11 @@ export const documents = playbookSchema.table(
       .where(sql`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
     index('documents_list_idx')
       .on(t.organizationId, t.createdAt, t.id)
+      .where(sql`${t.state} <> 'deleted'`),
+    // A list filtered to one live state, newest first: equality on the state, then the keyset, so
+    // the scan never passes a row of another state (the unfiltered live list uses documents_list_idx).
+    index('documents_state_list_idx')
+      .on(t.organizationId, t.state, t.createdAt, t.id)
       .where(sql`${t.state} <> 'deleted'`),
     // The deleted list, newest first: the same keyset as the live list, for the deleted documents.
     index('documents_deleted_list_idx')

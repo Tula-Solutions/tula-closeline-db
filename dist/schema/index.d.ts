@@ -8451,6 +8451,7 @@ declare const GLOBAL_SCOPE_ORGANIZATION_ID = "org_000000000000000000000000000000
 * - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
 *   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
 *   backwards.
+* - One live state, newest first, same keyset: `documents_state_list_idx`.
 * - Deleted documents, newest first, same keyset: `documents_deleted_list_idx`.
 * - By content hash: `documents_content_hash_key`.
 * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
@@ -8645,6 +8646,23 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		pageCount: PgColumn_ffrhhp36<{
+			name: "page_count";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

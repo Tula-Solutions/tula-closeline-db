@@ -115,8 +115,59 @@ export const DOCUMENT_BY_HASH = `select id, state, epoch, deletion_seq
 from playbook.documents
 where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null`
 
-const COLUMNS_FOR_LIST =
-  'id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at'
+/**
+ * The public columns of a document, in the order every document read returns them:
+ * {@link DOCUMENT_GET}, {@link DOCUMENT_LIST}, {@link DOCUMENT_LIST_DELETED} and
+ * {@link DOCUMENT_LIST_FILTERED} select exactly these plus `not_restorable`, so a listed row is
+ * never read a second time and the reads cannot drift apart.
+ */
+export const DOCUMENT_ROW_FIELDS = [
+  'id',
+  'name',
+  'state',
+  'size_bytes',
+  'declared_type',
+  'detected_type',
+  'uploaded_by',
+  'failure_reason',
+  'epoch',
+  'deletion_seq',
+  'deleted_at',
+  'deleted_by',
+  'purge_due_at',
+  'purge_started_at',
+  'page_count',
+  'created_at',
+  'updated_at',
+  'not_restorable',
+] as const
+
+/** One row of {@link DOCUMENT_GET} or of any document list; times are the database's own values. */
+export interface DocumentRow {
+  id: string
+  name: string
+  state: 'uploaded' | 'processing' | 'ready' | 'failed' | 'deleted'
+  size_bytes: number | string
+  declared_type: string
+  detected_type: string
+  uploaded_by: string
+  failure_reason: string | null
+  epoch: number
+  deletion_seq: number
+  deleted_at: Date | null
+  deleted_by: string | null
+  purge_due_at: Date | null
+  purge_started_at: Date | null
+  page_count: number | null
+  created_at: Date
+  updated_at: Date
+  not_restorable: boolean
+}
+
+const NOT_RESTORABLE = `(state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable`
+
+const DOCUMENT_COLUMNS = `${DOCUMENT_ROW_FIELDS.filter((f) => f !== 'not_restorable').join(', ')},
+  ${NOT_RESTORABLE}`
 
 /**
  * One page of the Organization's documents that are not deleted, newest first. `$1` Organization,
@@ -124,9 +175,10 @@ const COLUMNS_FOR_LIST =
  * `'infinity'` and `''` for the first page), `$4` the page size, cut to {@link DOCUMENT_LIST_MAX_PAGE}.
  * Served by `documents_list_idx`, read backwards, with no sort. Carry the cursor as the database's
  * own text form of `created_at` (`created_at::text`), not a JavaScript Date, which drops the
- * microseconds and would skip rows created within the same millisecond.
+ * microseconds and would skip rows created within the same millisecond. Rows carry every column
+ * of {@link DOCUMENT_ROW_FIELDS}, as {@link DOCUMENT_GET} does.
  */
-export const DOCUMENT_LIST = `select ${COLUMNS_FOR_LIST}
+export const DOCUMENT_LIST = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and state <> 'deleted'
   and (created_at, id) < ($2::timestamptz, $3::text)
@@ -138,9 +190,10 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * the same keyset and cursor rules as {@link DOCUMENT_LIST}, with the deletion fields. `$1`
  * Organization, `$2` and `$3` the cursor (`'infinity'` and `''` for the first page), `$4` the page
  * size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}, null included. Served by
- * `documents_deleted_list_idx`, read backwards, with no sort.
+ * `documents_deleted_list_idx`, read backwards, with no sort. Rows carry every column of
+ * {@link DOCUMENT_ROW_FIELDS}, including the database-computed `not_restorable`.
  */
-export const DOCUMENT_LIST_DELETED = `select id, name, state, size_bytes, detected_type, uploaded_by, deletion_seq, deleted_at, purge_due_at, created_at
+export const DOCUMENT_LIST_DELETED = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and state = 'deleted'
   and (created_at, id) < ($2::timestamptz, $3::text)
@@ -148,9 +201,44 @@ order by created_at desc, id desc
 limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
 
 /**
- * One document by id with everything the service answers and publishes with: the public columns,
- * `failure_reason`, `epoch`, `deletion_seq`, `deleted_at`, `deleted_by`, `purge_due_at` and
- * `purge_started_at`. `$1` Organization, `$2` document. No row means no such document (never
+ * One page of the Organization's documents with an optional state filter, in one call: `$1`
+ * Organization, `$2` and `$3` the cursor (`'infinity'` and `''` for the first page), `$4` the page
+ * size (clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}), `$5` the state or null. Null lists every
+ * document that is not deleted, as {@link DOCUMENT_LIST}; `uploaded`, `processing`, `ready` and
+ * `failed` list that state; `deleted` lists the deleted documents, as {@link DOCUMENT_LIST_DELETED};
+ * any other value lists nothing. Newest first by `created_at` then `id`, the same keyset and cursor
+ * rules as {@link DOCUMENT_LIST}, every row with all of {@link DOCUMENT_ROW_FIELDS}. Each value is
+ * served by one index read backwards with no sort and no pass over other states' rows: null by
+ * `documents_list_idx`, a live state by `documents_state_list_idx` (equality on the state, then the
+ * keyset), `deleted` by `documents_deleted_list_idx`. The three branches are guarded by `$5`, so
+ * only the matching one runs. The state branch repeats the literal `state <> 'deleted'` of the partial
+ * index's predicate: under a generic plan `state = $5` alone does not prove it, and the index would
+ * be unusable.
+ */
+export const DOCUMENT_LIST_FILTERED = `select * from (
+  (select ${DOCUMENT_COLUMNS} from playbook.documents
+   where $5::text is null and organization_id = $1 and state <> 'deleted'
+     and (created_at, id) < ($2::timestamptz, $3::text)
+   order by created_at desc, id desc limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)})
+  union all
+  (select ${DOCUMENT_COLUMNS} from playbook.documents
+   where $5::text in ('uploaded', 'processing', 'ready', 'failed') and organization_id = $1 and state = $5::text and state <> 'deleted'
+     and (created_at, id) < ($2::timestamptz, $3::text)
+   order by created_at desc, id desc limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)})
+  union all
+  (select ${DOCUMENT_COLUMNS} from playbook.documents
+   where $5::text = 'deleted' and organization_id = $1 and state = 'deleted'
+     and (created_at, id) < ($2::timestamptz, $3::text)
+   order by created_at desc, id desc limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)})
+) page
+order by created_at desc, id desc
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/**
+ * One document by id with everything the service answers and publishes with: every column of
+ * {@link DOCUMENT_ROW_FIELDS} (the public columns, `failure_reason`, `page_count`, `epoch`,
+ * `deletion_seq`, `deleted_at`, `deleted_by`, `purge_due_at` and `purge_started_at`). `$1`
+ * Organization, `$2` document. No row means no such document (never
  * existed, or purged). `not_restorable` is computed by the database clock, so the service never
  * compares the purge time with its own: it is true for a `deleted` document whose `purge_due_at`
  * has passed, whose purge has started or that erasure barred from restore. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
@@ -159,9 +247,7 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * document due between them can show `not_restorable` false right after a refused restore: ask
  * again.)
  */
-export const DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
-  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
-  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
+export const DOCUMENT_GET = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and id = $2`
 
@@ -539,8 +625,9 @@ where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'r
 returning id, attempts`
 
 /**
- * Finish a job and make its document `ready`, in one write. `$1` Organization, `$2` job, `$3`
- * the claim token. No row means the claim was lost (including a cancel by a delete) or the document is
+ * Finish a job and make its document `ready`, in one write, with the document's `page_count` set
+ * from the job's (the count the worker recorded with {@link INGESTION_JOB_ADVANCE}; null if none).
+ * `$1` Organization, `$2` job, `$3` the claim token. No row means the claim was lost (including a cancel by a delete) or the document is
  * no longer `processing` at the job's epoch: the document is not touched. A job that wins this over a concurrent delete is impossible: the delete
  * cancels the job and takes the job row first.
  */
@@ -550,10 +637,10 @@ export const INGESTION_JOB_COMPLETE = `with j as (
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
     and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
                 and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)
-  returning document_id, epoch),
+  returning document_id, epoch, page_count),
 d as (
   update playbook.documents
-  set state = 'ready', updated_at = clock_timestamp()
+  set state = 'ready', page_count = coalesce((select page_count from j), page_count), updated_at = clock_timestamp()
   where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
     and state = 'processing')
 select document_id from j`
@@ -561,7 +648,9 @@ select document_id from j`
 /**
  * End a job as failed and make its document `failed` with the reason, in one write. `$1`
  * Organization, `$2` job, `$3` the claim token, `$4` the reason (`too_many_pages`, `unreadable`,
- * `password_protected`, `no_text` or `processing_failed`; the table rejects any other). No row
+ * `password_protected`, `no_text` or `processing_failed`; the table rejects any other). The
+ * document's `page_count` is set from the job's in the same write, so a `too_many_pages` failure
+ * shows the count when the worker recorded it first with {@link INGESTION_JOB_ADVANCE}. No row
  * means the claim was lost.
  */
 export const INGESTION_JOB_FAIL = `with j as (
@@ -571,10 +660,11 @@ export const INGESTION_JOB_FAIL = `with j as (
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
     and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
                 and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
-  returning document_id, epoch),
+  returning document_id, epoch, page_count),
 d as (
   update playbook.documents
-  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()
+  set state = 'failed', failure_reason = $4::text, page_count = coalesce((select page_count from j), page_count),
+      updated_at = clock_timestamp()
   where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
     and state in ('uploaded', 'processing'))
 select document_id from j`

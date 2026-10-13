@@ -31,11 +31,13 @@ import {
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
   DOCUMENT_LIST_DELETED,
+  DOCUMENT_LIST_FILTERED,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
   DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
+  DOCUMENT_ROW_FIELDS,
   DOCUMENT_SOFT_DELETE,
   IDEMPOTENCY_BEGIN,
   IDEMPOTENCY_COMPLETE,
@@ -1997,6 +1999,316 @@ describe('the playbook schema', () => {
     })
   })
 
+  describe('filtered lists, full rows and the page count', () => {
+    const FIRST = ['infinity', '', 100] as const
+    const filtered = (org: string, state: string | null, cursor: readonly unknown[] = FIRST) =>
+      inOrg(org, (c) => c.query(DOCUMENT_LIST_FILTERED, [org, ...cursor, state]))
+    const ids = (r: { rows: { id: string }[] }) => r.rows.map((x) => x.id).sort()
+    const claimOne = async (org: string, jobId: string) => {
+      const claim = (await claimJobs(org, 5, 600_000, jobId)).rows[0]
+      expect(claim).toBeDefined()
+      return claim.claim_token as string
+    }
+    const advancePages = (org: string, jobId: string, token: string, pages: number) =>
+      inOrg(org, (c) =>
+        c.query(INGESTION_JOB_ADVANCE, [org, jobId, token, 'chunk', null, pages, null, null, 1000])
+      )
+
+    /** One document per state in a fresh Organization. */
+    async function oneOfEach() {
+      const org = newOrg()
+      const uploaded = await mustAdd(org)
+      const processing = await mustAdd(org)
+      const ready = await mustAdd(org)
+      const failed = await mustAdd(org)
+      const deleted = await mustAdd(org)
+      await claimOne(org, processing.jobId)
+      const readyToken = await claimOne(org, ready.jobId)
+      await advancePages(org, ready.jobId, readyToken, 12)
+      await inOrg(org, (c) => c.query(INGESTION_JOB_COMPLETE, [org, ready.jobId, readyToken]))
+      const failedToken = await claimOne(org, failed.jobId)
+      await inOrg(org, (c) =>
+        c.query(INGESTION_JOB_FAIL, [org, failed.jobId, failedToken, 'unreadable'])
+      )
+      await remove(org, deleted.id)
+      return { org, uploaded, processing, ready, failed, deleted }
+    }
+
+    test('each state filter lists exactly that state, and null lists every state but deleted', async () => {
+      const { org, uploaded, processing, ready, failed, deleted } = await oneOfEach()
+      for (const [state, doc] of [
+        ['uploaded', uploaded],
+        ['processing', processing],
+        ['ready', ready],
+        ['failed', failed],
+        ['deleted', deleted],
+      ] as const) {
+        expect(ids(await filtered(org, state))).toEqual([doc.id])
+      }
+      expect(ids(await filtered(org, null))).toEqual(
+        [uploaded.id, processing.id, ready.id, failed.id].sort()
+      )
+      expect(ids(await filtered(org, 'bogus'))).toEqual([])
+    })
+
+    test('list rows carry every column DOCUMENT_GET returns, equal to it, for every state', async () => {
+      const { org, uploaded, processing, ready, failed, deleted } = await oneOfEach()
+      for (const doc of [uploaded, processing, ready, failed, deleted]) {
+        const get = (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, doc.id]))).rows[0]
+        expect(Object.keys(get)).toEqual([...DOCUMENT_ROW_FIELDS])
+        const lists = [
+          await filtered(org, get.state),
+          await inOrg(org, (c) =>
+            c.query(get.state === 'deleted' ? DOCUMENT_LIST_DELETED : DOCUMENT_LIST, [
+              org,
+              ...FIRST,
+            ])
+          ),
+        ]
+        for (const list of lists) {
+          expect(list.rows.find((r) => r.id === doc.id)).toEqual(get)
+        }
+      }
+      const failedRow = (await filtered(org, 'failed')).rows[0]
+      expect(failedRow).toMatchObject({ failure_reason: 'unreadable', not_restorable: false })
+      expect(failedRow.updated_at).toBeInstanceOf(Date)
+      expect((await filtered(org, 'deleted')).rows[0]).toMatchObject({
+        not_restorable: false,
+        deletion_seq: 1,
+      })
+      expect((await filtered(org, 'deleted')).rows[0].purge_due_at).toBeInstanceOf(Date)
+      // Due for purge: the database clock says not restorable, in the list too.
+      await makeDue(org, deleted.id)
+      expect((await filtered(org, 'deleted')).rows[0].not_restorable).toBe(true)
+    })
+
+    test('a filtered list pages through a created_at tie without skipping or repeating a row', async () => {
+      const org = newOrg()
+      const TIE = '2026-01-01 00:00:00.123456+00'
+      // Four ready documents and three uploaded ones, all created at the same instant.
+      const make = async (state: string) =>
+        (await insertDoc(org, { state, created_at: TIE })).rows[0]
+      const docs = []
+      for (const state of [
+        'ready',
+        'ready',
+        'ready',
+        'ready',
+        'uploaded',
+        'uploaded',
+        'uploaded',
+      ]) {
+        docs.push(await make(state))
+      }
+      for (const [state, expected] of [
+        ['ready', docs.slice(0, 4)],
+        ['uploaded', docs.slice(4)],
+      ] as const) {
+        const seen: string[] = []
+        let cursor: readonly unknown[] = FIRST
+        for (let pages = 0; pages < 10; pages++) {
+          const page = await inOrg(org, (c) =>
+            c.query(DOCUMENT_LIST_FILTERED, [org, cursor[0], cursor[1], 2, state])
+          )
+          if (page.rowCount === 0) {
+            break
+          }
+          seen.push(...page.rows.map((r) => r.id))
+          const lastId = page.rows.at(-1)?.id as string
+          cursor = [await textOf(org, lastId), lastId]
+        }
+        expect(seen).toEqual(
+          expected
+            .map((d) => d.id)
+            .sort()
+            .reverse()
+        )
+      }
+    })
+
+    test('another Organization sees none of them, and the owner in scope sees them as a control', async () => {
+      const { org, uploaded, ready, deleted } = await oneOfEach()
+      const other = newOrg()
+      await mustAdd(other)
+      for (const state of [null, 'uploaded', 'ready', 'failed', 'deleted']) {
+        const rows = (await filtered(other, state)).rows.map((r) => r.id)
+        for (const doc of [uploaded, ready, deleted]) {
+          expect(rows).not.toContain(doc.id)
+        }
+      }
+      // The control: the same statement as the table owner, in the first Organization's scope.
+      const control = await asOwner(org, (c) =>
+        c.query(DOCUMENT_LIST_FILTERED, [org, ...FIRST, 'ready'])
+      )
+      expect(ids(control)).toEqual([ready.id])
+      // The owner scoped to the other Organization, asking for the first's rows by id, finds none.
+      const crossed = await asOwner(other, (c) =>
+        c.query(DOCUMENT_LIST_FILTERED, [org, ...FIRST, 'ready'])
+      )
+      expect(crossed.rowCount).toBe(0)
+    })
+
+    describe('the plans use the list indexes under a generic plan', () => {
+      interface PlanNode {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Name'?: string
+        'Scan Direction'?: string
+        'One-Time Filter'?: string
+        Plans?: PlanNode[]
+      }
+      const walk = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(walk)]
+      /**
+       * Prepare the statement, force the generic plan, and return the plan tree (JSON). The scan
+       * of `documents` is only planned with `enable_seqscan = off`, so a branch whose index cannot
+       * serve it shows up as a Seq Scan instead of silently passing on a tiny table.
+       */
+      async function planOf(org: string, text: string, types: string, args: string) {
+        return inOrg(org, async (c) => {
+          await c.query(`set local plan_cache_mode = force_generic_plan`)
+          await c.query(`set local enable_seqscan = off`)
+          await c.query(`prepare plan_probe(${types}) as ${text}`)
+          try {
+            const r = await c.query(`explain (format json, costs off) execute plan_probe(${args})`)
+            return r.rows[0]['QUERY PLAN'][0].Plan as PlanNode
+          } finally {
+            await c.query('deallocate plan_probe')
+          }
+        })
+      }
+      const lit = (v: string | null) => (v === null ? 'null' : `'${v}'`)
+      const fail = (plan: PlanNode) => `plan:\n${JSON.stringify(plan, null, 1)}`
+      /** Assert on the scans of `documents` under `root`: the named index, backward, and no Sort node anywhere under it. */
+      const expectIndexScan = (root: PlanNode, index: string) => {
+        const nodes = walk(root)
+        const scans = nodes.filter((n) => n['Relation Name'] === 'documents')
+        expect([scans.length, fail(root)]).toEqual([1, fail(root)])
+        expect([
+          scans[0]?.['Node Type'],
+          scans[0]?.['Index Name'],
+          scans[0]?.['Scan Direction'],
+          fail(root),
+        ]).toEqual(['Index Scan', index, 'Backward', fail(root)])
+        expect([nodes.some((n) => n['Node Type'] === 'Sort'), fail(root)]).toEqual([
+          false,
+          fail(root),
+        ])
+      }
+
+      test.each([
+        ['DOCUMENT_LIST', DOCUMENT_LIST, 'documents_list_idx'],
+        ['DOCUMENT_LIST_DELETED', DOCUMENT_LIST_DELETED, 'documents_deleted_list_idx'],
+      ] as const)(
+        '%s: its index, read backwards, with no Sort anywhere',
+        async (_name, text, index) => {
+          const org = newOrg()
+          const plan = await planOf(
+            org,
+            text,
+            'text, timestamptz, text, int',
+            `${lit(org)}, 'infinity', '', 50`
+          )
+          expectIndexScan(plan, index)
+        }
+      )
+
+      // The generic plan holds all three branches, each under a Result with a One-Time Filter on
+      // $5. For each filter value this asserts, on the branch that value selects (found by its
+      // One-Time Filter): exactly one scan of documents, an Index Scan Backward on the expected
+      // index, and no Sort node inside that branch. The outer merge of one page may sort; that is
+      // not asserted. The other branches are checked the same way in the other cases.
+      test.each([
+        [null, 'IS NULL', 'documents_list_idx'],
+        ['ready', 'ANY', 'documents_state_list_idx'],
+        ['deleted', "'deleted'", 'documents_deleted_list_idx'],
+      ] as const)(
+        'DOCUMENT_LIST_FILTERED with %s: the branch uses %s -> %s',
+        async (state, marker, index) => {
+          const org = newOrg()
+          const plan = await planOf(
+            org,
+            DOCUMENT_LIST_FILTERED,
+            'text, timestamptz, text, int, text',
+            `${lit(org)}, 'infinity', '', 50, ${lit(state)}`
+          )
+          const branches = walk(plan).filter((n) => /\$5/.test(n['One-Time Filter'] ?? ''))
+          const branch = branches.find(
+            (n) =>
+              (n['One-Time Filter'] ?? '').includes(marker) &&
+              (marker !== "'deleted'" || !(n['One-Time Filter'] ?? '').includes('ANY'))
+          )
+          expect([branches.length, fail(plan)]).toEqual([3, fail(plan)])
+          expect([branch !== undefined, fail(plan)]).toEqual([true, fail(plan)])
+          expectIndexScan(branch as PlanNode, index)
+        }
+      )
+    })
+
+    test('the page count is set by complete and by fail, and returned by get and every list', async () => {
+      const org = newOrg()
+      const ready = await mustAdd(org)
+      const tooMany = await mustAdd(org)
+      const unknown = await mustAdd(org)
+      const readyToken = await claimOne(org, ready.jobId)
+      await advancePages(org, ready.jobId, readyToken, 12)
+      const before = (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, ready.id]))).rows[0]
+      expect(before.page_count).toBeNull()
+      await inOrg(org, (c) => c.query(INGESTION_JOB_COMPLETE, [org, ready.jobId, readyToken]))
+      const tooManyToken = await claimOne(org, tooMany.jobId)
+      await advancePages(org, tooMany.jobId, tooManyToken, 301)
+      await inOrg(org, (c) =>
+        c.query(INGESTION_JOB_FAIL, [org, tooMany.jobId, tooManyToken, 'too_many_pages'])
+      )
+      const unknownToken = await claimOne(org, unknown.jobId)
+      await inOrg(org, (c) => c.query(INGESTION_JOB_COMPLETE, [org, unknown.jobId, unknownToken]))
+      const get = async (id: string) =>
+        (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, id]))).rows[0]
+      expect(await get(ready.id)).toMatchObject({ state: 'ready', page_count: 12 })
+      expect(await get(tooMany.id)).toMatchObject({
+        state: 'failed',
+        failure_reason: 'too_many_pages',
+        page_count: 301,
+      })
+      // A job that never recorded a count leaves it null.
+      expect((await get(unknown.id)).page_count).toBeNull()
+      const listed = (await filtered(org, null)).rows
+      expect(listed.find((r) => r.id === ready.id)?.page_count).toBe(12)
+      expect(listed.find((r) => r.id === tooMany.id)?.page_count).toBe(301)
+      // A stale claim writes neither the state nor the count.
+      const stale = await inOrg(org, (c) =>
+        c.query(INGESTION_JOB_COMPLETE, [org, ready.jobId, readyToken])
+      )
+      expect(stale.rowCount).toBe(0)
+      // The table refuses a zero or negative count.
+      await expect(
+        asOwner(org, (c) =>
+          c.query('update playbook.documents set page_count = 0 where id = $1', [ready.id])
+        )
+      ).rejects.toThrow()
+    })
+
+    test('a v0.11.0 style call (the old parameter lists) still works', async () => {
+      const { org, ready } = await oneOfEach()
+      const live = await inOrg(org, (c) => c.query(DOCUMENT_LIST, [org, 'infinity', '', 50]))
+      expect(live.rowCount).toBe(4)
+      const gone = await inOrg(org, (c) =>
+        c.query(DOCUMENT_LIST_DELETED, [org, 'infinity', '', 50])
+      )
+      expect(gone.rowCount).toBe(1)
+      expect((await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, ready.id]))).rowCount).toBe(1)
+      // Old columns are still there by name.
+      expect(live.rows[0]).toHaveProperty('failure_reason')
+      expect(live.rows[0]).toHaveProperty('uploaded_by')
+      const doc = await mustAdd(org)
+      const token = await claimOne(org, doc.jobId)
+      const failed = await inOrg(org, (c) =>
+        c.query(INGESTION_JOB_FAIL, [org, doc.jobId, token, 'no_text'])
+      )
+      expect(failed.rowCount).toBe(1)
+      expect((await row(org, doc.id)).page_count).toBeNull()
+    })
+  })
+
   describe('batch sizes are clamped in SQL', () => {
     const asNumber = (n: number | null) => n as number
     const HUGE = 2_000_000_000
@@ -2876,7 +3188,7 @@ describe('the playbook schema', () => {
       rmSync(folder, { recursive: true, force: true })
     })
 
-    test('0009 and 0010 apply on a database at 0008 holding auth rows, and change nothing there', async () => {
+    test('0009 through 0013 apply on a database at 0008 holding auth rows, and change nothing there', async () => {
       const name = `it_migrate_playbook_${suffix}`
       await admin.query(`create database "${name}" owner closeline_owner`)
       databases.push(name)
@@ -2915,7 +3227,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        expect(applied.rows[0].n).toBe(13)
+        // 0000 to 0013: the nine before the playbook (0000 to 0008) plus 0009 to 0013.
+        expect(applied.rows[0].n).toBe(14)
         await runMigrations(url.toString())
       } finally {
         await pool.end()

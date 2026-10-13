@@ -131,6 +131,7 @@ describe('the playbook schema', () => {
       'documents_list_idx',
       'documents_purge_idx',
       'documents_spent_purge_idx',
+      'documents_state_list_idx',
       'documents_unbarred_idx',
     ])
     expect(names('work_hints')).toEqual(['work_hints_due_idx'])
