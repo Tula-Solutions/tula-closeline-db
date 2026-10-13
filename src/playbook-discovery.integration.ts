@@ -657,38 +657,44 @@ describe('work discovery, erasure and spent purges', () => {
 
     test('two writers each noting a later and then an earlier time on one hint do not deadlock, and the hint ends at the earliest', async () => {
       const org = newOrg()
-      await mustAdd(org)
-      const { rows } = await owner.query(
-        `select due_at from playbook.work_hints where kind = 'jobs_due' and organization_id = $1`,
-        [org]
-      )
-      const base = new Date(rows[0].due_at)
-      const at = (minutes: number) => new Date(base.getTime() + minutes * 60_000)
-      const note = (c: PoolClient, t: Date) =>
-        c.query(`select playbook.note_work('jobs_due', $1, $2::timestamptz)`, [org, t])
+      const DAY = 86_400_000
+      // Real writes as the playbook role: soft-deleting a document notes `purge_due` at a time the
+      // retention argument controls, through the trigger (the role cannot call note_work itself).
+      const seed = await mustAdd(org)
+      const a1 = await mustAdd(org)
+      const b1 = await mustAdd(org)
+      const a2 = await mustAdd(org)
+      const b2 = await mustAdd(org)
+      // The hint now exists, due in 100 days.
+      await inOrg(org, (c) => c.query(DOCUMENT_SOFT_DELETE, [org, seed.id, newUser(), 100 * DAY]))
+      const softDelete = (tx: { client: PoolClient }, id: string, retentionMs: number) =>
+        tx.client.query(DOCUMENT_SOFT_DELETE, [org, id, newUser(), retentionMs])
       const first = await open(org)
       const second = await open(org)
       try {
-        for (const tx of [first, second]) {
-          await tx.client.query(`set local lock_timeout = '2s'`)
-        }
-        // Both hold the key share lock by noting a later time, then both note an earlier one.
-        await note(first.client, at(10))
-        await note(second.client, at(10))
-        await note(first.client, at(-5))
-        await note(second.client, at(-8))
-        // The sweeper skips the hint while either transaction is open.
-        expect(await page('jobs_due', org.slice(0, -1), 500)).not.toContain(org)
+        // A later time than the hint: each finds it and takes a key share lock, no row update.
+        await softDelete(first, a1.id, 200 * DAY)
+        await softDelete(second, b1.id, 200 * DAY)
+        // The hint is held by both, so the sweeper's lock skips it.
+        const sweeper = await owner.query(
+          `select 1 from (select 1 from playbook.work_hints where kind = 'purge_due' and organization_id = $1 for update skip locked) x`,
+          [org]
+        )
+        expect(sweeper.rowCount).toBe(0)
+        // An earlier time than the hint: the first upserts (no-key-exclusive on the row, which the
+        // other's key share does not block); with a plain share lock this would deadlock.
+        await softDelete(first, a2.id, 10 * DAY)
+        // The second also upserts; it waits for the first's row update, not for a lock cycle.
+        const writing = softDelete(second, b2.id, 5 * DAY)
+        await untilBlocked(second.pid)
         await first.client.query('commit')
+        await writing
         await second.client.query('commit')
       } finally {
         await finish(first, second)
       }
-      const after = await owner.query(
-        `select due_at from playbook.work_hints where kind = 'jobs_due' and organization_id = $1`,
-        [org]
-      )
-      expect(new Date(after.rows[0].due_at)).toEqual(at(-8))
+      const hint = await hintOf('purge_due', org)
+      expect(new Date(hint.due_at)).toEqual(new Date((await row(org, b2.id)).purge_due_at))
     })
 
     test('purge_due: a sweeper that moves the hint later does not lose the writer earlier time', async () => {
