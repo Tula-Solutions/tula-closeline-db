@@ -636,7 +636,7 @@ ASCII-lower-cased name), members of a Team (`team_members_pkey`), Teams of a mem
 The Playbook service's documents, their ingestion, the quota counts, the per-Organization index
 settings, the queue consumer's record of handled messages and the idempotency keys (hub issues 51 and
 53, ADR 0016, ADR 0010). Migrations `0009` (documents, usage, jobs, index settings), `0010` (consumed
-messages), `0011` (idempotency keys) and `0012` (work discovery, erasure, spent purges); released as 0.11.0. Every table carries `organization_id` as the
+messages), `0011` (idempotency keys) and `0012` (work discovery, erasure, spent purges) and `0013` (page count, the state list index); released as 0.12.0. Every table carries `organization_id` as the
 contract's prefixed text, forced row-level security with the one canonical policy, and grants for
 `closeline_playbook` only. **No file content and no extracted text is stored**: the file is in
 object storage (`documents.object_key`), the chunks are in the vector store, and a job holds only
@@ -644,7 +644,7 @@ its step, attempt count, counts and the object key of its parsed intermediate.
 
 | Table | Holds |
 | --- | --- |
-| `documents` | one row per uploaded file: state, content hash, size, declared and detected type, uploader, object key, failure reason, deletion and purge times; keyed by `(organization_id, id)` |
+| `documents` | one row per uploaded file: state, content hash, size, declared and detected type, uploader, object key, failure reason, page count (set when ingestion ends), deletion and purge times; keyed by `(organization_id, id)` |
 | `organization_usage` | document and byte counts per Organization, soft-deleted included, kept by triggers (read-only to the role) |
 | `ingestion_jobs` | one job per ingestion of a document: next step, attempts, lease, counts; at most one active job per document |
 | `index_settings` | the embedding model and dimension of an Organization (ADR 0010) |
@@ -705,9 +705,16 @@ of `documents` skips the triggers; only the owner can run it and must truncate
 
 **Lists and indexes.** Documents not deleted, newest first, by cursor: `documents_list_idx`
 (`DOCUMENT_LIST`, at most 100 a page); deleted ones: `documents_deleted_list_idx`
-(`DOCUMENT_LIST_DELETED`). Carry the cursor as the database's `created_at::text`, not a JavaScript
+(`DOCUMENT_LIST_DELETED`). **`DOCUMENT_LIST_FILTERED`** serves any filter in one call, with `$5` the
+state or null: null is the not-deleted list (`documents_list_idx`), `uploaded`, `processing`, `ready` or
+`failed` is that state (`documents_state_list_idx`, equality on the state then the keyset, so no scan
+past other states' rows), `deleted` is the deleted list (`documents_deleted_list_idx`). Every list row
+carries all the columns `DOCUMENT_GET` returns (`DOCUMENT_ROW_FIELDS`, row type `DocumentRow`): `updated_at`,
+`failure_reason`, `purge_due_at`, `page_count` and the database-computed `not_restorable`, so a listed
+document is never read again. `DOCUMENT_LIST` and `DOCUMENT_LIST_DELETED` keep their parameters and
+only gained columns. Carry the cursor as the database's `created_at::text`, not a JavaScript
 Date, which drops microseconds. `DOCUMENT_GET` reads one document with everything the service
-answers and publishes with (including `deletion_seq`). Its `not_restorable` is computed by the database clock (a `deleted` document past its purge time or with a started purge), so the service never compares the purge time with its own clock: an explicit restore that returns no row for a `deleted` document is 410 `not_restorable`. Content hash: `documents_content_hash_key`. Due for purge:
+answers and publishes with (including `deletion_seq`). Its `not_restorable` is computed by the database clock (a `deleted` document past its purge time or with a started purge), so the service never compares the purge time with its own clock: an explicit restore that returns no row for a `deleted` document is 410 `not_restorable`. The page count is stored on the document, set by `INGESTION_JOB_COMPLETE` and `INGESTION_JOB_FAIL` from the job's count (record it with `INGESTION_JOB_ADVANCE` first), null until then. Content hash: `documents_content_hash_key`. Due for purge:
 `documents_purge_idx`, which also lists an Organization's deleted documents oldest-due first (it
 leaves out documents whose purge is spent). Jobs: `ingestion_jobs_due_idx` for the claim,
 `ingestion_jobs_active_document_key` for one active job per document and
@@ -908,8 +915,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DOCUMENT_GET`:
 
     ```sql
-    select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
-      epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
+    select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason, epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, page_count, created_at, updated_at,
       (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
     from playbook.documents
     where organization_id = $1 and id = $2
@@ -918,7 +924,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DOCUMENT_LIST`:
 
     ```sql
-    select id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at
+    select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason, epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, page_count, created_at, updated_at,
+      (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
     from playbook.documents
     where organization_id = $1 and state <> 'deleted'
       and (created_at, id) < ($2::timestamptz, $3::text)
@@ -929,7 +936,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DOCUMENT_LIST_DELETED`:
 
     ```sql
-    select id, name, state, size_bytes, detected_type, uploaded_by, deletion_seq, deleted_at, purge_due_at, created_at
+    select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason, epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, page_count, created_at, updated_at,
+      (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
     from playbook.documents
     where organization_id = $1 and state = 'deleted'
       and (created_at, id) < ($2::timestamptz, $3::text)
@@ -1180,10 +1188,10 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
         and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
                     and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)
-      returning document_id, epoch),
+      returning document_id, epoch, page_count),
     d as (
       update playbook.documents
-      set state = 'ready', updated_at = clock_timestamp()
+      set state = 'ready', page_count = coalesce((select page_count from j), page_count), updated_at = clock_timestamp()
       where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
         and state = 'processing')
     select document_id from j
@@ -1199,10 +1207,11 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
         and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
                     and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
-      returning document_id, epoch),
+      returning document_id, epoch, page_count),
     d as (
       update playbook.documents
-      set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()
+      set state = 'failed', failure_reason = $4::text, page_count = coalesce((select page_count from j), page_count),
+          updated_at = clock_timestamp()
       where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
         and state in ('uploaded', 'processing'))
     select document_id from j

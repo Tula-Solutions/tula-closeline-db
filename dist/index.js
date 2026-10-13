@@ -6,7 +6,7 @@ import {
   INGESTION_JOB_MAX_ATTEMPTS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-fathzqnx.js";
+} from "./shared/chunk-2f7ttmtz.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -526,22 +526,60 @@ select id, epoch from ins`;
 var DOCUMENT_BY_HASH = `select id, state, epoch, deletion_seq
 from playbook.documents
 where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null`;
-var COLUMNS_FOR_LIST = "id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at";
-var DOCUMENT_LIST = `select ${COLUMNS_FOR_LIST}
+var DOCUMENT_ROW_FIELDS = [
+  "id",
+  "name",
+  "state",
+  "size_bytes",
+  "declared_type",
+  "detected_type",
+  "uploaded_by",
+  "failure_reason",
+  "epoch",
+  "deletion_seq",
+  "deleted_at",
+  "deleted_by",
+  "purge_due_at",
+  "purge_started_at",
+  "page_count",
+  "created_at",
+  "updated_at",
+  "not_restorable"
+];
+var NOT_RESTORABLE = `(state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable`;
+var DOCUMENT_COLUMNS = `${DOCUMENT_ROW_FIELDS.filter((f) => f !== "not_restorable").join(", ")},
+  ${NOT_RESTORABLE}`;
+var DOCUMENT_LIST = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and state <> 'deleted'
   and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
-var DOCUMENT_LIST_DELETED = `select id, name, state, size_bytes, detected_type, uploaded_by, deletion_seq, deleted_at, purge_due_at, created_at
+var DOCUMENT_LIST_DELETED = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and state = 'deleted'
   and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
-var DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
-  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
-  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
+var DOCUMENT_LIST_FILTERED = `select * from (
+  (select ${DOCUMENT_COLUMNS} from playbook.documents
+   where $5::text is null and organization_id = $1 and state <> 'deleted'
+     and (created_at, id) < ($2::timestamptz, $3::text)
+   order by created_at desc, id desc limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)})
+  union all
+  (select ${DOCUMENT_COLUMNS} from playbook.documents
+   where $5::text in ('uploaded', 'processing', 'ready', 'failed') and organization_id = $1 and state = $5::text
+     and (created_at, id) < ($2::timestamptz, $3::text)
+   order by created_at desc, id desc limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)})
+  union all
+  (select ${DOCUMENT_COLUMNS} from playbook.documents
+   where $5::text = 'deleted' and organization_id = $1 and state = 'deleted'
+     and (created_at, id) < ($2::timestamptz, $3::text)
+   order by created_at desc, id desc limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)})
+) page
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DOCUMENT_GET = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and id = $2`;
 var DOCUMENT_SOFT_DELETE = `with j as (
@@ -710,10 +748,10 @@ var INGESTION_JOB_COMPLETE = `with j as (
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
     and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
                 and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)
-  returning document_id, epoch),
+  returning document_id, epoch, page_count),
 d as (
   update playbook.documents
-  set state = 'ready', updated_at = clock_timestamp()
+  set state = 'ready', page_count = coalesce((select page_count from j), page_count), updated_at = clock_timestamp()
   where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
     and state = 'processing')
 select document_id from j`;
@@ -724,10 +762,11 @@ var INGESTION_JOB_FAIL = `with j as (
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
     and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
                 and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
-  returning document_id, epoch),
+  returning document_id, epoch, page_count),
 d as (
   update playbook.documents
-  set state = 'failed', failure_reason = $4::text, updated_at = clock_timestamp()
+  set state = 'failed', failure_reason = $4::text, page_count = coalesce((select page_count from j), page_count),
+      updated_at = clock_timestamp()
   where organization_id = $1 and id = (select document_id from j) and epoch = (select epoch from j)
     and state in ('uploaded', 'processing'))
 select document_id from j`;
@@ -969,6 +1008,7 @@ export {
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
   DOCUMENT_LIST_DELETED,
+  DOCUMENT_LIST_FILTERED,
   DOCUMENT_LIST_MAX_PAGE,
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_MIN_RETENTION_MS,
@@ -978,6 +1018,7 @@ export {
   DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
+  DOCUMENT_ROW_FIELDS,
   DOCUMENT_SOFT_DELETE,
   ENVIRONMENT_POLICY_EXPRESSION,
   ENVIRONMENT_SCOPED_TABLES,
