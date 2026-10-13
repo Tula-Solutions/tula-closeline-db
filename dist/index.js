@@ -1,6 +1,7 @@
 import {
+  TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-5vjswvjg.js";
+} from "./shared/chunk-mrxhbtkz.js";
 
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -86,11 +87,25 @@ async function closePool(pool, clients, timeoutMs) {
     clearTimeout(timer);
   }
 }
+// src/environment.ts
+import { sql } from "drizzle-orm";
+var ENVIRONMENT_SETTING = TENANT_SETTING;
+var ENVIRONMENT_POLICY_EXPRESSION = `(environment_id = (NULLIF(current_setting('${ENVIRONMENT_SETTING}'::text, true), ''::text))::uuid)`;
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function withEnvironment(db, environmentId, fn) {
+  if (!UUID.test(environmentId)) {
+    throw new Error("withEnvironment: environmentId must be a UUID");
+  }
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config(${ENVIRONMENT_SETTING}, ${environmentId}, true)`);
+    return fn(tx);
+  });
+}
 // src/isolation.ts
-import { sql as sql2 } from "drizzle-orm";
+import { sql as sql3 } from "drizzle-orm";
 
 // src/tenant.ts
-import { sql } from "drizzle-orm";
+import { sql as sql2 } from "drizzle-orm";
 var ORGANIZATION_SETTING = "app.organization_id";
 var ORGANIZATION_ID = /^org_[0-9a-f]{32}$/;
 var IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -99,7 +114,7 @@ async function withOrganization(db, organizationId, fn) {
     throw new Error("withOrganization: invalid organization id");
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
+    await tx.execute(sql2`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
     return fn(tx);
   });
 }
@@ -123,10 +138,49 @@ function tenantRlsStatements(schemaName, tableName) {
 
 // src/isolation.ts
 var TENANT_SCHEMAS = ["auth", "core", "playbook"];
-var NON_TENANT_TABLES = [];
+var ENVIRONMENT_SCOPED_TABLES = [
+  "auth.audit_logs",
+  "auth.backup_codes",
+  "auth.credentials",
+  "auth.environment_settings",
+  "auth.events",
+  "auth.flow_attempts",
+  "auth.hook_call_counts",
+  "auth.hooks",
+  "auth.identities",
+  "auth.native_apps",
+  "auth.oauth_providers",
+  "auth.passkey_challenges",
+  "auth.passkeys",
+  "auth.password_history",
+  "auth.proposals",
+  "auth.refresh_tokens",
+  "auth.sessions",
+  "auth.signing_keys",
+  "auth.sms_code_counts",
+  "auth.user_factors",
+  "auth.users",
+  "auth.verification_tokens",
+  "auth.webhook_deliveries",
+  "auth.webhook_delivery_attempts",
+  "auth.webhook_endpoints"
+];
+var CONTROL_PLANE_TABLE_REASONS = {
+  "auth.api_keys": "control plane: resolving a key is what determines the auth environment, so it cannot be under environment row-level security; stored as SHA-256 hashes only",
+  "auth.environments": "control plane: the auth environment is itself the tenant boundary tula-auth scopes by, one per kind in the Region's fixed project",
+  "auth.instance_audit_logs": "control plane: operator actions outside any one environment, with no tenant columns; the service role may append and delete (for the retention job) but not update, and no retention floor bounds the delete",
+  "auth.projects": "control plane: the app the Region secures (one fixed project per Region, ADR 0005), above the environments, not tenant data",
+  "auth.workspaces": "control plane: top of tula-auth's account model, one workspace per Region, not tenant data"
+};
+var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
+var NON_TENANT_TABLE_REASONS = {};
+var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
 var EXTENSION_SCHEMAS = [];
-async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extensionSchemas = EXTENSION_SCHEMAS) {
-  const result = await db.execute(sql2`
+async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extensionSchemas = EXTENSION_SCHEMAS, categories = {
+  environmentScoped: ENVIRONMENT_SCOPED_TABLES,
+  controlPlane: CONTROL_PLANE_TABLES
+}) {
+  const result = await db.execute(sql3`
     select n.nspname as schema,
            c.relname as "table",
            c.relkind as kind,
@@ -144,7 +198,14 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
                and not (p.cmd = 'ALL'
                         and p.qual = ${TENANT_POLICY_EXPRESSION}
                         and p.with_check = ${TENANT_POLICY_EXPRESSION})
-           ) as weak_permissive
+           ) as weak_permissive,
+           (select count(*)::int from pg_policies p
+             where p.schemaname = n.nspname and p.tablename = c.relname
+               and p.permissive = 'PERMISSIVE'
+               and not (p.cmd = 'ALL'
+                        and p.qual = ${ENVIRONMENT_POLICY_EXPRESSION}
+                        and p.with_check = ${ENVIRONMENT_POLICY_EXPRESSION})
+           ) as weak_environment_permissive
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
      where n.nspname not in ('drizzle', 'information_schema')
@@ -159,12 +220,12 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
     if (allowlist.includes(`${row.schema}.${row.table}`)) {
       continue;
     }
-    const reason = gapReason(row);
+    const reason = gapReason(row, categories);
     if (reason) {
       gaps.push({ schema: row.schema, table: row.table, reason });
     }
   }
-  const roles = await db.execute(sql2`
+  const roles = await db.execute(sql3`
     select rolname as role from pg_roles
      where rolname like 'closeline\\_%' and (rolsuper or rolbypassrls)
      order by rolname`);
@@ -177,7 +238,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
   }
   return gaps;
 }
-function gapReason(row) {
+function gapReason(row, categories) {
   if (row.schema === "public") {
     return "is in public, where nothing belongs (migration 0000 locks the schema down)";
   }
@@ -187,6 +248,40 @@ function gapReason(row) {
   if (row.kind !== "r" && row.kind !== "p") {
     return "is not a table, so it bypasses row-level security";
   }
+  const name = `${row.schema}.${row.table}`;
+  if (categories.environmentScoped.includes(name)) {
+    return environmentScopedReason(row);
+  }
+  if (categories.controlPlane.includes(name)) {
+    return row.has_org ? "is a control-plane table with an organization_id column: auth users are global within a Region (ADR 0005)" : undefined;
+  }
+  if (row.schema === "auth") {
+    return "is in auth but in neither ENVIRONMENT_SCOPED_TABLES nor CONTROL_PLANE_TABLES (add it to one, in src/isolation.ts)";
+  }
+  return organizationReason(row);
+}
+function environmentScopedReason(row) {
+  if (row.has_org) {
+    return "is environment-scoped but has an organization_id column: auth users are global within a Region (ADR 0005)";
+  }
+  if (!row.enabled) {
+    return "does not have row-level security enabled";
+  }
+  if (!row.forced) {
+    return "does not have row-level security forced (the owner would bypass it)";
+  }
+  if (row.permissive === 0) {
+    return "has no permissive policy, so no role can ever read it (or a later policy is missing)";
+  }
+  if (row.weak_environment_permissive > 0) {
+    return `has a permissive policy that is not the canonical ${ENVIRONMENT_SETTING} isolation (all commands, USING and WITH CHECK as ENVIRONMENT_POLICY_EXPRESSION)`;
+  }
+  if (row.permissive > 1) {
+    return "must have exactly one permissive policy; a second one is evaluated with OR and could open the table (add restrictive policies instead)";
+  }
+  return;
+}
+function organizationReason(row) {
   if (!row.has_org) {
     return "has no organization_id column and is not on the non-tenant allowlist";
   }
@@ -219,8 +314,14 @@ var OWNER_ROLE = "closeline_owner";
 // src/index.ts
 var PACKAGE = "tula-closeline-db";
 export {
+  CONTROL_PLANE_TABLES,
+  CONTROL_PLANE_TABLE_REASONS,
   DEFAULT_POOL_OPTIONS,
+  ENVIRONMENT_POLICY_EXPRESSION,
+  ENVIRONMENT_SCOPED_TABLES,
+  ENVIRONMENT_SETTING,
   NON_TENANT_TABLES,
+  NON_TENANT_TABLE_REASONS,
   ORGANIZATION_SETTING,
   OWNER_ROLE,
   PACKAGE,
@@ -230,5 +331,6 @@ export {
   findTenantIsolationGaps,
   reportConnectionError,
   tenantRlsStatements,
+  withEnvironment,
   withOrganization
 };

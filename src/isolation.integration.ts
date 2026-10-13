@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { createDb, type DbHandle } from './client'
+import { ENVIRONMENT_SETTING } from './environment'
 import {
   adminUrl,
   dropStaleTestObjects,
@@ -16,6 +18,8 @@ const env = integrationEnv()
 const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`
 const table = `it_gap_${suffix}`
 const qualified = `core.${table}`
+/** The environment predicate as a migration would write it, for tests that build a policy by hand. */
+const ENVIRONMENT_POLICY_SQL = `environment_id = nullif(current_setting('${ENVIRONMENT_SETTING}', true), '')::uuid`
 
 describe('the tenant isolation catalog check', () => {
   let owner: Pool
@@ -206,6 +210,100 @@ describe('the tenant isolation catalog check', () => {
     } finally {
       await owner.query(`drop view "core"."${table}_view"`)
     }
+  })
+})
+
+describe('the check on the auth tables', () => {
+  let owner: Pool
+
+  beforeAll(async () => {
+    await migrateUp(env.owner)
+    owner = new Pool({ connectionString: env.owner, max: 1 })
+    await dropStaleTestObjects(owner, env.owner)
+  })
+
+  afterAll(async () => {
+    await owner.end()
+  })
+
+  /** Run `change` in a transaction, report the gaps it causes on `auth`, and roll it back. */
+  const gapsAfter = async (change: string | undefined) => {
+    const client = await owner.connect()
+    try {
+      await client.query('begin')
+      if (change) {
+        await client.query(change)
+      }
+      const gaps = await findTenantIsolationGaps(drizzle(client))
+      return gaps.filter((gap) => gap.schema === 'auth')
+    } finally {
+      await client.query('rollback')
+      client.release()
+    }
+  }
+
+  test('the migrated auth schema has no gap', async () => {
+    expect(await gapsAfter(undefined)).toEqual([])
+  })
+
+  test.each([
+    [
+      'a dropped policy',
+      'drop policy hooks_tenant_isolation on auth.hooks',
+      'no permissive policy',
+    ],
+    ['NO FORCE', 'alter table auth.hooks no force row level security', 'forced'],
+    ['row-level security disabled', 'alter table auth.hooks disable row level security', 'enabled'],
+    [
+      'an added policy that opens the table',
+      'create policy open_all on auth.hooks using (true)',
+      'canonical',
+    ],
+    [
+      'an added permissive policy that is itself canonical',
+      `create policy second on auth.hooks using (${ENVIRONMENT_POLICY_SQL}) with check (${ENVIRONMENT_POLICY_SQL})`,
+      'exactly one',
+    ],
+    [
+      'a policy widened to an OR',
+      `alter policy hooks_tenant_isolation on auth.hooks using (${ENVIRONMENT_POLICY_SQL} or true)`,
+      'canonical',
+    ],
+    [
+      'a policy for reads only',
+      `drop policy hooks_tenant_isolation on auth.hooks; create policy hooks_tenant_isolation on auth.hooks for select using (${ENVIRONMENT_POLICY_SQL})`,
+      'canonical',
+    ],
+    [
+      'an organization_id column',
+      'alter table auth.hooks add column organization_id text',
+      'organization_id',
+    ],
+  ])('an environment-scoped table with %s is reported', async (_name, change, reason) => {
+    const gaps = await gapsAfter(change)
+    expect(gaps.map((gap) => gap.table)).toEqual(['hooks'])
+    expect(gaps[0]?.reason).toContain(reason)
+  })
+
+  test('a restrictive policy on top of the environment policy is allowed', async () => {
+    const change = 'create policy extra_floor on auth.hooks as restrictive for delete using (false)'
+    expect(await gapsAfter(change)).toEqual([])
+  })
+
+  test('a control-plane table gaining an organization_id column is reported', async () => {
+    const gaps = await gapsAfter('alter table auth.workspaces add column organization_id text')
+    expect(gaps.map((gap) => gap.table)).toEqual(['workspaces'])
+    expect(gaps[0]?.reason).toContain('organization_id')
+  })
+
+  test('a new auth table that is in neither category is reported, however well protected', async () => {
+    const change = `create table auth.it_unplaced (id uuid primary key, environment_id uuid not null);
+      alter table auth.it_unplaced enable row level security;
+      alter table auth.it_unplaced force row level security;
+      create policy it_unplaced_tenant_isolation on auth.it_unplaced using (${ENVIRONMENT_POLICY_SQL}) with check (${ENVIRONMENT_POLICY_SQL})`
+    const gaps = await gapsAfter(change)
+    expect(gaps.map((gap) => gap.table)).toEqual(['it_unplaced'])
+    expect(gaps[0]?.reason).toContain('CONTROL_PLANE_TABLES')
   })
 })
 

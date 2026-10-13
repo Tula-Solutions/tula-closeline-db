@@ -1,8 +1,9 @@
 import { createDb } from '../src/client'
 import { assertTenantIsolation } from '../src/isolation'
 
-// Fails when any table is not fail-closed on organization_id, or a closeline role bypasses it. Run it
-// after `db:migrate`, against the same database.
+// Fails when any table is not fail-closed on organization_id (or, for the auth tables, on
+// environment_id or listed as control plane), or a closeline role bypasses it. Run it after
+// `db:migrate`, against the same database.
 const url = process.env.DATABASE_URL
 if (!url) {
   process.stderr.write('db:check:rls: set DATABASE_URL to a connection string for the database\n')

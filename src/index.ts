@@ -1,9 +1,14 @@
 export type { Database, DbHandle, DbOptions, Schema, Transaction } from './client'
 export { createDb, DEFAULT_POOL_OPTIONS, reportConnectionError } from './client'
-export type { TenantIsolationGap } from './isolation'
+export { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING, withEnvironment } from './environment'
+export type { AuthTableCategories, TenantIsolationGap } from './isolation'
 export {
   assertTenantIsolation,
+  CONTROL_PLANE_TABLE_REASONS,
+  CONTROL_PLANE_TABLES,
+  ENVIRONMENT_SCOPED_TABLES,
   findTenantIsolationGaps,
+  NON_TENANT_TABLE_REASONS,
   NON_TENANT_TABLES,
   TENANT_SCHEMAS,
 } from './isolation'

@@ -82,14 +82,27 @@ describe('service roles are confined to their own schema', () => {
     }
   )
 
-  test.each(SERVICES)('$role can use tables the owner created in $schema', async ({ schema }) => {
-    const p = pool(schema)
-    const table = `"${schema}"."${probe}"`
-    expect((await p.query(`select id from ${table}`)).rows).toEqual([{ id: 1 }])
-    await p.query(`insert into ${table} values (2, 'inserted')`)
-    await p.query(`update ${table} set note = 'updated' where id = 2`)
-    await p.query(`delete from ${table} where id = 2`)
+  // `auth` is the exception: its default privileges are revoked (migration 0001), so a new auth
+  // table is unreachable until its own migration grants it. auth.integration.ts pins that.
+  test('closeline_auth is refused a table the owner just created in auth, until a grant says so', async () => {
+    const table = `"auth"."${probe}"`
+    const message = await rejectionOf(pool('auth').query(`select id from ${table}`))
+    expect(message).toContain(`permission denied for table ${probe}`)
+    await owner.query(`grant select on ${table} to closeline_auth`)
+    expect((await pool('auth').query(`select id from ${table}`)).rows).toEqual([{ id: 1 }])
   })
+
+  test.each(SERVICES.filter(({ schema }) => schema !== 'auth'))(
+    '$role can use tables the owner created in $schema',
+    async ({ schema }) => {
+      const p = pool(schema)
+      const table = `"${schema}"."${probe}"`
+      expect((await p.query(`select id from ${table}`)).rows).toEqual([{ id: 1 }])
+      await p.query(`insert into ${table} values (2, 'inserted')`)
+      await p.query(`update ${table} set note = 'updated' where id = 2`)
+      await p.query(`delete from ${table} where id = 2`)
+    }
+  )
 
   test.each(SERVICES)('$role cannot create anything in its own schema', async ({ schema }) => {
     const message = await rejectionOf(
