@@ -256,10 +256,10 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   }, 120_000)
 
   describe('tenant isolation', () => {
-    test('the migrated database passes the check, and only the two directories and the status table need the allowlist', async () => {
+    test('the migrated database passes the check, and only the two directories, the status table and the playbook work registry need the allowlist', async () => {
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
       expect([...NON_TENANT_TABLES].sort()).toEqual(
-        NO_ACCESS_TABLES.map((name) => `core.${name}`).sort()
+        [...NO_ACCESS_TABLES.map((name) => `core.${name}`), 'playbook.work_hints'].sort()
       )
       const without = await findTenantIsolationGaps(handle.db, [])
       expect(

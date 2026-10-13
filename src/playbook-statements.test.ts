@@ -6,22 +6,29 @@ import {
   CONSUMED_COMPLETE,
   CONSUMED_LOOKUP,
   CONSUMED_PURGE,
+  CONSUMED_PURGE_AGE_MS,
   CONSUMED_RENEW,
   claimedJobs,
+  DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
+  DOCUMENT_ERASE_BATCH,
   DOCUMENT_GET,
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
   DOCUMENT_LIST_DELETED,
+  DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
+  DOCUMENT_PURGE_RESET,
   DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
+  discoveredOrganizations,
   IDEMPOTENCY_PURGE,
+  IDEMPOTENCY_PURGE_AGE_MS,
   INDEX_SETTINGS_UPSERT,
   INGESTION_JOB_ADVANCE,
   INGESTION_JOB_CLAIM,
@@ -30,9 +37,13 @@ import {
   INGESTION_JOB_GIVE_UP_SPENT,
   INGESTION_JOB_HEARTBEAT,
   type IngestionJobClaimRow,
+  ORGANIZATION_REMOVAL_STATUS,
+  ORGANIZATION_REMOVE_REST,
+  ORGANIZATIONS_WITH_WORK,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
+  REMOVE_ALL_IDEMPOTENCY_ROUTE,
 } from './playbook-statements'
 import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schema/playbook-tables'
 
@@ -71,6 +82,15 @@ describe('the documented playbook statements', () => {
   test('every statement but the advisory lock names the Organization in its own where clause', () => {
     for (const [name, text] of Object.entries(PLAYBOOK_STATEMENTS)) {
       if (name === 'QUOTA_LOCK') {
+        continue
+      }
+      if (name === 'ORGANIZATIONS_WITH_WORK') {
+        // The one statement that is not about a single Organization; the function does the work.
+        expect(text).toContain('playbook.organizations_with_work(')
+        continue
+      }
+      if (name === 'ORGANIZATION_REMOVE_REST') {
+        expect(text).toContain('playbook.remove_organization_rest($1::text, $2::text)')
         continue
       }
       expect(text).toMatch(/organization_id\s*=\s*\$[12]|\$1,\s*\$2/)
@@ -135,7 +155,9 @@ describe('the rules the statements keep', () => {
 
   test('the index settings upsert refuses a change once vectors exist', () => {
     expect(INDEX_SETTINGS_UPSERT).toContain('where s.vectors_written_at is null')
-    expect(DOCUMENT_INSERT).toContain('where purge_started_at is null do nothing')
+    expect(DOCUMENT_INSERT).toContain(
+      'where purge_started_at is null and restore_barred_at is null do nothing'
+    )
   })
 
   test('a lookup gives a retry-after only for a claimed record, and at least 1 for it', () => {
@@ -182,7 +204,7 @@ describe('the rules the statements keep', () => {
     expect(INGESTION_JOB_CLAIM).toContain('from claimed c join moved m on m.id = c.document_id')
     expect(INGESTION_JOB_CLAIM).toContain('as cancelled')
     expect(DOCUMENT_GET).toContain(
-      "(state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable"
+      "(state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable"
     )
   })
 
@@ -245,5 +267,121 @@ describe('the rules the statements keep', () => {
     expect(DOCUMENT_SOFT_DELETE).toContain(
       'select id, state, deletion_seq, purge_due_at, true as changed'
     )
+  })
+})
+
+describe('work discovery, erasure and spent purges', () => {
+  test('the erase batch locks jobs before documents, bars restore and pulls the purge time to now', () => {
+    expect(DOCUMENT_ERASE_BATCH.indexOf('update playbook.ingestion_jobs')).toBeLessThan(
+      DOCUMENT_ERASE_BATCH.indexOf('update playbook.documents')
+    )
+    expect(DOCUMENT_ERASE_BATCH).toContain('(select count(*) from j) >= 0')
+    expect(DOCUMENT_ERASE_BATCH).toContain('restore_barred_at = (select now from t)')
+    expect(DOCUMENT_ERASE_BATCH).toContain(
+      'purge_due_at = least(coalesce(x.purge_due_at, (select now from t)), (select now from t))'
+    )
+    expect(DOCUMENT_ERASE_BATCH).toContain('x.epoch + 1')
+    expect(DOCUMENT_ERASE_BATCH).toContain('x.deletion_seq + 1')
+    expect(DOCUMENT_ERASE_BATCH).toContain('restore_barred_at is null')
+    expect(DOCUMENT_ERASE_BATCH).toContain(
+      `limit least(greatest(coalesce($2::int, 1), 1), ${PLAYBOOK_MAX_BATCH})`
+    )
+  })
+
+  test('both restores, the hash lookup and the upload insert leave barred documents alone', () => {
+    for (const text of [DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD]) {
+      expect(text).toContain('purge_started_at is null and restore_barred_at is null')
+    }
+    expect(DOCUMENT_BY_HASH).toContain('restore_barred_at is null')
+    expect(DOCUMENT_GET).toContain('or restore_barred_at is not null')
+  })
+
+  test('the purge completion locks the job rows first and refuses a live lease', () => {
+    expect(DOCUMENT_PURGE_COMPLETE.indexOf('for update')).toBeLessThan(
+      DOCUMENT_PURGE_COMPLETE.indexOf('delete from playbook.documents')
+    )
+    expect(DOCUMENT_PURGE_COMPLETE).toContain(
+      "not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())"
+    )
+  })
+
+  test('the discovery statement clamps its page and passes the kind and cursor through', () => {
+    expect(ORGANIZATIONS_WITH_WORK).toContain(
+      `playbook.organizations_with_work($1::text, $2::text, least(greatest(coalesce($3::int, 1), 1), ${PLAYBOOK_MAX_BATCH}))`
+    )
+  })
+
+  test('the remove-rest and status statements take only the Organization and a route', () => {
+    expect(ORGANIZATION_REMOVE_REST).toContain(
+      'playbook.remove_organization_rest($1::text, $2::text)'
+    )
+    expect(REMOVE_ALL_IDEMPOTENCY_ROUTE).toMatch(/^[a-z0-9._]+$/)
+    for (const table of ['documents', 'index_settings', 'organization_usage', 'consumed_message']) {
+      expect(ORGANIZATION_REMOVAL_STATUS).toContain(
+        `from playbook.${table} where organization_id = $1`
+      )
+    }
+  })
+
+  test('the spent list and the reset use the attempt bound from one constant', () => {
+    for (const text of [DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_PURGE_RESET]) {
+      expect(text).toContain(`purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS}`)
+    }
+    expect(DOCUMENT_LIST_SPENT_PURGES).toContain(
+      'limit least(greatest(coalesce($3::int, 1), 1), 100)'
+    )
+    expect(DOCUMENT_PURGE_RESET).toContain(
+      'restore_barred_at = coalesce(restore_barred_at, clock_timestamp())'
+    )
+  })
+})
+
+describe('review round 1 of the work discovery', () => {
+  const migration = readFileSync(
+    fileURLToPath(new URL('../migrations/0012_playbook_work_discovery.sql', import.meta.url)),
+    'utf8'
+  )
+
+  test('the purge ages are constants the migration and the statements share', () => {
+    expect(CONSUMED_PURGE_AGE_MS).toBe(15 * 86_400_000)
+    expect(IDEMPOTENCY_PURGE_AGE_MS).toBe(24 * 3_600_000)
+    expect(migration.split("interval '15 days'").length - 1).toBe(3)
+    expect(migration.split("interval '24 hours'").length - 1).toBe(3)
+    expect(migration).not.toContain("interval '1 hour'")
+  })
+
+  test('the erase batch locks jobs, then documents, each in id order', () => {
+    expect(DOCUMENT_ERASE_BATCH).toMatch(/jl as \([\s\S]*order by id\n\s+for update\)/)
+    expect(DOCUMENT_ERASE_BATCH).toMatch(/dl as \([\s\S]*order by id\n\s+for update\)/)
+    expect(DOCUMENT_ERASE_BATCH.indexOf('jl as')).toBeLessThan(
+      DOCUMENT_ERASE_BATCH.indexOf('dl as')
+    )
+  })
+
+  test('the function refuses a scope, bounds the visited hints and share-locks before writing', () => {
+    expect(migration).toContain(
+      "nullif(current_setting('app.organization_id', true), '') IS NOT NULL"
+    )
+    expect(migration).toContain("ERRCODE = 'insufficient_privilege'")
+    expect(migration).toContain('v_limit integer := least(v_batch * 4, 2000)')
+    expect(migration).toContain('EXIT WHEN cardinality(v_ids) >= v_batch OR v_visited >= v_limit')
+    const note = migration.slice(migration.indexOf('CREATE FUNCTION "playbook"."note_work"'))
+    expect(note.indexOf('FOR KEY SHARE')).toBeLessThan(
+      note.indexOf('INSERT INTO "playbook"."work_hints"')
+    )
+  })
+
+  test('discoveredOrganizations drops the marker row and returns where to continue', () => {
+    expect(discoveredOrganizations([])).toEqual({ organizations: [], resumeAfter: null })
+    expect(discoveredOrganizations([{ organization_id: null, resume_after: 'org_z' }])).toEqual({
+      organizations: [],
+      resumeAfter: 'org_z',
+    })
+    expect(
+      discoveredOrganizations([
+        { organization_id: 'org_a', resume_after: 'org_c' },
+        { organization_id: 'org_b', resume_after: 'org_c' },
+      ])
+    ).toEqual({ organizations: ['org_a', 'org_b'], resumeAfter: 'org_c' })
   })
 })
