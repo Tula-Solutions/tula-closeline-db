@@ -463,15 +463,24 @@ describe('pending cleanups and the orphan sweep', () => {
     expect(migration).toContain(
       `min(k."created_at") + ${hours(IDEMPOTENCY_PURGE_AGE_MS)} INTO v_next`
     )
-    // Erasure keeps no key (the kept route's aside) and records the latest one's time first.
+    // Erasure keeps no key (the kept route's aside); one statement deletes them and records the
+    // latest one's time, so one snapshot decides both.
     const erase = migration.slice(
       migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."remove_organization_rest"')
     )
     expect(erase).not.toContain(`k."created_at" <= clock_timestamp()`)
-    const record = erase.indexOf('SET "erased_attempt_at" = greatest(')
-    const wipe = erase.indexOf('DELETE FROM "playbook"."idempotency_keys" k')
-    expect(record).toBeGreaterThan(0)
-    expect(wipe).toBeGreaterThan(record)
+    const start = erase.indexOf('WITH del AS (\n    DELETE FROM "playbook"."idempotency_keys" k')
+    expect(start).toBeGreaterThan(0)
+    const statement = erase.slice(start, erase.indexOf(';\n', start))
+    expect(statement).toContain('RETURNING k."created_at")')
+    expect(statement).toContain('UPDATE "playbook"."orphan_sweeps" s')
+    expect(statement).toContain(
+      'greatest(s."erased_attempt_at", (SELECT max(del."created_at") FROM del))'
+    )
+    expect(statement).toContain('(SELECT max(del."created_at") FROM del) > s."swept_through"')
+    // No other statement deletes the keys or writes the erased time.
+    expect(erase.split('DELETE FROM "playbook"."idempotency_keys"').length - 1).toBe(1)
+    expect(erase.split('"erased_attempt_at" = ').length - 1).toBe(1)
   })
 
   test('erasure locks the orphan_sweeps row before the upload lock; done takes the row before the hint', () => {

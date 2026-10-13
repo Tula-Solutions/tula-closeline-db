@@ -304,7 +304,9 @@ BEGIN
   -- and then the hint (waiting for every open upload attempt, which holds the hint); an upload
   -- attempt holds the hint and may then wait for the upload lock; so taking the upload lock before
   -- the row would let this function wait on a done that waits on an upload that waits on this
-  -- function. With the row first, nothing that holds the row ever waits for the upload lock.
+  -- function. With the row first, nothing that holds the row ever waits for the upload lock. This
+  -- holds only while every upload transaction inserts its idempotency key BEFORE it takes the
+  -- upload lock (the key insert takes the hint, then the lock): that order is a requirement.
   INSERT INTO "playbook"."orphan_sweeps" AS s ("organization_id", "swept_through")
     VALUES (p_organization_id, '-infinity')
     ON CONFLICT ("organization_id") DO UPDATE SET "swept_through" = s."swept_through";
@@ -323,12 +325,16 @@ BEGIN
   -- one time is recorded in the row locked above (written only here and by nobody else, so an
   -- upload attempt never waits for it), and the discovery function and orphan_sweep_done count it
   -- as a pending attempt until swept_through covers it.
-  UPDATE "playbook"."orphan_sweeps" s SET "erased_attempt_at" = greatest(s."erased_attempt_at", m.t)
-    FROM (SELECT max(k."created_at") AS t FROM "playbook"."idempotency_keys" k
-            WHERE k."organization_id" = p_organization_id AND k."route" IS DISTINCT FROM p_keep_route) m
-    WHERE s."organization_id" = p_organization_id AND m.t > s."swept_through";
-  DELETE FROM "playbook"."idempotency_keys" k
-    WHERE k."organization_id" = p_organization_id AND k."route" IS DISTINCT FROM p_keep_route;
+  -- One statement, so one snapshot decides both: a key that committed between a separate read and
+  -- delete would be deleted without being recorded. The data-modifying CTE runs to completion
+  -- whether or not the UPDATE matches a row.
+  WITH del AS (
+    DELETE FROM "playbook"."idempotency_keys" k
+      WHERE k."organization_id" = p_organization_id AND k."route" IS DISTINCT FROM p_keep_route
+      RETURNING k."created_at")
+  UPDATE "playbook"."orphan_sweeps" s
+    SET "erased_attempt_at" = greatest(s."erased_attempt_at", (SELECT max(del."created_at") FROM del))
+    WHERE s."organization_id" = p_organization_id AND (SELECT max(del."created_at") FROM del) > s."swept_through";
   DELETE FROM "playbook"."organization_usage" u WHERE u."organization_id" = p_organization_id;
   DELETE FROM "playbook"."work_hints" w
     WHERE w."organization_id" = p_organization_id AND w."kind" NOT IN ('idempotency_purge', 'orphan_sweep');

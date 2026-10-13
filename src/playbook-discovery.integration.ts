@@ -1783,12 +1783,14 @@ describe('work discovery, erasure and spent purges', () => {
           `update playbook.work_hints set due_at = clock_timestamp() - interval '1 hour' where kind = 'orphan_sweep'`
         )
       })
-      expect(await named(org)).toBe(false)
+      // The kept route's own key counts as an attempt for discovery (any key newer than the sweep
+      // does) and would move the hint to its own time, so it goes before anything runs discovery.
       await asOwner(org, (c) =>
         c.query(`delete from playbook.idempotency_keys where route = $1`, [
           REMOVE_ALL_IDEMPOTENCY_ROUTE,
         ])
       )
+      expect(await named(org)).toBe(false)
       expect((await done(org, new Date())).rows[0]).toMatchObject({ more: false })
       expect(await hintOf('orphan_sweep', org)).toBeUndefined()
       expect(

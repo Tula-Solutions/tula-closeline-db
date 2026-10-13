@@ -10021,6 +10021,11 @@ declare const IDEMPOTENCY_MIN_PURGE_AGE_MS: number;
 * inserts a document, so two uploads of one Organization queue and the quota check in
 * {@link DOCUMENT_INSERT} (a later statement, with its own snapshot) sees the earlier upload's
 * counts. `$1` Organization. Always returns one row; the lock ends with the transaction.
+*
+* **Order matters:** every upload transaction must insert its idempotency key
+* ({@link IDEMPOTENCY_BEGIN}) *before* it takes this lock. The key insert takes the orphan-sweep
+* hint; erasure, `ORPHAN_SWEEP_DONE` and uploads cannot wait on each other in a cycle only while
+* uploads go hint first, then this lock.
 */
 declare const QUOTA_LOCK = "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
 /**

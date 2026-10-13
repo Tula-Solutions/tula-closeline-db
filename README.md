@@ -898,7 +898,8 @@ that attempt and the sweep that covers it removes the hint and the row (when the
 no key and no document); at most about 25 hours after the last attempt, longer only if the service does
 not sweep. Erasure takes the `orphan_sweeps` row before the upload lock, and an upload attempt never
 touches the row, so erasure, `ORPHAN_SWEEP_DONE` (row, then hint) and uploads (hint, then upload lock)
-cannot wait on each other in a cycle. Keep the idempotency purge at `IDEMPOTENCY_PURGE_AGE_MS` (the
+cannot wait on each other in a cycle. **This requires every upload transaction to insert its idempotency key
+(`IDEMPOTENCY_BEGIN`) before it takes the upload lock (`QUOTA_LOCK`)**; the other order can close a cycle. Keep the idempotency purge at `IDEMPOTENCY_PURGE_AGE_MS` (the
 statement enforces it). A server clock stepped forward by 24 hours or more is outside what this
 protects.
 
