@@ -21,24 +21,26 @@ const read = (name: string) =>
   readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8')
 const documentsMigration = read('0009_playbook_documents.sql')
 const consumedMigration = read('0010_playbook_consumed_message.sql')
+const idempotencyMigration = read('0011_playbook_idempotency_keys.sql')
 
 const NAMES = [
   'consumed_message',
   'documents',
+  'idempotency_keys',
   'index_settings',
   'ingestion_jobs',
   'organization_usage',
 ]
 
 describe('the playbook schema', () => {
-  test('has the five tenant tables and nothing else', () => {
+  test('has the six tenant tables and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual(NAMES)
   })
 
   test.each(NAMES)('%s has organization_id, the canonical policy, and is not exempt', (name) => {
     const config = tables.find((t) => t.name === name)
     expect(config?.columns.map((c) => c.name)).toContain('organization_id')
-    const sql = documentsMigration + consumedMigration
+    const sql = documentsMigration + consumedMigration + idempotencyMigration
     for (const statement of tenantRlsStatements('playbook', name)) {
       expect(sql).toContain(statement)
     }
@@ -107,7 +109,7 @@ describe('the playbook schema', () => {
     expect(documentsMigration).toContain('WHERE "playbook"."documents"."purge_started_at" is null')
   })
 
-  test('indexes: the three the ticket names and none else on documents', () => {
+  test('indexes: the ones the ticket names, the deleted list, and none else on documents', () => {
     const names = (table: string) =>
       tables
         .find((t) => t.name === table)
@@ -115,6 +117,7 @@ describe('the playbook schema', () => {
         .sort()
     expect(names('documents')).toEqual([
       'documents_content_hash_key',
+      'documents_deleted_list_idx',
       'documents_list_idx',
       'documents_purge_idx',
     ])
@@ -127,6 +130,32 @@ describe('the playbook schema', () => {
       'consumed_message_done_idx',
       'consumed_message_lease_idx',
     ])
+  })
+
+  test.each([
+    'documents',
+    'organization_usage',
+    'ingestion_jobs',
+    'index_settings',
+    'idempotency_keys',
+  ])(
+    '%s refuses the all-zero Organization id, which is the global scope of consumed messages only',
+    (name) => {
+      const sql = documentsMigration + idempotencyMigration
+      expect(sql).toContain(
+        `CONSTRAINT "${name}_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000')`
+      )
+      expect(consumedMigration).not.toContain('not_global')
+    }
+  )
+
+  test("the deleted list has its own partial index, and the idempotency key is core's without the foreign key", () => {
+    expect(documentsMigration).toContain(
+      'CREATE INDEX "documents_deleted_list_idx" ON "playbook"."documents" USING btree ("organization_id","created_at","id") WHERE "playbook"."documents"."state" = \'deleted\''
+    )
+    expect(idempotencyMigration).toContain('PRIMARY KEY("organization_id","user_id","route","key")')
+    expect(idempotencyMigration).not.toContain('FOREIGN KEY')
+    expect(idempotencyMigration).toContain('BEFORE UPDATE ON "playbook"."idempotency_keys"')
   })
 
   test('the consumed-message key is the kit contract key', () => {

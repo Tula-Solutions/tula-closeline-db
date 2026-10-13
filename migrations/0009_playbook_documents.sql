@@ -24,6 +24,7 @@ CREATE TABLE "playbook"."documents" (
 	CONSTRAINT "documents_pkey" PRIMARY KEY("organization_id","id"),
 	CONSTRAINT "documents_id_shape" CHECK ("id" ~ '^doc_[0-9a-f]{32}$'),
 	CONSTRAINT "documents_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
+	CONSTRAINT "documents_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
 	CONSTRAINT "documents_uploaded_by_shape" CHECK ("uploaded_by" ~ '^usr_[0-9a-f]{32}$'),
 	CONSTRAINT "documents_deleted_by_shape" CHECK ("playbook"."documents"."deleted_by" ~ '^usr_[0-9a-f]{32}$'),
 	CONSTRAINT "documents_name_shape" CHECK (char_length(btrim("playbook"."documents"."name")) between 1 and 255),
@@ -56,6 +57,7 @@ CREATE TABLE "playbook"."index_settings" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "index_settings_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
+	CONSTRAINT "index_settings_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
 	CONSTRAINT "index_settings_model_shape" CHECK (char_length("playbook"."index_settings"."embedding_model") between 1 and 200 and "playbook"."index_settings"."embedding_model" collate "C" ~ '^[A-Za-z0-9._:/-]+$'),
 	CONSTRAINT "index_settings_dimension_bounds" CHECK ("playbook"."index_settings"."embedding_dimension" between 1 and 16384)
 );
@@ -81,6 +83,7 @@ CREATE TABLE "playbook"."ingestion_jobs" (
 	CONSTRAINT "ingestion_jobs_pkey" PRIMARY KEY("organization_id","id"),
 	CONSTRAINT "ingestion_jobs_id_shape" CHECK ("id" ~ '^job_[0-9a-f]{32}$'),
 	CONSTRAINT "ingestion_jobs_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
+	CONSTRAINT "ingestion_jobs_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
 	CONSTRAINT "ingestion_jobs_epoch_bounds" CHECK ("playbook"."ingestion_jobs"."epoch" >= 0),
 	CONSTRAINT "ingestion_jobs_state_known" CHECK ("playbook"."ingestion_jobs"."state" in ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
 	CONSTRAINT "ingestion_jobs_step_known" CHECK ("playbook"."ingestion_jobs"."step" in ('parse', 'chunk', 'embed', 'index')),
@@ -101,12 +104,14 @@ CREATE TABLE "playbook"."organization_usage" (
 	"byte_count" bigint DEFAULT 0 NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "organization_usage_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
+	CONSTRAINT "organization_usage_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
 	CONSTRAINT "organization_usage_not_negative" CHECK ("playbook"."organization_usage"."document_count" >= 0 and "playbook"."organization_usage"."byte_count" >= 0)
 );
 --> statement-breakpoint
 ALTER TABLE "playbook"."ingestion_jobs" ADD CONSTRAINT "ingestion_jobs_document_fk" FOREIGN KEY ("organization_id","document_id") REFERENCES "playbook"."documents"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "documents_content_hash_key" ON "playbook"."documents" USING btree ("organization_id","content_hash") WHERE "playbook"."documents"."purge_started_at" is null;--> statement-breakpoint
 CREATE INDEX "documents_list_idx" ON "playbook"."documents" USING btree ("organization_id","created_at","id") WHERE "playbook"."documents"."state" <> 'deleted';--> statement-breakpoint
+CREATE INDEX "documents_deleted_list_idx" ON "playbook"."documents" USING btree ("organization_id","created_at","id") WHERE "playbook"."documents"."state" = 'deleted';--> statement-breakpoint
 CREATE INDEX "documents_purge_idx" ON "playbook"."documents" USING btree ("organization_id","purge_due_at","id") WHERE "playbook"."documents"."state" = 'deleted' and "playbook"."documents"."purge_attempts" < 20;--> statement-breakpoint
 CREATE INDEX "ingestion_jobs_document_idx" ON "playbook"."ingestion_jobs" USING btree ("organization_id","document_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ingestion_jobs_active_document_key" ON "playbook"."ingestion_jobs" USING btree ("organization_id","document_id") WHERE "playbook"."ingestion_jobs"."state" in ('queued', 'running');--> statement-breakpoint

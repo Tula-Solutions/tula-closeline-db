@@ -63,6 +63,9 @@ const bytes = customType<{ data: Uint8Array; driverData: Uint8Array }>({
 const list = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '))
 const idShape = (column: string, prefix: string) =>
   sql.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`)
+/** The all-zero Organization id is the global scope of consumed messages only (ADR 0016 notes). */
+export const GLOBAL_SCOPE_ORGANIZATION_ID = 'org_00000000000000000000000000000000'
+const notGlobal = sql.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID}'`)
 const ts = (name: string) => timestamp(name, { withTimezone: true })
 const createdAt = () => ts('created_at').notNull().defaultNow()
 const updatedAt = () => ts('updated_at').notNull().defaultNow()
@@ -87,6 +90,7 @@ const updatedAt = () => ts('updated_at').notNull().defaultNow()
  * - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
  *   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
  *   backwards.
+ * - Deleted documents, newest first, same keyset: `documents_deleted_list_idx`.
  * - By content hash: `documents_content_hash_key`.
  * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
  * - Quota counts: `organization_usage`, one row, kept by triggers.
@@ -121,6 +125,7 @@ export const documents = playbookSchema.table(
     primaryKey({ name: 'documents_pkey', columns: [t.organizationId, t.id] }),
     check('documents_id_shape', idShape('id', 'doc')),
     check('documents_organization_id_shape', idShape('organization_id', 'org')),
+    check('documents_organization_not_global', notGlobal),
     check('documents_uploaded_by_shape', idShape('uploaded_by', 'usr')),
     check('documents_deleted_by_shape', sql`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
     check('documents_name_shape', sql`char_length(btrim(${t.name})) between 1 and 255`),
@@ -182,6 +187,10 @@ export const documents = playbookSchema.table(
     index('documents_list_idx')
       .on(t.organizationId, t.createdAt, t.id)
       .where(sql`${t.state} <> 'deleted'`),
+    // The deleted list, newest first: the same keyset as the live list, for the deleted documents.
+    index('documents_deleted_list_idx')
+      .on(t.organizationId, t.createdAt, t.id)
+      .where(sql`${t.state} = 'deleted'`),
     index('documents_purge_idx')
       .on(t.organizationId, t.purgeDueAt, t.id)
       .where(
@@ -206,6 +215,7 @@ export const organizationUsage = playbookSchema.table(
   },
   (t) => [
     check('organization_usage_organization_id_shape', idShape('organization_id', 'org')),
+    check('organization_usage_organization_not_global', notGlobal),
     check('organization_usage_not_negative', sql`${t.documentCount} >= 0 and ${t.byteCount} >= 0`),
   ]
 )
@@ -249,6 +259,7 @@ export const ingestionJobs = playbookSchema.table(
     }).onDelete('cascade'),
     check('ingestion_jobs_id_shape', idShape('id', 'job')),
     check('ingestion_jobs_organization_id_shape', idShape('organization_id', 'org')),
+    check('ingestion_jobs_organization_not_global', notGlobal),
     check('ingestion_jobs_epoch_bounds', sql`${t.epoch} >= 0`),
     check('ingestion_jobs_state_known', sql`${t.state} in (${list(INGESTION_JOB_STATES)})`),
     check('ingestion_jobs_step_known', sql`${t.step} in (${list(INGESTION_STEPS)})`),
@@ -312,67 +323,11 @@ export const indexSettings = playbookSchema.table(
   },
   (t) => [
     check('index_settings_organization_id_shape', idShape('organization_id', 'org')),
+    check('index_settings_organization_not_global', notGlobal),
     check(
       'index_settings_model_shape',
       sql`char_length(${t.embeddingModel}) between 1 and 200 and ${t.embeddingModel} collate "C" ~ '^[A-Za-z0-9._:/-]+$'`
     ),
     check('index_settings_dimension_bounds', sql`${t.embeddingDimension} between 1 and 16384`),
-  ]
-)
-
-/**
- * The messages a playbook queue consumer has handled or is handling: the table behind the kit's
- * `ProcessedStore` (`claim`, `renew`, `complete`, `release`, `purge`), shaped as the kit README
- * sketches it with one difference: `organization_id` is the wire id as text (`org_` and 32 hex
- * digits), not a uuid, because every tenant table here carries the wire id and the one canonical
- * policy compares it as text; the store passes the id through, with no conversion.
- *
- * It is a tenant table. A message for an Organization is recorded under that Organization, in its
- * scope. A global message (no Organization) is recorded under the all-zero id
- * `org_00000000000000000000000000000000`, and the consumer of global messages runs under that
- * scope with the same helper; that id is not any real Organization's.
- *
- * Because of row-level security a purge sees only the scope it runs in: run
- * `CONSUMED_PURGE` once per Organization (and once under the all-zero scope), splitting the limit.
- * Indexes: the key serves `claim`, `renew`, `complete` and `release`; the two partial indexes
- * serve the purge of done records and of lapsed claims.
- */
-export const consumedMessage = playbookSchema.table(
-  'consumed_message',
-  {
-    consumer: text('consumer').notNull(),
-    organizationId: text('organization_id').notNull(),
-    messageId: text('message_id').notNull(),
-    state: text('state', { enum: CONSUMED_MESSAGE_STATES }).notNull(),
-    claimToken: uuid('claim_token').notNull(),
-    leaseExpiresAt: ts('lease_expires_at'),
-    completedAt: ts('completed_at'),
-  },
-  (t) => [
-    primaryKey({
-      name: 'consumed_message_pkey',
-      columns: [t.consumer, t.organizationId, t.messageId],
-    }),
-    check('consumed_message_organization_id_shape', idShape('organization_id', 'org')),
-    check(
-      'consumed_message_consumer_shape',
-      sql`char_length(${t.consumer}) between 1 and 128 and ${t.consumer} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`
-    ),
-    check(
-      'consumed_message_message_id_shape',
-      sql`char_length(${t.messageId}) between 1 and 128 and ${t.messageId} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`
-    ),
-    check('consumed_message_state_known', sql`${t.state} in (${list(CONSUMED_MESSAGE_STATES)})`),
-    check(
-      'consumed_message_state_columns',
-      sql`(${t.state} = 'claimed' and ${t.leaseExpiresAt} is not null and ${t.completedAt} is null)
-        or (${t.state} = 'done' and ${t.leaseExpiresAt} is null and ${t.completedAt} is not null)`
-    ),
-    index('consumed_message_done_idx')
-      .on(t.organizationId, t.completedAt)
-      .where(sql`${t.state} = 'done'`),
-    index('consumed_message_lease_idx')
-      .on(t.organizationId, t.leaseExpiresAt)
-      .where(sql`${t.state} = 'claimed'`),
   ]
 )

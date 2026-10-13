@@ -8095,941 +8095,6 @@ declare const playbookSchema: PgSchema_mtt0uw3<"playbook">;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g34 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp34 } from "drizzle-orm/pg-core";
 /**
-* The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
-* `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
-* `deleted` is soft-deleted and awaiting purge. A purged document is a removed row, not a state.
-* Mirrors the contract's list.
-*/
-declare const DOCUMENT_STATES: readonly ["uploaded", "processing", "ready", "failed", "deleted"];
-/** Why a document ended in `failed`; the portal shows it. Mirrors the contract's list. */
-declare const DOCUMENT_FAILURE_REASONS: readonly ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
-/** The file types phase 1 accepts, as detected from the content (ADR 0016). */
-declare const DOCUMENT_FILE_TYPES: readonly ["pdf", "docx", "pptx", "txt", "md"];
-/** The largest file the table accepts, in bytes: 25 MiB, the upload limit of ADR 0016. */
-declare const DOCUMENT_MAX_BYTES = 26214400;
-/** The most pages a stored page count may hold. The 300-page limit is the job's rule, not the table's. */
-declare const DOCUMENT_MAX_PAGE_COUNT = 1e5;
-/** The most times a purge may claim one document; claims stop there and a person reconciles. */
-declare const DOCUMENT_PURGE_MAX_ATTEMPTS = 20;
-/** The states an ingestion job is in. `queued` and `running` are active; the rest are final. */
-declare const INGESTION_JOB_STATES: readonly ["queued", "running", "succeeded", "failed", "cancelled"];
-/** The steps of an ingestion job, in order; the stored step is the one to run next. */
-declare const INGESTION_STEPS: readonly ["parse", "chunk", "embed", "index"];
-/** The most times a job may be claimed: the table's bound. The service gives up below it. */
-declare const INGESTION_JOB_MAX_ATTEMPTS = 20;
-/** The most chunks one job may record. */
-declare const INGESTION_MAX_CHUNKS = 1e6;
-/** The states a consumed message is in (the kit's `ProcessedStore`). */
-declare const CONSUMED_MESSAGE_STATES: readonly ["claimed", "done"];
-/**
-* A document of an Organization's Playbook: the record of an uploaded file, never its content or
-* its text (the file is in object storage under `object_key`, the chunks in the vector store).
-*
-* Keyed by `(organization_id, id)` so the jobs can hold a composite foreign key. `epoch` is bumped
-* by every soft delete and every restore; vectors are written tagged with the epoch of the job
-* that wrote them, so a cleanup of the deletion at epoch e removes tags up to e and never the
-* vectors of a later restore. `deletion_seq` is bumped by one on every soft delete and is what a
-* queued cleanup carries and the guard compares (`vectors_removed_seq` records the cleanup done).
-* Checks tie every state to its columns: a `failed` document has a reason, a `deleted` one has its
-* deletion and purge-due times, and the purge columns exist only on a deleted document.
-*
-* Content hash: unique per Organization among documents whose purge has not started
-* (`documents_content_hash_key`, partial), so an upload that matches a soft-deleted document finds
-* it, and one that matches a document being purged does not and creates a new one.
-*
-* Lists served (keyset, `LIMIT` a page):
-* - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
-*   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
-*   backwards.
-* - By content hash: `documents_content_hash_key`.
-* - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
-* - Quota counts: `organization_usage`, one row, kept by triggers.
-*/
-declare const documents: PgTableWithColumns_a5zn0g34<{
-	name: "documents";
-	schema: "playbook";
-	columns: {
-		id: PgColumn_ffrhhp34<{
-			name: "id";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
-			name: "organization_id";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		name: PgColumn_ffrhhp34<{
-			name: "name";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		state: PgColumn_ffrhhp34<{
-			name: "state";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: "deleted" | "failed" | "processing" | "ready" | "uploaded";
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["uploaded", "processing", "ready", "failed", "deleted"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp34<{
-			name: "content_hash";
-			tableName: "documents";
-			dataType: "custom";
-			columnType: "PgCustomColumn";
-			data: Uint8Array<ArrayBufferLike>;
-			driverParam: Uint8Array<ArrayBufferLike>;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {
-			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
-		}>;
-		sizeBytes: PgColumn_ffrhhp34<{
-			name: "size_bytes";
-			tableName: "documents";
-			dataType: "number";
-			columnType: "PgBigInt53";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		declaredType: PgColumn_ffrhhp34<{
-			name: "declared_type";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		detectedType: PgColumn_ffrhhp34<{
-			name: "detected_type";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: "docx" | "md" | "pdf" | "pptx" | "txt";
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["pdf", "docx", "pptx", "txt", "md"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp34<{
-			name: "uploaded_by";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp34<{
-			name: "object_key";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp34<{
-			name: "failure_reason";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: "no_text" | "password_protected" | "processing_failed" | "too_many_pages" | "unreadable";
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		epoch: PgColumn_ffrhhp34<{
-			name: "epoch";
-			tableName: "documents";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		deletionSeq: PgColumn_ffrhhp34<{
-			name: "deletion_seq";
-			tableName: "documents";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		vectorsRemovedSeq: PgColumn_ffrhhp34<{
-			name: "vectors_removed_seq";
-			tableName: "documents";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "documents";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		deletedBy: PgColumn_ffrhhp34<{
-			name: "deleted_by";
-			tableName: "documents";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "documents";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		purgeStartedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "documents";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		purgeLeaseUntil: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "documents";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		purgeAttempts: PgColumn_ffrhhp34<{
-			name: "purge_attempts";
-			tableName: "documents";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "documents";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "documents";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-	};
-	dialect: "pg";
-}>;
-/**
-* An Organization's document and byte counts, soft-deleted documents included, so a quota check
-* reads one row. Written only by the `documents` triggers (SECURITY DEFINER), in the statement's
-* own transaction, so it cannot drift from the table; the service role can only read it. A row
-* stays, at zero, once an Organization has had a document.
-*/
-declare const organizationUsage: PgTableWithColumns_a5zn0g34<{
-	name: "organization_usage";
-	schema: "playbook";
-	columns: {
-		organizationId: PgColumn_ffrhhp34<{
-			name: "organization_id";
-			tableName: "organization_usage";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: true;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		documentCount: PgColumn_ffrhhp34<{
-			name: "document_count";
-			tableName: "organization_usage";
-			dataType: "number";
-			columnType: "PgBigInt53";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		byteCount: PgColumn_ffrhhp34<{
-			name: "byte_count";
-			tableName: "organization_usage";
-			dataType: "number";
-			columnType: "PgBigInt53";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "organization_usage";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-	};
-	dialect: "pg";
-}>;
-/**
-* An ingestion job of one document: parse, chunk, embed, index. It is resumable and holds only
-* what resuming needs: the next `step`, `attempts`, counts, and the object key of the parsed
-* intermediate; no text. `next_attempt_at` is the due time while queued and the end of the lease
-* while running, as in auth's abandon cases; `claim_token` fences a worker whose lease lapsed.
-* `attempts` is bounded by the table ({@link INGESTION_JOB_MAX_ATTEMPTS}); a claim never takes a
-* spent job and the give-up statement fails it. One active job per document
-* (`ingestion_jobs_active_document_key`).
-*/
-declare const ingestionJobs: PgTableWithColumns_a5zn0g34<{
-	name: "ingestion_jobs";
-	schema: "playbook";
-	columns: {
-		id: PgColumn_ffrhhp34<{
-			name: "id";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
-			name: "organization_id";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		documentId: PgColumn_ffrhhp34<{
-			name: "document_id";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		epoch: PgColumn_ffrhhp34<{
-			name: "epoch";
-			tableName: "ingestion_jobs";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		state: PgColumn_ffrhhp34<{
-			name: "state";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: "cancelled" | "failed" | "queued" | "running" | "succeeded";
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["queued", "running", "succeeded", "failed", "cancelled"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		step: PgColumn_ffrhhp34<{
-			name: "step";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: "chunk" | "embed" | "index" | "parse";
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["parse", "chunk", "embed", "index"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		attempts: PgColumn_ffrhhp34<{
-			name: "attempts";
-			tableName: "ingestion_jobs";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "ingestion_jobs";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp34<{
-			name: "claim_token";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgUUID";
-			data: string;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		artifactKey: PgColumn_ffrhhp34<{
-			name: "artifact_key";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp34<{
-			name: "page_count";
-			tableName: "ingestion_jobs";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		chunkCount: PgColumn_ffrhhp34<{
-			name: "chunk_count";
-			tableName: "ingestion_jobs";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		chunksDone: PgColumn_ffrhhp34<{
-			name: "chunks_done";
-			tableName: "ingestion_jobs";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp34<{
-			name: "failure_reason";
-			tableName: "ingestion_jobs";
-			dataType: "string";
-			columnType: "PgText";
-			data: "no_text" | "password_protected" | "processing_failed" | "too_many_pages" | "unreadable";
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "ingestion_jobs";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "ingestion_jobs";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "ingestion_jobs";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-	};
-	dialect: "pg";
-}>;
-/**
-* An Organization's index settings: the embedding model and output dimension its vectors use
-* (ADR 0010). Once `vectors_written_at` is set a trigger refuses any change of either, and the
-* service role cannot delete the row: changing the model is a deliberate re-index, done by an
-* operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
-*/
-declare const indexSettings: PgTableWithColumns_a5zn0g34<{
-	name: "index_settings";
-	schema: "playbook";
-	columns: {
-		organizationId: PgColumn_ffrhhp34<{
-			name: "organization_id";
-			tableName: "index_settings";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: true;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		embeddingModel: PgColumn_ffrhhp34<{
-			name: "embedding_model";
-			tableName: "index_settings";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		embeddingDimension: PgColumn_ffrhhp34<{
-			name: "embedding_dimension";
-			tableName: "index_settings";
-			dataType: "number";
-			columnType: "PgInteger";
-			data: number;
-			driverParam: string | number;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		vectorsWrittenAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "index_settings";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "index_settings";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp34<{
-			name: string;
-			tableName: "index_settings";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: true;
-			hasDefault: true;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-	};
-	dialect: "pg";
-}>;
-/**
 * The messages a playbook queue consumer has handled or is handling: the table behind the kit's
 * `ProcessedStore` (`claim`, `renew`, `complete`, `release`, `purge`), shaped as the kit README
 * sketches it with one difference: `organization_id` is the wire id as text (`org_` and 32 hex
@@ -9172,4 +8237,1105 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 	};
 	dialect: "pg";
 }>;
-export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g35 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp35 } from "drizzle-orm/pg-core";
+/** The user id of an internal call, which has no user: all zeros, in the `usr_` shape the key needs. */
+declare const INTERNAL_CALL_USER_ID = "usr_00000000000000000000000000000000";
+/**
+* The outcome of one public `POST` of the playbook service (upload) or one internal call
+* (remove-all), per Organization, user, route and client key: core's `idempotency_keys` (migration
+* `0004`) with the same columns, checks and write-once trigger, **without the foreign key to
+* organizations** (the playbook schema has no Organization table; the id is checked by shape).
+* An internal call has no user and uses {@link INTERNAL_CALL_USER_ID}. The service inserts the row
+* in flight, does its write and completes the row in the same transaction; a completed row is
+* never rewritten. The purge is per Organization and bounded (`IDEMPOTENCY_PURGE`), on
+* `idempotency_keys_purge_idx`.
+*/
+declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
+	name: "idempotency_keys";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp35<{
+			name: "organization_id";
+			tableName: "idempotency_keys";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		userId: PgColumn_ffrhhp35<{
+			name: "user_id";
+			tableName: "idempotency_keys";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		route: PgColumn_ffrhhp35<{
+			name: "route";
+			tableName: "idempotency_keys";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		key: PgColumn_ffrhhp35<{
+			name: "key";
+			tableName: "idempotency_keys";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		requestHash: PgColumn_ffrhhp35<{
+			name: "request_hash";
+			tableName: "idempotency_keys";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: Uint8Array<ArrayBufferLike>;
+			driverParam: Uint8Array<ArrayBufferLike>;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		status: PgColumn_ffrhhp35<{
+			name: "status";
+			tableName: "idempotency_keys";
+			dataType: "number";
+			columnType: "PgSmallInt";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		response: PgColumn_ffrhhp35<{
+			name: "response";
+			tableName: "idempotency_keys";
+			dataType: "json";
+			columnType: "PgJsonb";
+			data: unknown;
+			driverParam: unknown;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			$type: unknown;
+		}>;
+		createdAt: PgColumn_ffrhhp35<{
+			name: "created_at";
+			tableName: "idempotency_keys";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
+/**
+* The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
+* `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
+* `deleted` is soft-deleted and awaiting purge. A purged document is a removed row, not a state.
+* Mirrors the contract's list.
+*/
+declare const DOCUMENT_STATES: readonly ["uploaded", "processing", "ready", "failed", "deleted"];
+/** Why a document ended in `failed`; the portal shows it. Mirrors the contract's list. */
+declare const DOCUMENT_FAILURE_REASONS: readonly ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+/** The file types phase 1 accepts, as detected from the content (ADR 0016). */
+declare const DOCUMENT_FILE_TYPES: readonly ["pdf", "docx", "pptx", "txt", "md"];
+/** The largest file the table accepts, in bytes: 25 MiB, the upload limit of ADR 0016. */
+declare const DOCUMENT_MAX_BYTES = 26214400;
+/** The most pages a stored page count may hold. The 300-page limit is the job's rule, not the table's. */
+declare const DOCUMENT_MAX_PAGE_COUNT = 1e5;
+/** The most times a purge may claim one document; claims stop there and a person reconciles. */
+declare const DOCUMENT_PURGE_MAX_ATTEMPTS = 20;
+/** The states an ingestion job is in. `queued` and `running` are active; the rest are final. */
+declare const INGESTION_JOB_STATES: readonly ["queued", "running", "succeeded", "failed", "cancelled"];
+/** The steps of an ingestion job, in order; the stored step is the one to run next. */
+declare const INGESTION_STEPS: readonly ["parse", "chunk", "embed", "index"];
+/** The most times a job may be claimed: the table's bound. The service gives up below it. */
+declare const INGESTION_JOB_MAX_ATTEMPTS = 20;
+/** The most chunks one job may record. */
+declare const INGESTION_MAX_CHUNKS = 1e6;
+/** The states a consumed message is in (the kit's `ProcessedStore`). */
+declare const CONSUMED_MESSAGE_STATES: readonly ["claimed", "done"];
+/** The all-zero Organization id is the global scope of consumed messages only (ADR 0016 notes). */
+declare const GLOBAL_SCOPE_ORGANIZATION_ID = "org_00000000000000000000000000000000";
+/**
+* A document of an Organization's Playbook: the record of an uploaded file, never its content or
+* its text (the file is in object storage under `object_key`, the chunks in the vector store).
+*
+* Keyed by `(organization_id, id)` so the jobs can hold a composite foreign key. `epoch` is bumped
+* by every soft delete and every restore; vectors are written tagged with the epoch of the job
+* that wrote them, so a cleanup of the deletion at epoch e removes tags up to e and never the
+* vectors of a later restore. `deletion_seq` is bumped by one on every soft delete and is what a
+* queued cleanup carries and the guard compares (`vectors_removed_seq` records the cleanup done).
+* Checks tie every state to its columns: a `failed` document has a reason, a `deleted` one has its
+* deletion and purge-due times, and the purge columns exist only on a deleted document.
+*
+* Content hash: unique per Organization among documents whose purge has not started
+* (`documents_content_hash_key`, partial), so an upload that matches a soft-deleted document finds
+* it, and one that matches a document being purged does not and creates a new one.
+*
+* Lists served (keyset, `LIMIT` a page):
+* - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
+*   (created_at, id) < ($c, $i) ORDER BY created_at DESC, id DESC`, on `documents_list_idx` read
+*   backwards.
+* - Deleted documents, newest first, same keyset: `documents_deleted_list_idx`.
+* - By content hash: `documents_content_hash_key`.
+* - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
+* - Quota counts: `organization_usage`, one row, kept by triggers.
+*/
+declare const documents: PgTableWithColumns_a5zn0g36<{
+	name: "documents";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp36<{
+			name: "id";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp36<{
+			name: "organization_id";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		name: PgColumn_ffrhhp36<{
+			name: "name";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp36<{
+			name: "state";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: "deleted" | "failed" | "processing" | "ready" | "uploaded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["uploaded", "processing", "ready", "failed", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		contentHash: PgColumn_ffrhhp36<{
+			name: "content_hash";
+			tableName: "documents";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: Uint8Array<ArrayBufferLike>;
+			driverParam: Uint8Array<ArrayBufferLike>;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		sizeBytes: PgColumn_ffrhhp36<{
+			name: "size_bytes";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		declaredType: PgColumn_ffrhhp36<{
+			name: "declared_type";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		detectedType: PgColumn_ffrhhp36<{
+			name: "detected_type";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: "docx" | "md" | "pdf" | "pptx" | "txt";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["pdf", "docx", "pptx", "txt", "md"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		uploadedBy: PgColumn_ffrhhp36<{
+			name: "uploaded_by";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		objectKey: PgColumn_ffrhhp36<{
+			name: "object_key";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp36<{
+			name: "failure_reason";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: "no_text" | "password_protected" | "processing_failed" | "too_many_pages" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		epoch: PgColumn_ffrhhp36<{
+			name: "epoch";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletionSeq: PgColumn_ffrhhp36<{
+			name: "deletion_seq";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vectorsRemovedSeq: PgColumn_ffrhhp36<{
+			name: "vectors_removed_seq";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedBy: PgColumn_ffrhhp36<{
+			name: "deleted_by";
+			tableName: "documents";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeDueAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeStartedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeLeaseUntil: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeAttempts: PgColumn_ffrhhp36<{
+			name: "purge_attempts";
+			tableName: "documents";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An Organization's document and byte counts, soft-deleted documents included, so a quota check
+* reads one row. Written only by the `documents` triggers (SECURITY DEFINER), in the statement's
+* own transaction, so it cannot drift from the table; the service role can only read it. A row
+* stays, at zero, once an Organization has had a document.
+*/
+declare const organizationUsage: PgTableWithColumns_a5zn0g36<{
+	name: "organization_usage";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp36<{
+			name: "organization_id";
+			tableName: "organization_usage";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		documentCount: PgColumn_ffrhhp36<{
+			name: "document_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		byteCount: PgColumn_ffrhhp36<{
+			name: "byte_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "organization_usage";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An ingestion job of one document: parse, chunk, embed, index. It is resumable and holds only
+* what resuming needs: the next `step`, `attempts`, counts, and the object key of the parsed
+* intermediate; no text. `next_attempt_at` is the due time while queued and the end of the lease
+* while running, as in auth's abandon cases; `claim_token` fences a worker whose lease lapsed.
+* `attempts` is bounded by the table ({@link INGESTION_JOB_MAX_ATTEMPTS}); a claim never takes a
+* spent job and the give-up statement fails it. One active job per document
+* (`ingestion_jobs_active_document_key`).
+*/
+declare const ingestionJobs: PgTableWithColumns_a5zn0g36<{
+	name: "ingestion_jobs";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp36<{
+			name: "id";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp36<{
+			name: "organization_id";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		documentId: PgColumn_ffrhhp36<{
+			name: "document_id";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		epoch: PgColumn_ffrhhp36<{
+			name: "epoch";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp36<{
+			name: "state";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "cancelled" | "failed" | "queued" | "running" | "succeeded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["queued", "running", "succeeded", "failed", "cancelled"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		step: PgColumn_ffrhhp36<{
+			name: "step";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "chunk" | "embed" | "index" | "parse";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["parse", "chunk", "embed", "index"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		attempts: PgColumn_ffrhhp36<{
+			name: "attempts";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		nextAttemptAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		claimToken: PgColumn_ffrhhp36<{
+			name: "claim_token";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgUUID";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		artifactKey: PgColumn_ffrhhp36<{
+			name: "artifact_key";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		pageCount: PgColumn_ffrhhp36<{
+			name: "page_count";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		chunkCount: PgColumn_ffrhhp36<{
+			name: "chunk_count";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		chunksDone: PgColumn_ffrhhp36<{
+			name: "chunks_done";
+			tableName: "ingestion_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp36<{
+			name: "failure_reason";
+			tableName: "ingestion_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "no_text" | "password_protected" | "processing_failed" | "too_many_pages" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["too_many_pages", "unreadable", "password_protected", "no_text", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		finishedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "ingestion_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* An Organization's index settings: the embedding model and output dimension its vectors use
+* (ADR 0010). Once `vectors_written_at` is set a trigger refuses any change of either, and the
+* service role cannot delete the row: changing the model is a deliberate re-index, done by an
+* operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
+*/
+declare const indexSettings: PgTableWithColumns_a5zn0g36<{
+	name: "index_settings";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp36<{
+			name: "organization_id";
+			tableName: "index_settings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		embeddingModel: PgColumn_ffrhhp36<{
+			name: "embedding_model";
+			tableName: "index_settings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		embeddingDimension: PgColumn_ffrhhp36<{
+			name: "embedding_dimension";
+			tableName: "index_settings";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vectorsWrittenAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "index_settings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "index_settings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "index_settings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };

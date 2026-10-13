@@ -634,8 +634,9 @@ ASCII-lower-cased name), members of a Team (`team_members_pkey`), Teams of a mem
 ## The playbook schema
 
 The Playbook service's documents, their ingestion, the quota counts, the per-Organization index
-settings and the queue consumer's record of handled messages (hub issue 51, ADR 0016, ADR 0010).
-Migrations `0009` and `0010`; released as 0.10.0. Every table carries `organization_id` as the
+settings, the queue consumer's record of handled messages and the idempotency keys (hub issue 51, ADR
+0016, ADR 0010). Migrations `0009` (documents, usage, jobs, index settings), `0010` (consumed
+messages) and `0011` (idempotency keys); released as 0.10.0. Every table carries `organization_id` as the
 contract's prefixed text, forced row-level security with the one canonical policy, and grants for
 `closeline_playbook` only. **No file content and no extracted text is stored**: the file is in
 object storage (`documents.object_key`), the chunks are in the vector store, and a job holds only
@@ -648,6 +649,7 @@ its step, attempt count, counts and the object key of its parsed intermediate.
 | `ingestion_jobs` | one job per ingestion of a document: next step, attempts, lease, counts; at most one active job per document |
 | `index_settings` | the embedding model and dimension of an Organization (ADR 0010) |
 | `consumed_message` | the kit's `ProcessedStore` table |
+| `idempotency_keys` | the outcome of one upload or internal call per Organization, user, route and client key; core's pattern without the foreign key |
 
 **Document states** (`DOCUMENT_STATES`, a check constraint, the names of ADR 0016): `uploaded`,
 `processing`, `ready`, `failed`, `deleted`. A purged document is a removed row, not a state. Checks
@@ -659,10 +661,24 @@ columns exist only on a deleted document. Types are `DOCUMENT_FILE_TYPES` (`pdf`
 trigger, and the role has no `UPDATE` on them), and `epoch` and `deletion_seq` never go down. The
 role may delete only a `deleted` document (a restrictive policy).
 
+**The all-zero Organization id is the global scope of consumed messages only.** Every other
+playbook table has a check (`<table>_organization_not_global`) that refuses `org_` and 32 zeros,
+so nothing but `consumed_message` can be written under the global scope.
+
 **Duplicates.** `documents_content_hash_key` is unique on `(organization_id, content_hash)` among
 documents whose purge has not started, so an upload that matches a soft-deleted document finds it
 (`DOCUMENT_BY_HASH`) and a document being purged no longer blocks a new one. A matching `failed`
-document is re-queued (`DOCUMENT_REQUEUE`), a `deleted` one restored (`DOCUMENT_RESTORE`).
+document is re-queued (`DOCUMENT_REQUEUE`), a `deleted` one restored with
+`DOCUMENT_RESTORE_FOR_UPLOAD`.
+
+**Two restores.** The explicit restore (`DOCUMENT_RESTORE`) needs `purge_due_at > clock_timestamp()`
+as well as a purge that has not started: the contract answers 410 `not_restorable` for a deleted
+document past its purge time, and the statement returns no row (read `DOCUMENT_GET` to tell it from
+`not_found`). The restore for a matching upload (`DOCUMENT_RESTORE_FOR_UPLOAD`) has no purge-time
+check, so it restores a past-due document the purge has not claimed (the uploader has just supplied
+the content again, and the hash index would otherwise block a new document); it also refuses once
+the purge has started. Both reset the purge time, clear the deletion fields and cancel any stale job
+before queueing the new one.
 
 **Epoch and deletion sequence.** `deletion_seq` is bumped by one in the same statement as every
 soft delete; the cleanup job is queued with it and `DOCUMENT_CLEANUP_BEGIN` and
@@ -670,7 +686,9 @@ soft delete; the cleanup job is queued with it and `DOCUMENT_CLEANUP_BEGIN` and
 does nothing after a restore. `epoch` is bumped by every delete and restore; the playbook service
 tags each vector with its job's epoch and a cleanup removes tags up to the epoch
 `DOCUMENT_CLEANUP_BEGIN` returns, so vectors written by a restore are never touched. Deleting also
-cancels the document's job, and `DOCUMENT_CLEANUP_BEGIN` reports `clear = false` until the
+cancels the document's job (and `INGESTION_JOB_CLAIM` cancels, in its own statement, a job that
+a restore or requeue committed while the delete was waiting: it takes only jobs of a document that
+is `uploaded` or `processing` at the job's epoch), and `DOCUMENT_CLEANUP_BEGIN` reports `clear = false` until the
 cancelled job's lease has ended, so a worker that was mid-step cannot write vectors after the
 cleanup.
 
@@ -683,7 +701,10 @@ of `documents` skips the triggers; only the owner can run it and must truncate
 `organization_usage` with it.
 
 **Lists and indexes.** Documents not deleted, newest first, by cursor: `documents_list_idx`
-(`DOCUMENT_LIST`, at most 100 a page). Content hash: `documents_content_hash_key`. Due for purge:
+(`DOCUMENT_LIST`, at most 100 a page); deleted ones: `documents_deleted_list_idx`
+(`DOCUMENT_LIST_DELETED`). Carry the cursor as the database's `created_at::text`, not a JavaScript
+Date, which drops microseconds. `DOCUMENT_GET` reads one document with everything the service
+answers and publishes with (including `deletion_seq`). Content hash: `documents_content_hash_key`. Due for purge:
 `documents_purge_idx`, which also lists an Organization's deleted documents oldest-due first (it
 leaves out documents whose purge is spent). Jobs: `ingestion_jobs_due_idx` for the claim,
 `ingestion_jobs_active_document_key` for one active job per document and
@@ -710,6 +731,16 @@ sees a deleted document: the restore wins. If the claim takes it first the resto
 finds `purge_started_at` set and returns no row: the purge wins. A purge's claim is capped at 20
 attempts; a spent document stays `deleted` and a person reconciles. Discovering which Organizations
 have due work is the service's job (every statement runs in one Organization's scope).
+
+**Batch sizes** are clamped in SQL, null included: 1 to 500 (`PLAYBOOK_MAX_BATCH`) for the purge
+claim, the job claim, the give-up and the two purges, and 1 to 100 for a list page.
+
+**Idempotency keys** follow core's `0004`: the service inserts the row in flight with
+`IDEMPOTENCY_BEGIN`, does its write and completes it with `IDEMPOTENCY_COMPLETE` in the same
+transaction; a completed row is never rewritten (trigger `idempotency_keys_final`); a replay reads
+`IDEMPOTENCY_LOOKUP` and compares the request hash. An internal call (remove-all) has no user and
+uses `INTERNAL_CALL_USER_ID`. `IDEMPOTENCY_PURGE` is per Organization and bounded, and removes keys
+at least an hour old.
 
 **Statements.** Exported from the library, exactly as the integration tests run them (the strings
 are plain text, not type-checked against the schema). Every time is the database clock; callers pass
@@ -757,6 +788,15 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null
     ```
 
+    `DOCUMENT_GET`:
+
+    ```sql
+    select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
+      epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at
+    from playbook.documents
+    where organization_id = $1 and id = $2
+    ```
+
     `DOCUMENT_LIST`:
 
     ```sql
@@ -765,7 +805,18 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where organization_id = $1 and state <> 'deleted'
       and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
-    limit least(greatest($4::int, 1), 100)
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `DOCUMENT_LIST_DELETED`:
+
+    ```sql
+    select id, name, state, size_bytes, detected_type, uploaded_by, deletion_seq, deleted_at, purge_due_at, created_at
+    from playbook.documents
+    where organization_id = $1 and state = 'deleted'
+      and (created_at, id) < ($2::timestamptz, $3::text)
+    order by created_at desc, id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
     ```
 
     `DOCUMENT_SOFT_DELETE`:
@@ -784,21 +835,54 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
           purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),
           failure_reason = null, updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0
-      returning id, deletion_seq, purge_due_at)
-    select id, deletion_seq, purge_due_at, true as changed from d
+      returning id, state, deletion_seq, purge_due_at)
+    select id, state, deletion_seq, purge_due_at, true as changed from d
     union all
-    select id, deletion_seq, purge_due_at, false from playbook.documents
+    select id, state, deletion_seq, purge_due_at, false from playbook.documents
     where organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)
     ```
 
     `DOCUMENT_RESTORE`:
 
     ```sql
-    with d as (
+    with j as (
+      update playbook.ingestion_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and document_id = $2 and state in ('queued', 'running')
+        and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = $2 and x.state = 'deleted')
+      returning id),
+    d as (
       update playbook.documents
       set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,
           purge_due_at = null, updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null
+        and purge_due_at > clock_timestamp()
+        and (select count(*) from j) >= 0
+      returning organization_id, id, epoch, deletion_seq),
+    queued as (
+      insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
+      select $3::text, organization_id, id, epoch, clock_timestamp() from d)
+    select id, 'processing' as state, epoch, deletion_seq, true as changed from d
+    union all
+    select id, state, epoch, deletion_seq, false from playbook.documents
+    where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from d)
+    ```
+
+    `DOCUMENT_RESTORE_FOR_UPLOAD`:
+
+    ```sql
+    with j as (
+      update playbook.ingestion_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and document_id = $2 and state in ('queued', 'running')
+        and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = $2 and x.state = 'deleted')
+      returning id),
+    d as (
+      update playbook.documents
+      set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,
+          purge_due_at = null, updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null
+        and (select count(*) from j) >= 0
       returning organization_id, id, epoch, deletion_seq),
     queued as (
       insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
@@ -812,17 +896,23 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DOCUMENT_REQUEUE`:
 
     ```sql
-    with d as (
+    with j as (
+      update playbook.ingestion_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and document_id = $2 and state in ('queued', 'running')
+        and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = $2 and x.state = 'failed')
+      returning id),
+    d as (
       update playbook.documents
       set state = 'uploaded', failure_reason = null, updated_at = clock_timestamp()
-      where organization_id = $1 and id = $2 and state = 'failed'
-      returning organization_id, id, epoch),
+      where organization_id = $1 and id = $2 and state = 'failed' and (select count(*) from j) >= 0
+      returning organization_id, id, epoch, deletion_seq),
     queued as (
       insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
       select $3::text, organization_id, id, epoch, clock_timestamp() from d)
-    select id, 'uploaded' as state, true as changed from d
+    select id, 'uploaded' as state, epoch, deletion_seq, true as changed from d
     union all
-    select id, state, false from playbook.documents
+    select id, state, epoch, deletion_seq, false from playbook.documents
     where organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)
     ```
 
@@ -856,7 +946,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         and purge_attempts < 20
         and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
       order by purge_due_at
-      limit $2
+      limit least(greatest(coalesce($2::int, 1), 1), 500)
       for update skip locked)
     update playbook.documents d
     set purge_started_at = coalesce(d.purge_started_at, clock_timestamp()),
@@ -881,19 +971,26 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     with due as (
-      select id from playbook.ingestion_jobs
-      where organization_id = $1 and state in ('queued', 'running')
-        and attempts < 20 and next_attempt_at <= clock_timestamp()
-        and ($4::text is null or id = $4::text)
-      order by next_attempt_at
-      limit $2
-      for update skip locked),
+      select j.id, coalesce(d.state in ('uploaded', 'processing') and d.epoch = j.epoch, false) as live
+      from playbook.ingestion_jobs j
+      left join playbook.documents d on d.organization_id = j.organization_id and d.id = j.document_id
+      where j.organization_id = $1 and j.state in ('queued', 'running')
+        and j.attempts < 20 and j.next_attempt_at <= clock_timestamp()
+        and ($4::text is null or j.id = $4::text)
+      order by j.next_attempt_at
+      limit least(greatest(coalesce($2::int, 1), 1), 500)
+      for update of j skip locked),
+    stale as (
+      update playbook.ingestion_jobs t
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      from due
+      where t.organization_id = $1 and t.id = due.id and not due.live),
     claimed as (
       update playbook.ingestion_jobs j
       set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
           next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
       from due
-      where j.organization_id = $1 and j.id = due.id
+      where j.organization_id = $1 and j.id = due.id and due.live
       returning j.id, j.document_id, j.epoch, j.step, j.attempts, j.claim_token, j.artifact_key,
                 j.page_count, j.chunk_count, j.chunks_done),
     moved as (
@@ -944,6 +1041,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       update playbook.ingestion_jobs
       set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+        and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+                    and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)
       returning document_id, epoch),
     d as (
       update playbook.documents
@@ -961,6 +1060,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       set state = 'failed', failure_reason = $4::text, claim_token = null,
           finished_at = clock_timestamp(), updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+        and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+                    and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
       returning document_id, epoch),
     d as (
       update playbook.documents
@@ -978,7 +1079,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1 and state in ('queued', 'running')
         and attempts >= 20 and next_attempt_at <= clock_timestamp()
       order by next_attempt_at
-      limit $2
+      limit least(greatest(coalesce($2::int, 1), 1), 500)
       for update skip locked),
     j as (
       update playbook.ingestion_jobs t
@@ -1013,7 +1114,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     select state,
-      greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int as retry_after_seconds
+      case when state = 'claimed'
+           then greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int end as retry_after_seconds
     from playbook.consumed_message
     where consumer = $1 and organization_id = $2 and message_id = $3
     ```
@@ -1054,7 +1156,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1
         and ((state = 'done' and completed_at < $2::timestamptz)
              or (state = 'claimed' and lease_expires_at <= clock_timestamp()))
-      limit $3
+      limit least(greatest(coalesce($3::int, 1), 1), 500)
       for update skip locked)
     delete from playbook.consumed_message c
     using batch b
@@ -1089,6 +1191,47 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where organization_id = $1 and vectors_written_at is not null
     ```
 
+    `IDEMPOTENCY_BEGIN`:
+
+    ```sql
+    insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
+    values ($1, $2, $3, $4, $5::bytea)
+    on conflict (organization_id, user_id, route, key) do nothing
+    returning key
+    ```
+
+    `IDEMPOTENCY_LOOKUP`:
+
+    ```sql
+    select request_hash, status, response, created_at
+    from playbook.idempotency_keys
+    where organization_id = $1 and user_id = $2 and route = $3 and key = $4
+    ```
+
+    `IDEMPOTENCY_COMPLETE`:
+
+    ```sql
+    update playbook.idempotency_keys
+    set status = $5::smallint, response = $6::jsonb
+    where organization_id = $1 and user_id = $2 and route = $3 and key = $4 and status is null
+    returning key
+    ```
+
+    `IDEMPOTENCY_PURGE`:
+
+    ```sql
+    with batch as (
+      select user_id, route, key from playbook.idempotency_keys
+      where organization_id = $1
+        and created_at < clock_timestamp() - make_interval(secs => greatest(coalesce($2::float8, 0), 3600000) / 1000)
+      order by created_at
+      limit least(greatest(coalesce($3::int, 1), 1), 500)
+      for update skip locked)
+    delete from playbook.idempotency_keys k
+    using batch b
+    where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key
+    ```
+
 **The consumed-message table** is the kit's `ProcessedStore` store (`claim`, `renew`, `complete`,
 `release`, `purge`), with the kit README's rules: the key is `(consumer, organization_id,
 message_id)`, `claim` is one statement that inserts or takes over a lapsed claim and returns the
@@ -1102,3 +1245,9 @@ conversion. A global message is recorded under the all-zero id `org_000000000000
 and its consumer runs `withOrganization` with that id, which is not any real Organization's. Because
 row-level security hides other scopes, `CONSUMED_PURGE` runs once per Organization and once under
 the all-zero scope; the role is not exempt from the policy.
+
+**Not done here** (follow-up tickets): cross-Organization work discovery, that is which Organizations
+have due purge work, claimable jobs or consumed messages to purge (every statement runs in one
+Organization's scope, and no function crosses tenants); erasure batches (the internal remove-all
+has only the idempotency key and the soft-delete path so far); and finding purges whose attempts
+are spent (a spent document stays `deleted` and leaves the due index).

@@ -1,5 +1,5 @@
 {
-  "id": "0eefcd64-1e70-4289-823c-b2155484e9bc",
+  "id": "7ca7c3e5-8476-4c3b-a1ec-67bc1eaef963",
   "prevId": "c7e97e06-a257-4f97-9c79-89394b339224",
   "version": "7",
   "dialect": "postgresql",
@@ -142,8 +142,12 @@
           "tableFrom": "abandon_cases",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -152,8 +156,12 @@
           "tableFrom": "abandon_cases",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -162,8 +170,14 @@
           "tableFrom": "abandon_cases",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -173,12 +187,18 @@
         "abandon_cases_environment_organization_key": {
           "name": "abandon_cases_environment_organization_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "core_organization_id"]
+          "columns": [
+            "environment_id",
+            "core_organization_id"
+          ]
         },
         "abandon_cases_environment_attempt_key": {
           "name": "abandon_cases_environment_attempt_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "attempt_id"]
+          "columns": [
+            "environment_id",
+            "attempt_id"
+          ]
         }
       },
       "policies": {
@@ -186,7 +206,9 @@
           "name": "abandon_cases_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         },
@@ -194,7 +216,9 @@
           "name": "abandon_cases_resolved_only",
           "as": "RESTRICTIVE",
           "for": "DELETE",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "resolved_at is not null"
         }
       },
@@ -314,8 +338,12 @@
           "tableFrom": "api_keys",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -324,8 +352,12 @@
           "tableFrom": "api_keys",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -334,8 +366,14 @@
           "tableFrom": "api_keys",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -345,7 +383,9 @@
         "api_keys_key_hash_key": {
           "name": "api_keys_key_hash_key",
           "nullsNotDistinct": false,
-          "columns": ["key_hash"]
+          "columns": [
+            "key_hash"
+          ]
         }
       },
       "policies": {},
@@ -422,8 +462,12 @@
           "tableFrom": "attempt_counters",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -431,7 +475,11 @@
       "compositePrimaryKeys": {
         "attempt_counters_pkey": {
           "name": "attempt_counters_pkey",
-          "columns": ["environment_id", "kind", "key_hash"]
+          "columns": [
+            "environment_id",
+            "kind",
+            "key_hash"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -641,8 +689,12 @@
           "tableFrom": "audit_logs",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -651,8 +703,12 @@
           "tableFrom": "audit_logs",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -661,8 +717,14 @@
           "tableFrom": "audit_logs",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -674,7 +736,9 @@
           "name": "audit_logs_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         },
@@ -682,7 +746,9 @@
           "name": "audit_logs_retention_floor",
           "as": "RESTRICTIVE",
           "for": "DELETE",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "occurred_at < now() - interval '1 day'"
         }
       },
@@ -782,8 +848,12 @@
           "tableFrom": "backup_codes",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -792,8 +862,12 @@
           "tableFrom": "backup_codes",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -802,8 +876,14 @@
           "tableFrom": "backup_codes",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -812,8 +892,14 @@
           "tableFrom": "backup_codes",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -823,7 +909,10 @@
         "backup_codes_user_code_hash_key": {
           "name": "backup_codes_user_code_hash_key",
           "nullsNotDistinct": false,
-          "columns": ["user_id", "code_hash"]
+          "columns": [
+            "user_id",
+            "code_hash"
+          ]
         }
       },
       "policies": {
@@ -831,7 +920,9 @@
           "name": "backup_codes_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -931,8 +1022,12 @@
           "tableFrom": "credentials",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -941,8 +1036,12 @@
           "tableFrom": "credentials",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -951,8 +1050,14 @@
           "tableFrom": "credentials",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -961,8 +1066,14 @@
           "tableFrom": "credentials",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -972,7 +1083,10 @@
         "credentials_user_type_key": {
           "name": "credentials_user_type_key",
           "nullsNotDistinct": false,
-          "columns": ["user_id", "type"]
+          "columns": [
+            "user_id",
+            "type"
+          ]
         }
       },
       "policies": {
@@ -980,7 +1094,9 @@
           "name": "credentials_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -1067,8 +1183,12 @@
           "tableFrom": "environment_settings",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1077,8 +1197,12 @@
           "tableFrom": "environment_settings",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1087,8 +1211,14 @@
           "tableFrom": "environment_settings",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1098,7 +1228,9 @@
         "environment_settings_environment_id_key": {
           "name": "environment_settings_environment_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id"]
+          "columns": [
+            "environment_id"
+          ]
         }
       },
       "policies": {
@@ -1106,7 +1238,9 @@
           "name": "environment_settings_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -1174,8 +1308,12 @@
           "tableFrom": "environments",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1185,12 +1323,18 @@
         "environments_project_kind_key": {
           "name": "environments_project_kind_key",
           "nullsNotDistinct": false,
-          "columns": ["project_id", "kind"]
+          "columns": [
+            "project_id",
+            "kind"
+          ]
         },
         "environments_id_project_key": {
           "name": "environments_id_project_key",
           "nullsNotDistinct": false,
-          "columns": ["id", "project_id"]
+          "columns": [
+            "id",
+            "project_id"
+          ]
         }
       },
       "policies": {},
@@ -1318,8 +1462,12 @@
           "tableFrom": "events",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1328,8 +1476,12 @@
           "tableFrom": "events",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1338,8 +1490,14 @@
           "tableFrom": "events",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1349,7 +1507,10 @@
         "events_environment_id_id_key": {
           "name": "events_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -1357,7 +1518,9 @@
           "name": "events_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         },
@@ -1365,7 +1528,9 @@
           "name": "events_retention_floor",
           "as": "RESTRICTIVE",
           "for": "DELETE",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "delivered_at is not null and occurred_at < now() - interval '1 day'"
         }
       },
@@ -1481,8 +1646,12 @@
           "tableFrom": "flow_attempts",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1491,8 +1660,12 @@
           "tableFrom": "flow_attempts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1501,8 +1674,14 @@
           "tableFrom": "flow_attempts",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1511,8 +1690,14 @@
           "tableFrom": "flow_attempts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1522,7 +1707,10 @@
         "flow_attempts_environment_id_id_key": {
           "name": "flow_attempts_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -1530,7 +1718,9 @@
           "name": "flow_attempts_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -1629,8 +1819,12 @@
           "tableFrom": "hook_call_counts",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1639,8 +1833,12 @@
           "tableFrom": "hook_call_counts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1649,8 +1847,14 @@
           "tableFrom": "hook_call_counts",
           "tableTo": "hooks",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "hook_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "hook_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1659,8 +1863,14 @@
           "tableFrom": "hook_call_counts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1670,7 +1880,11 @@
         "hook_call_counts_hook_hour_outcome_key": {
           "name": "hook_call_counts_hook_hour_outcome_key",
           "nullsNotDistinct": false,
-          "columns": ["hook_id", "hour", "outcome"]
+          "columns": [
+            "hook_id",
+            "hour",
+            "outcome"
+          ]
         }
       },
       "policies": {
@@ -1678,7 +1892,9 @@
           "name": "hook_call_counts_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -1814,8 +2030,12 @@
           "tableFrom": "hooks",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1824,8 +2044,12 @@
           "tableFrom": "hooks",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1834,8 +2058,14 @@
           "tableFrom": "hooks",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1845,12 +2075,18 @@
         "hooks_environment_point_key": {
           "name": "hooks_environment_point_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "point"]
+          "columns": [
+            "environment_id",
+            "point"
+          ]
         },
         "hooks_environment_id_id_key": {
           "name": "hooks_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -1858,7 +2094,9 @@
           "name": "hooks_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -1972,8 +2210,12 @@
           "tableFrom": "identities",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1982,8 +2224,12 @@
           "tableFrom": "identities",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1992,8 +2238,14 @@
           "tableFrom": "identities",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2002,8 +2254,14 @@
           "tableFrom": "identities",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2013,12 +2271,19 @@
         "identities_environment_provider_subject_key": {
           "name": "identities_environment_provider_subject_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "provider", "provider_subject"]
+          "columns": [
+            "environment_id",
+            "provider",
+            "provider_subject"
+          ]
         },
         "identities_user_provider_key": {
           "name": "identities_user_provider_key",
           "nullsNotDistinct": false,
-          "columns": ["user_id", "provider"]
+          "columns": [
+            "user_id",
+            "provider"
+          ]
         }
       },
       "policies": {
@@ -2026,7 +2291,9 @@
           "name": "identities_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -2217,8 +2484,12 @@
           "tableFrom": "native_apps",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2227,8 +2498,12 @@
           "tableFrom": "native_apps",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2237,8 +2512,14 @@
           "tableFrom": "native_apps",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2248,7 +2529,11 @@
         "native_apps_environment_platform_identifier_key": {
           "name": "native_apps_environment_platform_identifier_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "platform", "identifier"]
+          "columns": [
+            "environment_id",
+            "platform",
+            "identifier"
+          ]
         }
       },
       "policies": {
@@ -2256,7 +2541,9 @@
           "name": "native_apps_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -2381,8 +2668,12 @@
           "tableFrom": "oauth_providers",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2391,8 +2682,12 @@
           "tableFrom": "oauth_providers",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2401,8 +2696,14 @@
           "tableFrom": "oauth_providers",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2412,7 +2713,10 @@
         "oauth_providers_environment_provider_key": {
           "name": "oauth_providers_environment_provider_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "provider"]
+          "columns": [
+            "environment_id",
+            "provider"
+          ]
         }
       },
       "policies": {
@@ -2420,7 +2724,9 @@
           "name": "oauth_providers_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -2533,8 +2839,12 @@
           "tableFrom": "passkey_challenges",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2543,8 +2853,12 @@
           "tableFrom": "passkey_challenges",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2553,8 +2867,14 @@
           "tableFrom": "passkey_challenges",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2563,8 +2883,14 @@
           "tableFrom": "passkey_challenges",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2574,7 +2900,10 @@
         "passkey_challenges_session_purpose_key": {
           "name": "passkey_challenges_session_purpose_key",
           "nullsNotDistinct": false,
-          "columns": ["session_id", "purpose"]
+          "columns": [
+            "session_id",
+            "purpose"
+          ]
         }
       },
       "policies": {
@@ -2582,7 +2911,9 @@
           "name": "passkey_challenges_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -2735,8 +3066,12 @@
           "tableFrom": "passkeys",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2745,8 +3080,12 @@
           "tableFrom": "passkeys",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2755,8 +3094,14 @@
           "tableFrom": "passkeys",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2765,8 +3110,14 @@
           "tableFrom": "passkeys",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2776,7 +3127,10 @@
         "passkeys_environment_credential_id_key": {
           "name": "passkeys_environment_credential_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "credential_id"]
+          "columns": [
+            "environment_id",
+            "credential_id"
+          ]
         }
       },
       "policies": {
@@ -2784,7 +3138,9 @@
           "name": "passkeys_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -2891,8 +3247,12 @@
           "tableFrom": "password_history",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2901,8 +3261,12 @@
           "tableFrom": "password_history",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2911,8 +3275,14 @@
           "tableFrom": "password_history",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2921,8 +3291,14 @@
           "tableFrom": "password_history",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2934,7 +3310,9 @@
           "name": "password_history_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -3007,8 +3385,12 @@
           "tableFrom": "projects",
           "tableTo": "workspaces",
           "schemaTo": "auth",
-          "columnsFrom": ["workspace_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3161,8 +3543,12 @@
           "tableFrom": "proposals",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3171,8 +3557,12 @@
           "tableFrom": "proposals",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3181,8 +3571,14 @@
           "tableFrom": "proposals",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3194,7 +3590,9 @@
           "name": "proposals_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -3342,8 +3740,12 @@
           "tableFrom": "refresh_tokens",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3352,8 +3754,12 @@
           "tableFrom": "refresh_tokens",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3362,8 +3768,14 @@
           "tableFrom": "refresh_tokens",
           "tableTo": "sessions",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "session_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "session_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3372,8 +3784,14 @@
           "tableFrom": "refresh_tokens",
           "tableTo": "refresh_tokens",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "parent_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "parent_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3382,8 +3800,14 @@
           "tableFrom": "refresh_tokens",
           "tableTo": "refresh_tokens",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "replaced_by_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "replaced_by_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3392,8 +3816,14 @@
           "tableFrom": "refresh_tokens",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3403,12 +3833,17 @@
         "refresh_tokens_token_hash_key": {
           "name": "refresh_tokens_token_hash_key",
           "nullsNotDistinct": false,
-          "columns": ["token_hash"]
+          "columns": [
+            "token_hash"
+          ]
         },
         "refresh_tokens_environment_id_id_key": {
           "name": "refresh_tokens_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -3416,7 +3851,9 @@
           "name": "refresh_tokens_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -3591,8 +4028,12 @@
           "tableFrom": "sessions",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3601,8 +4042,12 @@
           "tableFrom": "sessions",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3611,8 +4056,14 @@
           "tableFrom": "sessions",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3621,8 +4072,14 @@
           "tableFrom": "sessions",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3632,7 +4089,10 @@
         "sessions_environment_id_id_key": {
           "name": "sessions_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -3640,7 +4100,9 @@
           "name": "sessions_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -3807,8 +4269,12 @@
           "tableFrom": "signing_keys",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3817,8 +4283,12 @@
           "tableFrom": "signing_keys",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3827,8 +4297,14 @@
           "tableFrom": "signing_keys",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3840,7 +4316,9 @@
           "name": "signing_keys_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -3934,8 +4412,12 @@
           "tableFrom": "sms_code_counts",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3944,8 +4426,12 @@
           "tableFrom": "sms_code_counts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3954,8 +4440,14 @@
           "tableFrom": "sms_code_counts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3965,7 +4457,11 @@
         "sms_code_counts_environment_day_prefix_key": {
           "name": "sms_code_counts_environment_day_prefix_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "day", "prefix"]
+          "columns": [
+            "environment_id",
+            "day",
+            "prefix"
+          ]
         }
       },
       "policies": {
@@ -3973,7 +4469,9 @@
           "name": "sms_code_counts_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         },
@@ -3981,7 +4479,9 @@
           "name": "sms_code_counts_retention_floor",
           "as": "RESTRICTIVE",
           "for": "DELETE",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "day < (now() at time zone 'utc')::date - 7"
         }
       },
@@ -4114,8 +4614,12 @@
           "tableFrom": "user_factors",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4124,8 +4628,12 @@
           "tableFrom": "user_factors",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4134,8 +4642,14 @@
           "tableFrom": "user_factors",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4144,8 +4658,14 @@
           "tableFrom": "user_factors",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4155,7 +4675,10 @@
         "user_factors_user_type_key": {
           "name": "user_factors_user_type_key",
           "nullsNotDistinct": false,
-          "columns": ["user_id", "type"]
+          "columns": [
+            "user_id",
+            "type"
+          ]
         }
       },
       "policies": {
@@ -4163,7 +4686,9 @@
           "name": "user_factors_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -4313,8 +4838,12 @@
           "tableFrom": "users",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4323,8 +4852,12 @@
           "tableFrom": "users",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4333,8 +4866,14 @@
           "tableFrom": "users",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4344,12 +4883,18 @@
         "users_environment_email_key": {
           "name": "users_environment_email_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "email_normalized"]
+          "columns": [
+            "environment_id",
+            "email_normalized"
+          ]
         },
         "users_environment_id_id_key": {
           "name": "users_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -4357,7 +4902,9 @@
           "name": "users_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -4515,8 +5062,12 @@
           "tableFrom": "verification_tokens",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4525,8 +5076,12 @@
           "tableFrom": "verification_tokens",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4535,8 +5090,14 @@
           "tableFrom": "verification_tokens",
           "tableTo": "users",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "user_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4545,8 +5106,14 @@
           "tableFrom": "verification_tokens",
           "tableTo": "flow_attempts",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "flow_attempt_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "flow_attempt_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4555,8 +5122,14 @@
           "tableFrom": "verification_tokens",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4566,7 +5139,9 @@
         "verification_tokens_link_token_hash_key": {
           "name": "verification_tokens_link_token_hash_key",
           "nullsNotDistinct": false,
-          "columns": ["link_token_hash"]
+          "columns": [
+            "link_token_hash"
+          ]
         }
       },
       "policies": {
@@ -4574,7 +5149,9 @@
           "name": "verification_tokens_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -4829,8 +5406,12 @@
           "tableFrom": "webhook_deliveries",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4839,8 +5420,12 @@
           "tableFrom": "webhook_deliveries",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4849,8 +5434,14 @@
           "tableFrom": "webhook_deliveries",
           "tableTo": "webhook_endpoints",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "endpoint_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "endpoint_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4859,8 +5450,14 @@
           "tableFrom": "webhook_deliveries",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4870,12 +5467,18 @@
         "webhook_deliveries_endpoint_event_key": {
           "name": "webhook_deliveries_endpoint_event_key",
           "nullsNotDistinct": false,
-          "columns": ["endpoint_id", "event_id"]
+          "columns": [
+            "endpoint_id",
+            "event_id"
+          ]
         },
         "webhook_deliveries_environment_id_id_key": {
           "name": "webhook_deliveries_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -4883,7 +5486,9 @@
           "name": "webhook_deliveries_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         },
@@ -4891,7 +5496,9 @@
           "name": "webhook_deliveries_retention_floor",
           "as": "RESTRICTIVE",
           "for": "DELETE",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "state <> 'pending' and created_at < now() - interval '7 days'"
         }
       },
@@ -4980,8 +5587,12 @@
           "tableFrom": "webhook_delivery_attempts",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4990,8 +5601,12 @@
           "tableFrom": "webhook_delivery_attempts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5000,8 +5615,14 @@
           "tableFrom": "webhook_delivery_attempts",
           "tableTo": "webhook_deliveries",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "delivery_id"],
-          "columnsTo": ["environment_id", "id"],
+          "columnsFrom": [
+            "environment_id",
+            "delivery_id"
+          ],
+          "columnsTo": [
+            "environment_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5010,8 +5631,14 @@
           "tableFrom": "webhook_delivery_attempts",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5021,7 +5648,10 @@
         "webhook_delivery_attempts_delivery_attempt_key": {
           "name": "webhook_delivery_attempts_delivery_attempt_key",
           "nullsNotDistinct": false,
-          "columns": ["delivery_id", "attempt"]
+          "columns": [
+            "delivery_id",
+            "attempt"
+          ]
         }
       },
       "policies": {
@@ -5029,7 +5659,9 @@
           "name": "webhook_delivery_attempts_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -5152,8 +5784,12 @@
           "tableFrom": "webhook_endpoints",
           "tableTo": "projects",
           "schemaTo": "auth",
-          "columnsFrom": ["project_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5162,8 +5798,12 @@
           "tableFrom": "webhook_endpoints",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5172,8 +5812,14 @@
           "tableFrom": "webhook_endpoints",
           "tableTo": "environments",
           "schemaTo": "auth",
-          "columnsFrom": ["environment_id", "project_id"],
-          "columnsTo": ["id", "project_id"],
+          "columnsFrom": [
+            "environment_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5183,7 +5829,10 @@
         "webhook_endpoints_environment_id_id_key": {
           "name": "webhook_endpoints_environment_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["environment_id", "id"]
+          "columns": [
+            "environment_id",
+            "id"
+          ]
         }
       },
       "policies": {
@@ -5191,7 +5840,9 @@
           "name": "webhook_endpoints_tenant_isolation",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": ["public"],
+          "to": [
+            "public"
+          ],
           "using": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid",
           "withCheck": "environment_id = nullif(current_setting('tula.environment_id', true), '')::uuid"
         }
@@ -5326,8 +5977,12 @@
           "tableFrom": "idempotency_keys",
           "tableTo": "organizations",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["organization_id"],
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5335,7 +5990,12 @@
       "compositePrimaryKeys": {
         "idempotency_keys_pkey": {
           "name": "idempotency_keys_pkey",
-          "columns": ["organization_id", "user_id", "route", "key"]
+          "columns": [
+            "organization_id",
+            "user_id",
+            "route",
+            "key"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -5625,8 +6285,12 @@
           "tableFrom": "invitations",
           "tableTo": "organizations",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["organization_id"],
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5635,8 +6299,14 @@
           "tableFrom": "invitations",
           "tableTo": "teams",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id", "team_id"],
-          "columnsTo": ["organization_id", "id"],
+          "columnsFrom": [
+            "organization_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -5646,12 +6316,17 @@
         "invitations_organization_id_id_key": {
           "name": "invitations_organization_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["organization_id", "id"]
+          "columns": [
+            "organization_id",
+            "id"
+          ]
         },
         "invitations_token_hash_key": {
           "name": "invitations_token_hash_key",
           "nullsNotDistinct": false,
-          "columns": ["token_hash"]
+          "columns": [
+            "token_hash"
+          ]
         }
       },
       "policies": {},
@@ -5725,14 +6400,19 @@
       "compositePrimaryKeys": {
         "membership_directory_pkey": {
           "name": "membership_directory_pkey",
-          "columns": ["user_id", "organization_id"]
+          "columns": [
+            "user_id",
+            "organization_id"
+          ]
         }
       },
       "uniqueConstraints": {
         "membership_directory_one_organization_per_user": {
           "name": "membership_directory_one_organization_per_user",
           "nullsNotDistinct": false,
-          "columns": ["user_id"]
+          "columns": [
+            "user_id"
+          ]
         }
       },
       "policies": {},
@@ -5832,8 +6512,12 @@
           "tableFrom": "memberships",
           "tableTo": "organizations",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["organization_id"],
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5843,12 +6527,18 @@
         "memberships_organization_user_key": {
           "name": "memberships_organization_user_key",
           "nullsNotDistinct": false,
-          "columns": ["organization_id", "user_id"]
+          "columns": [
+            "organization_id",
+            "user_id"
+          ]
         },
         "memberships_organization_id_id_key": {
           "name": "memberships_organization_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["organization_id", "id"]
+          "columns": [
+            "organization_id",
+            "id"
+          ]
         }
       },
       "policies": {},
@@ -5904,8 +6594,12 @@
           "tableFrom": "organization_state",
           "tableTo": "organizations",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["organization_id"],
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -6070,8 +6764,14 @@
           "tableFrom": "team_members",
           "tableTo": "teams",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id", "team_id"],
-          "columnsTo": ["organization_id", "id"],
+          "columnsFrom": [
+            "organization_id",
+            "team_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -6080,8 +6780,14 @@
           "tableFrom": "team_members",
           "tableTo": "memberships",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id", "membership_id"],
-          "columnsTo": ["organization_id", "id"],
+          "columnsFrom": [
+            "organization_id",
+            "membership_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -6089,7 +6795,11 @@
       "compositePrimaryKeys": {
         "team_members_pkey": {
           "name": "team_members_pkey",
-          "columns": ["organization_id", "team_id", "membership_id"]
+          "columns": [
+            "organization_id",
+            "team_id",
+            "membership_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -6156,8 +6866,12 @@
           "tableFrom": "teams",
           "tableTo": "organizations",
           "schemaTo": "core",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["organization_id"],
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "organization_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -6167,12 +6881,18 @@
         "teams_organization_id_id_key": {
           "name": "teams_organization_id_id_key",
           "nullsNotDistinct": false,
-          "columns": ["organization_id", "id"]
+          "columns": [
+            "organization_id",
+            "id"
+          ]
         },
         "teams_organization_name_key": {
           "name": "teams_organization_name_key",
           "nullsNotDistinct": false,
-          "columns": ["organization_id", "name_key"]
+          "columns": [
+            "organization_id",
+            "name_key"
+          ]
         }
       },
       "policies": {},
@@ -6386,6 +7106,34 @@
           "method": "btree",
           "with": {}
         },
+        "documents_deleted_list_idx": {
+          "name": "documents_deleted_list_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"playbook\".\"documents\".\"state\" = 'deleted'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "documents_purge_idx": {
           "name": "documents_purge_idx",
           "columns": [
@@ -6419,7 +7167,10 @@
       "compositePrimaryKeys": {
         "documents_pkey": {
           "name": "documents_pkey",
-          "columns": ["organization_id", "id"]
+          "columns": [
+            "organization_id",
+            "id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -6432,6 +7183,10 @@
         "documents_organization_id_shape": {
           "name": "documents_organization_id_shape",
           "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "documents_organization_not_global": {
+          "name": "documents_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
         },
         "documents_uploaded_by_shape": {
           "name": "documents_uploaded_by_shape",
@@ -6564,6 +7319,10 @@
         "index_settings_organization_id_shape": {
           "name": "index_settings_organization_id_shape",
           "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "index_settings_organization_not_global": {
+          "name": "index_settings_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
         },
         "index_settings_model_shape": {
           "name": "index_settings_model_shape",
@@ -6762,8 +7521,14 @@
           "tableFrom": "ingestion_jobs",
           "tableTo": "documents",
           "schemaTo": "playbook",
-          "columnsFrom": ["organization_id", "document_id"],
-          "columnsTo": ["organization_id", "id"],
+          "columnsFrom": [
+            "organization_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -6771,7 +7536,10 @@
       "compositePrimaryKeys": {
         "ingestion_jobs_pkey": {
           "name": "ingestion_jobs_pkey",
-          "columns": ["organization_id", "id"]
+          "columns": [
+            "organization_id",
+            "id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -6784,6 +7552,10 @@
         "ingestion_jobs_organization_id_shape": {
           "name": "ingestion_jobs_organization_id_shape",
           "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "ingestion_jobs_organization_not_global": {
+          "name": "ingestion_jobs_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
         },
         "ingestion_jobs_epoch_bounds": {
           "name": "ingestion_jobs_epoch_bounds",
@@ -6869,6 +7641,10 @@
         "organization_usage_organization_id_shape": {
           "name": "organization_usage_organization_id_shape",
           "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "organization_usage_organization_not_global": {
+          "name": "organization_usage_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
         },
         "organization_usage_not_negative": {
           "name": "organization_usage_not_negative",

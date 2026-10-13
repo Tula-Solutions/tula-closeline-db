@@ -4,20 +4,30 @@ import { fileURLToPath } from 'node:url'
 import {
   CONSUMED_CLAIM,
   CONSUMED_COMPLETE,
+  CONSUMED_LOOKUP,
   CONSUMED_PURGE,
   CONSUMED_RENEW,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
+  DOCUMENT_GET,
   DOCUMENT_INSERT,
+  DOCUMENT_LIST,
+  DOCUMENT_LIST_DELETED,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
+  DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
+  DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
+  IDEMPOTENCY_PURGE,
   INDEX_SETTINGS_UPSERT,
   INGESTION_JOB_ADVANCE,
   INGESTION_JOB_CLAIM,
+  INGESTION_JOB_COMPLETE,
+  INGESTION_JOB_FAIL,
   INGESTION_JOB_GIVE_UP_SPENT,
+  PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
 } from './playbook-statements'
@@ -26,7 +36,7 @@ import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schem
 const readme = readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8')
 
 /** The statements that take a point in time from the caller, each for one named reason. */
-const TAKES_A_TIME = ['CONSUMED_PURGE', 'DOCUMENT_LIST']
+const TAKES_A_TIME = ['CONSUMED_PURGE', 'DOCUMENT_LIST', 'DOCUMENT_LIST_DELETED']
 
 describe('the documented playbook statements', () => {
   test.each(Object.entries(PLAYBOOK_STATEMENTS))(
@@ -74,7 +84,7 @@ describe('the rules the statements keep', () => {
 
   test('both claims lock with skip locked inside a common table expression', () => {
     for (const text of [INGESTION_JOB_CLAIM, DOCUMENT_PURGE_CLAIM, INGESTION_JOB_GIVE_UP_SPENT]) {
-      expect(text).toMatch(/^with \w+ as \(\n\s+select [\s\S]*for update skip locked\)/)
+      expect(text).toMatch(/^with \w+ as \(\n\s+select [\s\S]*for update (of j )?skip locked\)/)
     }
   })
 
@@ -85,7 +95,7 @@ describe('the rules the statements keep', () => {
     )
     expect(DOCUMENT_SOFT_DELETE).toContain('deletion_seq = deletion_seq + 1')
     expect(DOCUMENT_SOFT_DELETE).toContain("state = 'cancelled'")
-    expect(DOCUMENT_SOFT_DELETE).toContain('returning id, deletion_seq, purge_due_at')
+    expect(DOCUMENT_SOFT_DELETE).toContain('returning id, state, deletion_seq, purge_due_at')
   })
 
   test('a restore needs a deleted document whose purge has not started', () => {
@@ -123,5 +133,63 @@ describe('the rules the statements keep', () => {
   test('the index settings upsert refuses a change once vectors exist', () => {
     expect(INDEX_SETTINGS_UPSERT).toContain('where s.vectors_written_at is null')
     expect(DOCUMENT_INSERT).toContain('where purge_started_at is null do nothing')
+  })
+
+  test('a lookup gives a retry-after only for a claimed record, and at least 1 for it', () => {
+    expect(CONSUMED_LOOKUP).toContain("case when state = 'claimed'")
+    expect(CONSUMED_LOOKUP).toContain('greatest(1, ceil(')
+  })
+
+  test('the explicit restore needs the purge time ahead; the upload restore does not; both need no purge claim', () => {
+    expect(DOCUMENT_RESTORE).toContain('and purge_due_at > clock_timestamp()')
+    expect(DOCUMENT_RESTORE_FOR_UPLOAD).not.toContain('purge_due_at >')
+    for (const text of [DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD]) {
+      expect(text).toContain("state = 'deleted' and purge_started_at is null")
+      expect(text).toContain('purge_due_at = null')
+    }
+  })
+
+  test('restore and requeue cancel stale jobs first, in the delete order, and the claim checks the document', () => {
+    for (const text of [DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_REQUEUE]) {
+      expect(text.indexOf("set state = 'cancelled'")).toBeLessThan(
+        text.indexOf('update playbook.documents')
+      )
+      expect(text).toContain('(select count(*) from j) >= 0')
+    }
+    expect(INGESTION_JOB_CLAIM).toContain(
+      "d.state in ('uploaded', 'processing') and d.epoch = j.epoch"
+    )
+    expect(INGESTION_JOB_CLAIM).toContain('for update of j skip locked')
+    expect(INGESTION_JOB_COMPLETE).toContain(
+      "x.state = 'processing' and x.epoch = ingestion_jobs.epoch"
+    )
+    expect(INGESTION_JOB_FAIL).toContain("x.state in ('uploaded', 'processing')")
+  })
+
+  test('every batch size and page size is clamped in SQL, null included', () => {
+    const batch = `least(greatest(coalesce($N::int, 1), 1), ${PLAYBOOK_MAX_BATCH})`
+    expect(DOCUMENT_PURGE_CLAIM).toContain(`limit ${batch.replace('$N', '$2')}`)
+    expect(INGESTION_JOB_CLAIM).toContain(`limit ${batch.replace('$N', '$2')}`)
+    expect(INGESTION_JOB_GIVE_UP_SPENT).toContain(`limit ${batch.replace('$N', '$2')}`)
+    expect(CONSUMED_PURGE).toContain(`limit ${batch.replace('$N', '$3')}`)
+    expect(IDEMPOTENCY_PURGE).toContain(`limit ${batch.replace('$N', '$3')}`)
+    for (const text of [DOCUMENT_LIST, DOCUMENT_LIST_DELETED]) {
+      expect(text).toContain('limit least(greatest(coalesce($4::int, 1), 1), 100)')
+    }
+    for (const [name, text] of Object.entries(PLAYBOOK_STATEMENTS)) {
+      for (const match of text.matchAll(/\blimit (\S+)/g)) {
+        expect([name, match[1]?.startsWith('least(greatest(coalesce($')]).toEqual([name, true])
+      }
+    }
+  })
+
+  test('the new reads return what the service answers and publishes with', () => {
+    expect(DOCUMENT_GET).toContain('deletion_seq')
+    expect(DOCUMENT_GET).toContain('purge_due_at, purge_started_at')
+    expect(DOCUMENT_GET).toContain('failure_reason')
+    expect(DOCUMENT_LIST_DELETED).toContain("state = 'deleted'")
+    expect(DOCUMENT_SOFT_DELETE).toContain(
+      'select id, state, deletion_seq, purge_due_at, true as changed'
+    )
   })
 })

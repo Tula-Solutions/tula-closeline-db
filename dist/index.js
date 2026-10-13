@@ -5,7 +5,7 @@ import {
   INGESTION_STEPS2,
   INGESTION_JOB_MAX_ATTEMPTS2,
   exports_schema
-} from "./shared/chunk-t6zs1zda.js";
+} from "./shared/chunk-k1wt9zrn.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -499,6 +499,10 @@ var DOCUMENT_MIN_RETENTION_MS = 3600000;
 var PLAYBOOK_MIN_LEASE_MS = 1000;
 var INGESTION_MAX_RETRY_DELAY_MS = 3600000;
 var DOCUMENT_LIST_MAX_PAGE = 100;
+var PLAYBOOK_MAX_BATCH = 500;
+var IDEMPOTENCY_MIN_PURGE_AGE_MS = 3600000;
+var CLAMP = (parameter, max) => `least(greatest(coalesce(${parameter}::int, 1), 1), ${max})`;
+var BATCH = (parameter) => CLAMP(parameter, PLAYBOOK_MAX_BATCH);
 var LEASE = (parameter) => `make_interval(secs => greatest(coalesce(${parameter}::float8, 0), ${PLAYBOOK_MIN_LEASE_MS}) / 1000)`;
 var STEP_ORDER = `array[${INGESTION_STEPS2.map((step) => `'${step}'`).join(", ")}]`;
 var QUOTA_LOCK = `select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked`;
@@ -520,12 +524,23 @@ select id, epoch from ins`;
 var DOCUMENT_BY_HASH = `select id, state, epoch, deletion_seq
 from playbook.documents
 where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null`;
-var DOCUMENT_LIST = `select id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at
+var COLUMNS_FOR_LIST = "id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at";
+var DOCUMENT_LIST = `select ${COLUMNS_FOR_LIST}
 from playbook.documents
 where organization_id = $1 and state <> 'deleted'
   and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
-limit least(greatest($4::int, 1), ${DOCUMENT_LIST_MAX_PAGE})`;
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DOCUMENT_LIST_DELETED = `select id, name, state, size_bytes, detected_type, uploaded_by, deletion_seq, deleted_at, purge_due_at, created_at
+from playbook.documents
+where organization_id = $1 and state = 'deleted'
+  and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
+  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at
+from playbook.documents
+where organization_id = $1 and id = $2`;
 var DOCUMENT_SOFT_DELETE = `with j as (
   update playbook.ingestion_jobs
   set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),
@@ -539,16 +554,23 @@ d as (
       purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), ${DOCUMENT_MIN_RETENTION_MS}) / 1000),
       failure_reason = null, updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0
-  returning id, deletion_seq, purge_due_at)
-select id, deletion_seq, purge_due_at, true as changed from d
+  returning id, state, deletion_seq, purge_due_at)
+select id, state, deletion_seq, purge_due_at, true as changed from d
 union all
-select id, deletion_seq, purge_due_at, false from playbook.documents
+select id, state, deletion_seq, purge_due_at, false from playbook.documents
 where organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)`;
-var DOCUMENT_RESTORE = `with d as (
+var RESTORE = (dueGuard) => `with j as (
+  update playbook.ingestion_jobs
+  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')
+    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = $2 and x.state = 'deleted')
+  returning id),
+d as (
   update playbook.documents
   set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,
       purge_due_at = null, updated_at = clock_timestamp()
-  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null
+  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null${dueGuard}
+    and (select count(*) from j) >= 0
   returning organization_id, id, epoch, deletion_seq),
 queued as (
   insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
@@ -557,17 +579,26 @@ select id, 'processing' as state, epoch, deletion_seq, true as changed from d
 union all
 select id, state, epoch, deletion_seq, false from playbook.documents
 where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from d)`;
-var DOCUMENT_REQUEUE = `with d as (
+var DOCUMENT_RESTORE = RESTORE(`
+    and purge_due_at > clock_timestamp()`);
+var DOCUMENT_RESTORE_FOR_UPLOAD = RESTORE("");
+var DOCUMENT_REQUEUE = `with j as (
+  update playbook.ingestion_jobs
+  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')
+    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = $2 and x.state = 'failed')
+  returning id),
+d as (
   update playbook.documents
   set state = 'uploaded', failure_reason = null, updated_at = clock_timestamp()
-  where organization_id = $1 and id = $2 and state = 'failed'
-  returning organization_id, id, epoch),
+  where organization_id = $1 and id = $2 and state = 'failed' and (select count(*) from j) >= 0
+  returning organization_id, id, epoch, deletion_seq),
 queued as (
   insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
   select $3::text, organization_id, id, epoch, clock_timestamp() from d)
-select id, 'uploaded' as state, true as changed from d
+select id, 'uploaded' as state, epoch, deletion_seq, true as changed from d
 union all
-select id, state, false from playbook.documents
+select id, state, epoch, deletion_seq, false from playbook.documents
 where organization_id = $1 and id = $2 and state in ('uploaded', 'processing', 'ready') and not exists (select 1 from d)`;
 var DOCUMENT_CLEANUP_BEGIN = `select d.id, d.epoch,
   not exists (
@@ -586,7 +617,7 @@ var DOCUMENT_PURGE_CLAIM = `with due as (
     and purge_attempts < ${DOCUMENT_PURGE_MAX_ATTEMPTS2}
     and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
   order by purge_due_at
-  limit $2
+  limit ${BATCH("$2")}
   for update skip locked)
 update playbook.documents d
 set purge_started_at = coalesce(d.purge_started_at, clock_timestamp()),
@@ -601,19 +632,26 @@ where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_a
   and vectors_removed_seq = deletion_seq
 returning id, size_bytes`;
 var INGESTION_JOB_CLAIM = `with due as (
-  select id from playbook.ingestion_jobs
-  where organization_id = $1 and state in ('queued', 'running')
-    and attempts < ${INGESTION_JOB_MAX_ATTEMPTS2} and next_attempt_at <= clock_timestamp()
-    and ($4::text is null or id = $4::text)
-  order by next_attempt_at
-  limit $2
-  for update skip locked),
+  select j.id, coalesce(d.state in ('uploaded', 'processing') and d.epoch = j.epoch, false) as live
+  from playbook.ingestion_jobs j
+  left join playbook.documents d on d.organization_id = j.organization_id and d.id = j.document_id
+  where j.organization_id = $1 and j.state in ('queued', 'running')
+    and j.attempts < ${INGESTION_JOB_MAX_ATTEMPTS2} and j.next_attempt_at <= clock_timestamp()
+    and ($4::text is null or j.id = $4::text)
+  order by j.next_attempt_at
+  limit ${BATCH("$2")}
+  for update of j skip locked),
+stale as (
+  update playbook.ingestion_jobs t
+  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+  from due
+  where t.organization_id = $1 and t.id = due.id and not due.live),
 claimed as (
   update playbook.ingestion_jobs j
   set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
       next_attempt_at = clock_timestamp() + ${LEASE("$3")}, updated_at = clock_timestamp()
   from due
-  where j.organization_id = $1 and j.id = due.id
+  where j.organization_id = $1 and j.id = due.id and due.live
   returning j.id, j.document_id, j.epoch, j.step, j.attempts, j.claim_token, j.artifact_key,
             j.page_count, j.chunk_count, j.chunks_done),
 moved as (
@@ -644,6 +682,8 @@ var INGESTION_JOB_COMPLETE = `with j as (
   update playbook.ingestion_jobs
   set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+                and x.state = 'processing' and x.epoch = ingestion_jobs.epoch)
   returning document_id, epoch),
 d as (
   update playbook.documents
@@ -656,6 +696,8 @@ var INGESTION_JOB_FAIL = `with j as (
   set state = 'failed', failure_reason = $4::text, claim_token = null,
       finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+    and exists (select 1 from playbook.documents x where x.organization_id = $1 and x.id = ingestion_jobs.document_id
+                and x.state in ('uploaded', 'processing') and x.epoch = ingestion_jobs.epoch)
   returning document_id, epoch),
 d as (
   update playbook.documents
@@ -668,7 +710,7 @@ var INGESTION_JOB_GIVE_UP_SPENT = `with batch as (
   where organization_id = $1 and state in ('queued', 'running')
     and attempts >= ${INGESTION_JOB_MAX_ATTEMPTS2} and next_attempt_at <= clock_timestamp()
   order by next_attempt_at
-  limit $2
+  limit ${BATCH("$2")}
   for update skip locked),
 j as (
   update playbook.ingestion_jobs t
@@ -693,7 +735,8 @@ on conflict (consumer, organization_id, message_id) do update set
 where m.state = 'claimed' and m.lease_expires_at <= clock_timestamp()
 returning claim_token`;
 var CONSUMED_LOOKUP = `select state,
-  greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int as retry_after_seconds
+  case when state = 'claimed'
+       then greatest(1, ceil(extract(epoch from lease_expires_at - clock_timestamp())))::int end as retry_after_seconds
 from playbook.consumed_message
 where consumer = $1 and organization_id = $2 and message_id = $3`;
 var CONSUMED_RENEW = `update playbook.consumed_message
@@ -714,7 +757,7 @@ var CONSUMED_PURGE = `with batch as (
   where organization_id = $1
     and ((state = 'done' and completed_at < $2::timestamptz)
          or (state = 'claimed' and lease_expires_at <= clock_timestamp()))
-  limit $3
+  limit ${BATCH("$3")}
   for update skip locked)
 delete from playbook.consumed_message c
 using batch b
@@ -737,14 +780,38 @@ select embedding_model, embedding_dimension from m
 union all
 select embedding_model, embedding_dimension from playbook.index_settings
 where organization_id = $1 and vectors_written_at is not null`;
+var IDEMPOTENCY_BEGIN = `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
+values ($1, $2, $3, $4, $5::bytea)
+on conflict (organization_id, user_id, route, key) do nothing
+returning key`;
+var IDEMPOTENCY_LOOKUP = `select request_hash, status, response, created_at
+from playbook.idempotency_keys
+where organization_id = $1 and user_id = $2 and route = $3 and key = $4`;
+var IDEMPOTENCY_COMPLETE = `update playbook.idempotency_keys
+set status = $5::smallint, response = $6::jsonb
+where organization_id = $1 and user_id = $2 and route = $3 and key = $4 and status is null
+returning key`;
+var IDEMPOTENCY_PURGE = `with batch as (
+  select user_id, route, key from playbook.idempotency_keys
+  where organization_id = $1
+    and created_at < clock_timestamp() - make_interval(secs => greatest(coalesce($2::float8, 0), ${IDEMPOTENCY_MIN_PURGE_AGE_MS}) / 1000)
+  order by created_at
+  limit ${BATCH("$3")}
+  for update skip locked)
+delete from playbook.idempotency_keys k
+using batch b
+where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`;
 var PLAYBOOK_STATEMENTS = {
   QUOTA_LOCK,
   QUOTA_USAGE,
   DOCUMENT_INSERT,
   DOCUMENT_BY_HASH,
+  DOCUMENT_GET,
   DOCUMENT_LIST,
+  DOCUMENT_LIST_DELETED,
   DOCUMENT_SOFT_DELETE,
   DOCUMENT_RESTORE,
+  DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_REQUEUE,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
@@ -764,7 +831,11 @@ var PLAYBOOK_STATEMENTS = {
   CONSUMED_RELEASE,
   CONSUMED_PURGE,
   INDEX_SETTINGS_UPSERT,
-  INDEX_VECTORS_MARK
+  INDEX_VECTORS_MARK,
+  IDEMPOTENCY_BEGIN,
+  IDEMPOTENCY_LOOKUP,
+  IDEMPOTENCY_COMPLETE,
+  IDEMPOTENCY_PURGE
 };
 
 // src/index.ts
@@ -793,18 +864,26 @@ export {
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
+  DOCUMENT_GET,
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
+  DOCUMENT_LIST_DELETED,
   DOCUMENT_LIST_MAX_PAGE,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
   DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
+  DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
   ENVIRONMENT_POLICY_EXPRESSION,
   ENVIRONMENT_SCOPED_TABLES,
   ENVIRONMENT_SETTING,
+  IDEMPOTENCY_BEGIN,
+  IDEMPOTENCY_COMPLETE,
+  IDEMPOTENCY_LOOKUP,
+  IDEMPOTENCY_MIN_PURGE_AGE_MS,
+  IDEMPOTENCY_PURGE,
   INDEX_SETTINGS_UPSERT,
   INDEX_VECTORS_MARK,
   INGESTION_JOB_ADVANCE,
@@ -824,6 +903,7 @@ export {
   ORGANIZATION_SETTING,
   OWNER_ROLE,
   PACKAGE,
+  PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
   QUOTA_LOCK,

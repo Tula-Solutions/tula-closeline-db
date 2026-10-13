@@ -35,6 +35,7 @@ __export(exports_schema, {
   DOCUMENT_STATES: () => DOCUMENT_STATES2,
   ENVIRONMENT_KINDS: () => ENVIRONMENT_KINDS2,
   EVENT_RETENTION_FLOOR: () => EVENT_RETENTION_FLOOR2,
+  GLOBAL_SCOPE_ORGANIZATION_ID: () => GLOBAL_SCOPE_ORGANIZATION_ID2,
   IDEMPOTENCY_HASH_BYTES: () => IDEMPOTENCY_HASH_BYTES2,
   IDEMPOTENCY_KEY_MAX: () => IDEMPOTENCY_KEY_MAX2,
   IDEMPOTENCY_RESPONSE_MAX_BYTES: () => IDEMPOTENCY_RESPONSE_MAX_BYTES2,
@@ -44,6 +45,7 @@ __export(exports_schema, {
   INGESTION_JOB_STATES: () => INGESTION_JOB_STATES2,
   INGESTION_MAX_CHUNKS: () => INGESTION_MAX_CHUNKS2,
   INGESTION_STEPS: () => INGESTION_STEPS2,
+  INTERNAL_CALL_USER_ID: () => INTERNAL_CALL_USER_ID2,
   INVITATION_ROLES: () => INVITATION_ROLES2,
   INVITATION_STATES: () => INVITATION_STATES2,
   MEMBERSHIP_ROLES: () => MEMBERSHIP_ROLES2,
@@ -94,6 +96,7 @@ __export(exports_schema, {
   passkeyChallenges: () => passkeyChallenges2,
   passkeys: () => passkeys2,
   passwordHistory: () => passwordHistory2,
+  playbookIdempotencyKeys: () => playbookIdempotencyKeys2,
   playbookSchema: () => playbookSchema2,
   projects: () => projects2,
   proposals: () => proposals2,
@@ -1158,6 +1161,10 @@ var idempotencyKeys2 = coreSchema2.table("idempotency_keys", {
 // src/schema/playbook.ts
 import { pgSchema as pgSchema3 } from "drizzle-orm/pg-core";
 var playbookSchema2 = pgSchema3("playbook");
+// src/schema/playbook-consumed.ts
+import { sql as sql19 } from "drizzle-orm";
+import { check as check14, index as index25, primaryKey as primaryKey5, text as text34, timestamp as timestamp27, uuid as uuid24 } from "drizzle-orm/pg-core";
+
 // src/schema/playbook-tables.ts
 import { sql as sql18 } from "drizzle-orm";
 import {
@@ -1203,6 +1210,8 @@ var bytes4 = customType4({
 });
 var list2 = (values) => sql18.raw(values.map((v) => `'${v}'`).join(", "));
 var idShape2 = (column, prefix) => sql18.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var GLOBAL_SCOPE_ORGANIZATION_ID2 = "org_00000000000000000000000000000000";
+var notGlobal = sql18.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
 var ts = (name) => timestamp26(name, { withTimezone: true });
 var createdAt2 = () => ts("created_at").notNull().defaultNow();
 var updatedAt2 = () => ts("updated_at").notNull().defaultNow();
@@ -1233,6 +1242,7 @@ var documents2 = playbookSchema2.table("documents", {
   primaryKey4({ name: "documents_pkey", columns: [t.organizationId, t.id] }),
   check13("documents_id_shape", idShape2("id", "doc")),
   check13("documents_organization_id_shape", idShape2("organization_id", "org")),
+  check13("documents_organization_not_global", notGlobal),
   check13("documents_uploaded_by_shape", idShape2("uploaded_by", "usr")),
   check13("documents_deleted_by_shape", sql18`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
   check13("documents_name_shape", sql18`char_length(btrim(${t.name})) between 1 and 255`),
@@ -1257,6 +1267,7 @@ var documents2 = playbookSchema2.table("documents", {
   check13("documents_purge_attempts_bounds", sql18`${t.purgeAttempts} between 0 and ${sql18.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
   uniqueIndex3("documents_content_hash_key").on(t.organizationId, t.contentHash).where(sql18`${t.purgeStartedAt} is null`),
   index24("documents_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql18`${t.state} <> 'deleted'`),
+  index24("documents_deleted_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql18`${t.state} = 'deleted'`),
   index24("documents_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql18`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql18.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`)
 ]);
 var organizationUsage2 = playbookSchema2.table("organization_usage", {
@@ -1266,6 +1277,7 @@ var organizationUsage2 = playbookSchema2.table("organization_usage", {
   updatedAt: updatedAt2()
 }, (t) => [
   check13("organization_usage_organization_id_shape", idShape2("organization_id", "org")),
+  check13("organization_usage_organization_not_global", notGlobal),
   check13("organization_usage_not_negative", sql18`${t.documentCount} >= 0 and ${t.byteCount} >= 0`)
 ]);
 var ingestionJobs2 = playbookSchema2.table("ingestion_jobs", {
@@ -1295,6 +1307,7 @@ var ingestionJobs2 = playbookSchema2.table("ingestion_jobs", {
   }).onDelete("cascade"),
   check13("ingestion_jobs_id_shape", idShape2("id", "job")),
   check13("ingestion_jobs_organization_id_shape", idShape2("organization_id", "org")),
+  check13("ingestion_jobs_organization_not_global", notGlobal),
   check13("ingestion_jobs_epoch_bounds", sql18`${t.epoch} >= 0`),
   check13("ingestion_jobs_state_known", sql18`${t.state} in (${list2(INGESTION_JOB_STATES2)})`),
   check13("ingestion_jobs_step_known", sql18`${t.step} in (${list2(INGESTION_STEPS2)})`),
@@ -1320,29 +1333,81 @@ var indexSettings2 = playbookSchema2.table("index_settings", {
   updatedAt: updatedAt2()
 }, (t) => [
   check13("index_settings_organization_id_shape", idShape2("organization_id", "org")),
+  check13("index_settings_organization_not_global", notGlobal),
   check13("index_settings_model_shape", sql18`char_length(${t.embeddingModel}) between 1 and 200 and ${t.embeddingModel} collate "C" ~ '^[A-Za-z0-9._:/-]+$'`),
   check13("index_settings_dimension_bounds", sql18`${t.embeddingDimension} between 1 and 16384`)
 ]);
+
+// src/schema/playbook-consumed.ts
+var list3 = (values) => sql19.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape3 = (column, prefix) => sql19.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var ts2 = (name) => timestamp27(name, { withTimezone: true });
 var consumedMessage2 = playbookSchema2.table("consumed_message", {
-  consumer: text33("consumer").notNull(),
-  organizationId: text33("organization_id").notNull(),
-  messageId: text33("message_id").notNull(),
-  state: text33("state", { enum: CONSUMED_MESSAGE_STATES2 }).notNull(),
-  claimToken: uuid23("claim_token").notNull(),
-  leaseExpiresAt: ts("lease_expires_at"),
-  completedAt: ts("completed_at")
+  consumer: text34("consumer").notNull(),
+  organizationId: text34("organization_id").notNull(),
+  messageId: text34("message_id").notNull(),
+  state: text34("state", { enum: CONSUMED_MESSAGE_STATES2 }).notNull(),
+  claimToken: uuid24("claim_token").notNull(),
+  leaseExpiresAt: ts2("lease_expires_at"),
+  completedAt: ts2("completed_at")
 }, (t) => [
-  primaryKey4({
+  primaryKey5({
     name: "consumed_message_pkey",
     columns: [t.consumer, t.organizationId, t.messageId]
   }),
-  check13("consumed_message_organization_id_shape", idShape2("organization_id", "org")),
-  check13("consumed_message_consumer_shape", sql18`char_length(${t.consumer}) between 1 and 128 and ${t.consumer} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
-  check13("consumed_message_message_id_shape", sql18`char_length(${t.messageId}) between 1 and 128 and ${t.messageId} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
-  check13("consumed_message_state_known", sql18`${t.state} in (${list2(CONSUMED_MESSAGE_STATES2)})`),
-  check13("consumed_message_state_columns", sql18`(${t.state} = 'claimed' and ${t.leaseExpiresAt} is not null and ${t.completedAt} is null)
+  check14("consumed_message_organization_id_shape", idShape3("organization_id", "org")),
+  check14("consumed_message_consumer_shape", sql19`char_length(${t.consumer}) between 1 and 128 and ${t.consumer} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
+  check14("consumed_message_message_id_shape", sql19`char_length(${t.messageId}) between 1 and 128 and ${t.messageId} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
+  check14("consumed_message_state_known", sql19`${t.state} in (${list3(CONSUMED_MESSAGE_STATES2)})`),
+  check14("consumed_message_state_columns", sql19`(${t.state} = 'claimed' and ${t.leaseExpiresAt} is not null and ${t.completedAt} is null)
         or (${t.state} = 'done' and ${t.leaseExpiresAt} is null and ${t.completedAt} is not null)`),
-  index24("consumed_message_done_idx").on(t.organizationId, t.completedAt).where(sql18`${t.state} = 'done'`),
-  index24("consumed_message_lease_idx").on(t.organizationId, t.leaseExpiresAt).where(sql18`${t.state} = 'claimed'`)
+  index25("consumed_message_done_idx").on(t.organizationId, t.completedAt).where(sql19`${t.state} = 'done'`),
+  index25("consumed_message_lease_idx").on(t.organizationId, t.leaseExpiresAt).where(sql19`${t.state} = 'claimed'`)
 ]);
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, consumedMessage2, exports_schema };
+// src/schema/playbook-idempotency.ts
+import { sql as sql20 } from "drizzle-orm";
+import {
+  check as check15,
+  customType as customType5,
+  index as index26,
+  jsonb as jsonb11,
+  primaryKey as primaryKey6,
+  smallint as smallint2,
+  text as text35,
+  timestamp as timestamp28
+} from "drizzle-orm/pg-core";
+var idShape4 = (column, prefix) => sql20.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var bytes5 = customType5({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value)
+});
+var INTERNAL_CALL_USER_ID2 = "usr_00000000000000000000000000000000";
+var playbookIdempotencyKeys2 = playbookSchema2.table("idempotency_keys", {
+  organizationId: text35("organization_id").notNull(),
+  userId: text35("user_id").notNull(),
+  route: text35("route").notNull(),
+  key: text35("key").notNull(),
+  requestHash: bytes5("request_hash").notNull(),
+  status: smallint2("status"),
+  response: jsonb11("response").$type(),
+  createdAt: timestamp28("created_at", { withTimezone: true }).notNull().defaultNow()
+}, (t) => [
+  primaryKey6({
+    name: "idempotency_keys_pkey",
+    columns: [t.organizationId, t.userId, t.route, t.key]
+  }),
+  check15("idempotency_keys_organization_id_shape", idShape4("organization_id", "org")),
+  check15("idempotency_keys_organization_not_global", sql20.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)),
+  check15("idempotency_keys_user_id_shape", idShape4("user_id", "usr")),
+  check15("idempotency_keys_route_shape", sql20`char_length(${t.route}) between 1 and ${sql20.raw(String(IDEMPOTENCY_ROUTE_MAX2))}
+        and ${t.route} collate "C" ~ '^[a-z0-9._]+$'`),
+  check15("idempotency_keys_key_shape", sql20`char_length(${t.key}) between 1 and ${sql20.raw(String(IDEMPOTENCY_KEY_MAX2))}
+        and ${t.key} collate "C" ~ '^[!-~]+$'`),
+  check15("idempotency_keys_request_hash_length", sql20`octet_length(${t.requestHash}) = ${sql20.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
+  check15("idempotency_keys_status_range", sql20`${t.status} between 100 and 599`),
+  check15("idempotency_keys_response_matches_status", sql20`(${t.status} is null) = (${t.response} is null)`),
+  check15("idempotency_keys_response_size", sql20`octet_length(${t.response}::text) <= ${sql20.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
+  index26("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
+]);
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, consumedMessage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, exports_schema };

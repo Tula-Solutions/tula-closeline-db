@@ -26,13 +26,20 @@ import {
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
+  DOCUMENT_GET,
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
+  DOCUMENT_LIST_DELETED,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
   DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
+  DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_SOFT_DELETE,
+  IDEMPOTENCY_BEGIN,
+  IDEMPOTENCY_COMPLETE,
+  IDEMPOTENCY_LOOKUP,
+  IDEMPOTENCY_PURGE,
   INDEX_SETTINGS_UPSERT,
   INDEX_VECTORS_MARK,
   INGESTION_JOB_ADVANCE,
@@ -177,8 +184,10 @@ describe('the playbook schema', () => {
 
   const remove = (org: string, id: string, retentionMs = 0) =>
     inOrg(org, (c) => c.query(DOCUMENT_SOFT_DELETE, [org, id, newUser(), retentionMs]))
-  const restore = (org: string, id: string) =>
-    inOrg(org, (c) => c.query(DOCUMENT_RESTORE, [org, id, newJob()]))
+  const restore = (org: string, id: string, forUpload = false) =>
+    inOrg(org, (c) =>
+      c.query(forUpload ? DOCUMENT_RESTORE_FOR_UPLOAD : DOCUMENT_RESTORE, [org, id, newJob()])
+    )
   const claimPurge = (org: string, limit = 10, leaseMs = 600_000) =>
     inOrg(org, (c) => c.query(DOCUMENT_PURGE_CLAIM, [org, limit, leaseMs]))
   const row = async (org: string, id: string) =>
@@ -222,8 +231,12 @@ describe('the playbook schema', () => {
   const jobRow = async (org: string, id: string) =>
     (await inOrg(org, (c) => c.query('select * from playbook.ingestion_jobs where id = $1', [id])))
       .rows[0]
-  const claimJobs = (org: string, limit = 10, leaseMs = 600_000, jobId: string | null = null) =>
-    inOrg(org, (c) => c.query(INGESTION_JOB_CLAIM, [org, limit, leaseMs, jobId]))
+  const claimJobs = (
+    org: string,
+    limit: number | null = 10,
+    leaseMs = 600_000,
+    jobId: string | null = null
+  ) => inOrg(org, (c) => c.query(INGESTION_JOB_CLAIM, [org, limit, leaseMs, jobId]))
   /** End a job's lease now (the owner), as if the worker had died. */
   const expireLease = (org: string, jobId: string) =>
     asOwner(org, (c) =>
@@ -343,6 +356,7 @@ describe('the playbook schema', () => {
         'consumed_message',
         'index_settings',
         'organization_usage',
+        'idempotency_keys',
       ]) {
         const none = await scoped(playbook, null, (c) => c.query(`select 1 from playbook.${table}`))
         expect(none.rowCount).toBe(0)
@@ -786,7 +800,7 @@ describe('the playbook schema', () => {
       const doc = await mustAdd(org)
       await deleteDue(org, doc.id)
       expect((await claimPurge(org)).rowCount).toBe(1)
-      expect((await restore(org, doc.id)).rowCount).toBe(0)
+      expect((await restore(org, doc.id, true)).rowCount).toBe(0)
       expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
     })
 
@@ -817,7 +831,8 @@ describe('the playbook schema', () => {
       const restoring = await open(org)
       try {
         expect(
-          (await restoring.client.query(DOCUMENT_RESTORE, [org, doc.id, newJob()])).rowCount
+          (await restoring.client.query(DOCUMENT_RESTORE_FOR_UPLOAD, [org, doc.id, newJob()]))
+            .rowCount
         ).toBe(1)
         const skipped = await claimPurge(org)
         expect(skipped.rowCount).toBe(0)
@@ -838,7 +853,7 @@ describe('the playbook schema', () => {
       try {
         const claimed = await purging.client.query(DOCUMENT_PURGE_CLAIM, [org, 10, 600_000])
         expect(claimed.rowCount).toBe(1)
-        const waiting = restoring.client.query(DOCUMENT_RESTORE, [org, doc.id, newJob()])
+        const waiting = restoring.client.query(DOCUMENT_RESTORE_FOR_UPLOAD, [org, doc.id, newJob()])
         await untilBlocked(restoring.pid)
         await purging.client.query('commit')
         expect((await waiting).rowCount).toBe(0)
@@ -860,7 +875,7 @@ describe('the playbook schema', () => {
       const restoring = await open(org)
       try {
         await purging.client.query(DOCUMENT_PURGE_CLAIM, [org, 10, 600_000])
-        const waiting = restoring.client.query(DOCUMENT_RESTORE, [org, doc.id, newJob()])
+        const waiting = restoring.client.query(DOCUMENT_RESTORE_FOR_UPLOAD, [org, doc.id, newJob()])
         await untilBlocked(restoring.pid)
         await purging.client.query('rollback')
         expect((await waiting).rows[0]).toMatchObject({ state: 'processing', changed: true })
@@ -1437,6 +1452,1164 @@ describe('the playbook schema', () => {
     })
   })
 
+  /** Insert a document row directly (the role may insert every column), for ties and chosen states. */
+  const insertDoc = (org: string, over: Record<string, unknown> = {}) => {
+    const values: Record<string, unknown> = {
+      id: newDoc(),
+      organization_id: org,
+      name: 'A.pdf',
+      content_hash: hashOf(hex()),
+      size_bytes: 10,
+      declared_type: 'application/pdf',
+      detected_type: 'pdf',
+      uploaded_by: newUser(),
+      object_key: 'k',
+      ...over,
+    }
+    const keys = Object.keys(values)
+    return inOrg(org, (c) =>
+      c.query(
+        `insert into playbook.documents (${keys.join(', ')}) values (${keys.map((_, i) => `$${i + 1}`).join(', ')}) returning id`,
+        Object.values(values)
+      )
+    )
+  }
+  const deletedValues = (when: string) => ({
+    state: 'deleted',
+    deletion_seq: 1,
+    epoch: 1,
+    deleted_at: new Date(Date.now() - 1000),
+    purge_due_at: new Date(Date.now() + HOUR),
+    created_at: when,
+  })
+  const textOf = async (org: string, id: string) =>
+    (
+      await inOrg(org, (c) =>
+        c.query('select created_at::text as t from playbook.documents where id = $1', [id])
+      )
+    ).rows[0].t as string
+  const activeJobs = async (org: string, id: string) =>
+    (
+      await inOrg(org, (c) =>
+        c.query(
+          `select count(*)::int as n from playbook.ingestion_jobs where document_id = $1 and state in ('queued', 'running')`,
+          [id]
+        )
+      )
+    ).rows[0].n as number
+  const releaseAll = (...txs: { client: PoolClient }[]) => {
+    for (const tx of txs) {
+      tx.client.release()
+    }
+  }
+
+  describe('consumed messages: lookups', () => {
+    test('a claimed record whose lease has just lapsed still answers 1; a done record answers null', async () => {
+      const org = newOrg()
+      const token = crypto.randomUUID()
+      await inOrg(org, (c) => c.query(CONSUMED_CLAIM, ['c', org, 'm', token, 60_000]))
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.consumed_message set lease_expires_at = clock_timestamp() - interval '1 second'`
+        )
+      )
+      const lapsed = await inOrg(org, (c) => c.query(CONSUMED_LOOKUP, ['c', org, 'm']))
+      expect(lapsed.rows).toEqual([{ state: 'claimed', retry_after_seconds: 1 }])
+      await inOrg(org, (c) => c.query(CONSUMED_CLAIM, ['c', org, 'm', token, 60_000]))
+      await inOrg(org, (c) => c.query(CONSUMED_COMPLETE, ['c', org, 'm', token]))
+      const done = await inOrg(org, (c) => c.query(CONSUMED_LOOKUP, ['c', org, 'm']))
+      expect(done.rows).toEqual([{ state: 'done', retry_after_seconds: null }])
+    })
+  })
+
+  describe('restore against the purge time', () => {
+    test('the explicit restore refuses a past-due document and changes nothing; the upload restore succeeds', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await deleteDue(org, doc.id)
+      const before = await row(org, doc.id)
+      const jobs = await inOrg(org, (c) =>
+        c.query('select * from playbook.ingestion_jobs order by id')
+      )
+      expect((await restore(org, doc.id)).rowCount).toBe(0)
+      expect(await row(org, doc.id)).toEqual(before)
+      expect(
+        (await inOrg(org, (c) => c.query('select * from playbook.ingestion_jobs order by id'))).rows
+      ).toEqual(jobs.rows)
+      const got = (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, doc.id]))).rows[0]
+      expect(got.state).toBe('deleted')
+      expect(got.purge_due_at.getTime()).toBeLessThan(Date.now())
+      expect(got.purge_started_at).toBeNull()
+      const upload = (await restore(org, doc.id, true)).rows[0]
+      expect(upload).toMatchObject({ state: 'processing', deletion_seq: 1, changed: true })
+      expect(await row(org, doc.id)).toMatchObject({
+        state: 'processing',
+        purge_due_at: null,
+        deleted_at: null,
+      })
+      expect(await activeJobs(org, doc.id)).toBe(1)
+    })
+
+    test('a document not yet due is restored by the explicit restore', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      expect((await restore(org, doc.id)).rows[0]).toMatchObject({
+        state: 'processing',
+        changed: true,
+      })
+    })
+  })
+
+  describe('a delete that waits for a restore or a requeue', () => {
+    const settle = async (org: string, docId: string, jobId: string) => {
+      expect(await row(org, docId)).toMatchObject({ state: 'deleted' })
+      // The job the delete could not see is still queued until the claim looks at its document.
+      expect(await jobRow(org, jobId)).toMatchObject({ state: 'queued' })
+      expect((await claimJobs(org)).rowCount).toBe(0)
+      expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled', claim_token: null })
+      expect(await activeJobs(org, docId)).toBe(0)
+    }
+
+    const failedDoc = async (org: string) => {
+      const doc = await mustAdd(org)
+      const [claim] = (await claimJobs(org)).rows
+      await inOrg(org, (c) =>
+        c.query(INGESTION_JOB_FAIL, [org, doc.jobId, claim.claim_token, 'unreadable'])
+      )
+      return doc
+    }
+
+    test.each(['restore', 'requeue'])(
+      '%s commits a job while the delete waits for the document: the claim cancels it, a later restore works',
+      async (kind) => {
+        const org = newOrg()
+        let doc: Added
+        if (kind === 'restore') {
+          doc = await mustAdd(org)
+          await remove(org, doc.id)
+        } else {
+          doc = await failedDoc(org)
+        }
+        const jobId = newJob()
+        const first = await open(org)
+        const deleting = await open(org)
+        try {
+          const text = kind === 'restore' ? DOCUMENT_RESTORE : DOCUMENT_REQUEUE
+          expect((await first.client.query(text, [org, doc.id, jobId])).rowCount).toBe(1)
+          const waiting = deleting.client.query(DOCUMENT_SOFT_DELETE, [
+            org,
+            doc.id,
+            newUser(),
+            HOUR,
+          ])
+          await untilBlocked(deleting.pid)
+          await first.client.query('commit')
+          expect((await waiting).rows[0]).toMatchObject({ state: 'deleted', changed: true })
+          await deleting.client.query('commit')
+        } finally {
+          releaseAll(first, deleting)
+        }
+        await settle(org, doc.id, jobId)
+        expect((await restore(org, doc.id)).rows[0]).toMatchObject({
+          state: 'processing',
+          changed: true,
+        })
+        expect(await activeJobs(org, doc.id)).toBe(1)
+      }
+    )
+
+    test.each(['restore', 'requeue'])(
+      'a later %s needs no claim in between: it cancels the stale job itself',
+      async (kind) => {
+        const org = newOrg()
+        let doc: Added
+        if (kind === 'restore') {
+          doc = await mustAdd(org)
+          await remove(org, doc.id)
+        } else {
+          doc = await failedDoc(org)
+        }
+        const jobId = newJob()
+        const first = await open(org)
+        const deleting = await open(org)
+        try {
+          await first.client.query(kind === 'restore' ? DOCUMENT_RESTORE : DOCUMENT_REQUEUE, [
+            org,
+            doc.id,
+            jobId,
+          ])
+          const waiting = deleting.client.query(DOCUMENT_SOFT_DELETE, [
+            org,
+            doc.id,
+            newUser(),
+            HOUR,
+          ])
+          await untilBlocked(deleting.pid)
+          await first.client.query('commit')
+          await waiting
+          await deleting.client.query('commit')
+        } finally {
+          releaseAll(first, deleting)
+        }
+        expect((await restore(org, doc.id)).rows[0]).toMatchObject({
+          state: 'processing',
+          changed: true,
+        })
+        expect(await jobRow(org, jobId)).toMatchObject({ state: 'cancelled' })
+        expect(await activeJobs(org, doc.id)).toBe(1)
+      }
+    )
+
+    test('the claim cancels a job whose document is at another epoch or no longer live, and takes the live ones', async () => {
+      const org = newOrg()
+      const stale = await mustAdd(org)
+      const live = await mustAdd(org)
+      await asOwner(org, (c) =>
+        c.query(`update playbook.documents set epoch = 5 where id = $1`, [stale.id])
+      )
+      const claimed = (await claimJobs(org)).rows
+      expect(claimed.map((r) => r.id)).toEqual([live.jobId])
+      expect(await jobRow(org, stale.jobId)).toMatchObject({ state: 'cancelled' })
+    })
+  })
+
+  describe('reads and lists', () => {
+    const TIE = '2026-01-01 00:00:00.123456+00'
+
+    test('DOCUMENT_GET returns every public column, the failure and deletion fields, and the sequence', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      const get = () => inOrg(org, (c) => c.query(DOCUMENT_GET, [org, doc.id]))
+      expect((await get()).rows[0]).toMatchObject({
+        id: doc.id,
+        name: 'Playbook.pdf',
+        state: 'uploaded',
+        declared_type: 'application/pdf',
+        detected_type: 'pdf',
+        failure_reason: null,
+        epoch: 0,
+        deletion_seq: 0,
+        deleted_at: null,
+        purge_due_at: null,
+        purge_started_at: null,
+      })
+      expect(Object.keys((await get()).rows[0])).toEqual(
+        expect.arrayContaining([
+          'size_bytes',
+          'uploaded_by',
+          'created_at',
+          'updated_at',
+          'deleted_by',
+        ])
+      )
+      await remove(org, doc.id)
+      expect((await get()).rows[0]).toMatchObject({ state: 'deleted', deletion_seq: 1 })
+      expect((await get()).rows[0].purge_due_at).toBeInstanceOf(Date)
+      expect((await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, newDoc()]))).rowCount).toBe(0)
+    })
+
+    test.each([
+      ['live', DOCUMENT_LIST, {}],
+      ['deleted', DOCUMENT_LIST_DELETED, deletedValues(TIE)],
+    ] as const)(
+      'the %s list pages a created_at tie across the page boundary without a repeat or a miss',
+      async (_kind, text, over) => {
+        const org = newOrg()
+        const ids: string[] = []
+        for (let i = 0; i < 5; i++) {
+          const made = await insertDoc(org, { ...over, created_at: TIE })
+          ids.push(made.rows[0].id)
+        }
+        // The other kind is in the Organization too, and must not appear.
+        await insertDoc(org, text === DOCUMENT_LIST ? deletedValues(TIE) : { created_at: TIE })
+        const seen: string[] = []
+        const sizes: number[] = []
+        let cursor: [string, string] = ['infinity', '']
+        for (let page = 0; page < 5; page++) {
+          const rows = (await inOrg(org, (c) => c.query(text, [org, cursor[0], cursor[1], 2]))).rows
+          if (rows.length === 0) {
+            break
+          }
+          sizes.push(rows.length)
+          seen.push(...rows.map((r) => r.id))
+          const last = rows[rows.length - 1]
+          cursor = [await textOf(org, last.id), last.id]
+        }
+        expect(sizes).toEqual([2, 2, 1])
+        expect(new Set(seen).size).toBe(5)
+        expect([...seen].sort()).toEqual([...ids].sort())
+        expect(seen).toEqual([...seen].sort().reverse())
+      }
+    )
+
+    test('the deleted list carries the deletion fields and is clamped', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      const rows = (
+        await inOrg(org, (c) => c.query(DOCUMENT_LIST_DELETED, [org, 'infinity', '', null]))
+      ).rows
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ id: doc.id, state: 'deleted', deletion_seq: 1 })
+      expect(rows[0].purge_due_at).toBeInstanceOf(Date)
+    })
+  })
+
+  describe('batch sizes are clamped in SQL', () => {
+    const asNumber = (n: number | null) => n as number
+    const HUGE = 2_000_000_000
+
+    test('purge claim: null takes one, a huge size takes the rest', async () => {
+      const org = newOrg()
+      for (let i = 0; i < 3; i++) {
+        await deleteDue(org, (await mustAdd(org)).id)
+      }
+      const take = (n: number | null) =>
+        inOrg(org, (c) => c.query(DOCUMENT_PURGE_CLAIM, [org, asNumber(n), 600_000]))
+      expect((await take(null)).rowCount).toBe(1)
+      expect((await take(HUGE)).rowCount).toBe(2)
+      expect((await take(-5)).rowCount).toBe(0)
+    })
+
+    test('job claim: null takes one, a huge size takes the rest', async () => {
+      const org = newOrg()
+      for (let i = 0; i < 3; i++) {
+        await mustAdd(org)
+      }
+      expect(
+        (await inOrg(org, (c) => c.query(INGESTION_JOB_CLAIM, [org, null, 600_000, null]))).rowCount
+      ).toBe(1)
+      expect(
+        (await inOrg(org, (c) => c.query(INGESTION_JOB_CLAIM, [org, HUGE, 600_000, null]))).rowCount
+      ).toBe(2)
+    })
+
+    test('give-up: null takes one, a huge size takes the rest', async () => {
+      const org = newOrg()
+      const jobs = [await mustAdd(org), await mustAdd(org), await mustAdd(org)]
+      for (const j of jobs) {
+        await asOwner(org, (c) =>
+          c.query(
+            `update playbook.ingestion_jobs set attempts = 20, state = 'running', claim_token = gen_random_uuid(), next_attempt_at = clock_timestamp() - interval '1 second' where id = $1`,
+            [j.jobId]
+          )
+        )
+      }
+      expect(
+        (await inOrg(org, (c) => c.query(INGESTION_JOB_GIVE_UP_SPENT, [org, null]))).rowCount
+      ).toBe(1)
+      expect(
+        (await inOrg(org, (c) => c.query(INGESTION_JOB_GIVE_UP_SPENT, [org, HUGE]))).rowCount
+      ).toBe(2)
+    })
+
+    test('consumed purge: null removes one, a huge size removes the rest', async () => {
+      const org = newOrg()
+      for (let i = 0; i < 3; i++) {
+        const token = crypto.randomUUID()
+        await inOrg(org, (c) => c.query(CONSUMED_CLAIM, ['c', org, `m${i}`, token, 60_000]))
+        await inOrg(org, (c) => c.query(CONSUMED_COMPLETE, ['c', org, `m${i}`, token]))
+      }
+      const future = new Date(Date.now() + 86_400_000)
+      expect((await inOrg(org, (c) => c.query(CONSUMED_PURGE, [org, future, null]))).rowCount).toBe(
+        1
+      )
+      expect((await inOrg(org, (c) => c.query(CONSUMED_PURGE, [org, future, HUGE]))).rowCount).toBe(
+        2
+      )
+    })
+
+    test('the list pages: null is one row, a huge size is everything up to the page maximum', async () => {
+      const org = newOrg()
+      for (let i = 0; i < 3; i++) {
+        await mustAdd(org)
+      }
+      expect(
+        (await inOrg(org, (c) => c.query(DOCUMENT_LIST, [org, 'infinity', '', null]))).rowCount
+      ).toBe(1)
+      expect(
+        (await inOrg(org, (c) => c.query(DOCUMENT_LIST, [org, 'infinity', '', HUGE]))).rowCount
+      ).toBe(3)
+    })
+  })
+
+  describe('the all-zero Organization id is the global scope of consumed messages only', () => {
+    test.each([
+      'documents',
+      'organization_usage',
+      'ingestion_jobs',
+      'index_settings',
+      'idempotency_keys',
+    ])('an insert into %s under the zero scope is refused', async (table) => {
+      const insert: Record<string, string> = {
+        documents: `insert into playbook.documents (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)
+                    values ('${newDoc()}', '${ZERO_ORG}', 'a', '\\x${'00'.repeat(32)}', 1, 'a/b', 'pdf', '${newUser()}', 'k')`,
+        organization_usage: `insert into playbook.organization_usage (organization_id) values ('${ZERO_ORG}')`,
+        ingestion_jobs: `insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
+                         values ('${newJob()}', '${ZERO_ORG}', '${newDoc()}', 0, now())`,
+        index_settings: `insert into playbook.index_settings (organization_id, embedding_model, embedding_dimension) values ('${ZERO_ORG}', 'm', 8)`,
+        idempotency_keys: `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash)
+                           values ('${ZERO_ORG}', '${newUser()}', 'r', 'k', '\\x${'00'.repeat(32)}')`,
+      }
+      // The owner writes under the zero scope too (the role cannot insert into the usage counts).
+      const message = await rejectionOf(asOwner(ZERO_ORG, (c) => c.query(insert[table] as string)))
+      expect(message).toContain(`${table}_organization_not_global`)
+    })
+
+    test('the consumed-message table accepts it', async () => {
+      const result = await inOrg(ZERO_ORG, (c) =>
+        c.query(CONSUMED_CLAIM, ['c', ZERO_ORG, `g${hex()}`, crypto.randomUUID(), 60_000])
+      )
+      expect(result.rowCount).toBe(1)
+    })
+  })
+
+  describe('idempotency keys', () => {
+    const ROUTE = 'documents.upload'
+    const freshKey = () => `key-${hex()}`
+    const begin = (c: PoolClient, org: string, key: string, hash: Buffer, user = newUserFixed) =>
+      c.query(IDEMPOTENCY_BEGIN, [org, user, ROUTE, key, hash])
+    const newUserFixed = `usr_${'1'.repeat(32)}`
+    const lookup = (org: string, key: string, user = newUserFixed) =>
+      inOrg(org, (c) => c.query(IDEMPOTENCY_LOOKUP, [org, user, ROUTE, key]))
+    const finish = (
+      c: PoolClient,
+      org: string,
+      key: string,
+      status = 201,
+      body = '{"id":"doc_1"}'
+    ) => c.query(IDEMPOTENCY_COMPLETE, [org, newUserFixed, ROUTE, key, status, body])
+
+    test('begin, complete, and a replay returns the stored response; a different request hash is visible', async () => {
+      const org = newOrg()
+      const key = freshKey()
+      const h1 = hashOf('request one')
+      await inOrg(org, async (c) => {
+        expect((await begin(c, org, key, h1)).rowCount).toBe(1)
+        expect((await finish(c, org, key)).rowCount).toBe(1)
+      })
+      const replay = (await lookup(org, key)).rows[0]
+      expect(replay.status).toBe(201)
+      expect(replay.response).toEqual({ id: 'doc_1' })
+      expect(Buffer.compare(replay.request_hash, h1)).toBe(0)
+      expect(Buffer.compare(replay.request_hash, hashOf('request two'))).not.toBe(0)
+      expect((await inOrg(org, (c) => begin(c, org, key, hashOf('request two')))).rowCount).toBe(0)
+      expect((await inOrg(org, (c) => finish(c, org, key, 500, '{}'))).rowCount).toBe(0)
+      expect((await lookup(org, key)).rows[0].status).toBe(201)
+    })
+
+    test('the same key under another user or route is another row', async () => {
+      const org = newOrg()
+      const key = freshKey()
+      const h = hashOf('x')
+      await inOrg(org, async (c) => {
+        expect((await begin(c, org, key, h)).rowCount).toBe(1)
+        expect((await begin(c, org, key, h, `usr_${'2'.repeat(32)}`)).rowCount).toBe(1)
+        expect(
+          (await c.query(IDEMPOTENCY_BEGIN, [org, newUserFixed, 'documents.remove_all', key, h]))
+            .rowCount
+        ).toBe(1)
+      })
+    })
+
+    test('a concurrent request waits for the first, then finds it completed', async () => {
+      const org = newOrg()
+      const key = freshKey()
+      const h = hashOf('same')
+      const first = await open(org)
+      const second = await open(org)
+      try {
+        expect((await begin(first.client, org, key, h)).rowCount).toBe(1)
+        const waiting = begin(second.client, org, key, h)
+        await untilBlocked(second.pid)
+        await finish(first.client, org, key)
+        await first.client.query('commit')
+        expect((await waiting).rowCount).toBe(0)
+        await second.client.query('commit')
+      } finally {
+        releaseAll(first, second)
+      }
+      expect((await lookup(org, key)).rows[0]).toMatchObject({ status: 201 })
+    })
+
+    test('a request that cannot wait is told it is in progress by the lock timeout', async () => {
+      const org = newOrg()
+      const key = freshKey()
+      const h = hashOf('same')
+      const first = await open(org)
+      const second = await open(org)
+      try {
+        await begin(first.client, org, key, h)
+        await second.client.query(`set local lock_timeout = '150ms'`)
+        const message = await rejectionOf(begin(second.client, org, key, h))
+        expect(message).toContain('lock timeout')
+      } finally {
+        await first.client.query('rollback')
+        await second.client.query('rollback').catch(() => undefined)
+        releaseAll(first, second)
+      }
+      // The first rolled back, so nothing is stranded.
+      expect((await lookup(org, key)).rowCount).toBe(0)
+    })
+
+    test('a second Organization sees nothing and cannot write the first one a row', async () => {
+      const a = newOrg()
+      const b = newOrg()
+      const key = freshKey()
+      await inOrg(a, (c) => begin(c, a, key, hashOf('x')))
+      expect(
+        (await inOrg(b, (c) => c.query(IDEMPOTENCY_LOOKUP, [a, newUserFixed, ROUTE, key]))).rowCount
+      ).toBe(0)
+      expect((await inOrg(b, (c) => finish(c, a, key))).rowCount).toBe(0)
+      expect(await rejectionOf(inOrg(b, (c) => begin(c, a, freshKey(), hashOf('y'))))).toContain(
+        'row-level security'
+      )
+      expect((await inOrg(b, (c) => begin(c, b, key, hashOf('x')))).rowCount).toBe(1)
+      expect((await lookup(a, key)).rows[0].status).toBeNull()
+    })
+
+    test('a completed row is never rewritten, and an in-flight row keeps its identity', async () => {
+      const org = newOrg()
+      const [done, flying] = [freshKey(), freshKey()]
+      await inOrg(org, async (c) => {
+        await begin(c, org, done, hashOf('a'))
+        await finish(c, org, done)
+        await begin(c, org, flying, hashOf('b'))
+      })
+      const rewrite = await rejectionOf(
+        asOwner(org, (c) =>
+          c.query(
+            `update playbook.idempotency_keys set status = 200, response = '{}' where key = $1`,
+            [done]
+          )
+        )
+      )
+      expect(rewrite).toContain('playbook.idempotency_final')
+      const move = await rejectionOf(
+        asOwner(org, (c) =>
+          c.query(`update playbook.idempotency_keys set request_hash = $2 where key = $1`, [
+            flying,
+            hashOf('c'),
+          ])
+        )
+      )
+      expect(move).toContain('playbook.idempotency_final')
+      expect((await inOrg(org, (c) => finish(c, org, flying))).rowCount).toBe(1)
+      const removed = await inOrg(org, (c) =>
+        c.query('delete from playbook.idempotency_keys where key = any($1)', [[done, flying]])
+      )
+      expect(removed.rowCount).toBe(2)
+    })
+
+    test.each([
+      ['a route with a capital', { route: 'Documents' }, 'idempotency_keys_route_shape'],
+      ['a key with a space', { key: 'a b' }, 'idempotency_keys_key_shape'],
+      ['a short hash', { request_hash: Buffer.alloc(31) }, 'idempotency_keys_request_hash_length'],
+      ['a status without a response', { status: 200 }, 'idempotency_keys_response_matches_status'],
+      ['a status out of range', { status: 99, response: '{}' }, 'idempotency_keys_status_range'],
+    ])('refuses %s', async (_name, over, constraint) => {
+      const org = newOrg()
+      const values: Record<string, unknown> = {
+        organization_id: org,
+        user_id: newUserFixed,
+        route: ROUTE,
+        key: freshKey(),
+        request_hash: hashOf('x'),
+        ...over,
+      }
+      const keys = Object.keys(values)
+      const message = await rejectionOf(
+        inOrg(org, (c) =>
+          c.query(
+            `insert into playbook.idempotency_keys (${keys.join(', ')}) values (${keys.map((_, i) => `$${i + 1}`).join(', ')})`,
+            Object.values(values)
+          )
+        )
+      )
+      expect(message).toContain(constraint)
+    })
+
+    test('the internal call user id is accepted', async () => {
+      const org = newOrg()
+      const result = await inOrg(org, (c) =>
+        begin(c, org, freshKey(), hashOf('x'), `usr_${'0'.repeat(32)}`)
+      )
+      expect(result.rowCount).toBe(1)
+    })
+
+    test('the purge removes old keys in a bounded batch inside the Organization, and keeps fresh ones', async () => {
+      const org = newOrg()
+      const other = newOrg()
+      const put = (o: string, age: string) =>
+        inOrg(o, (c) =>
+          c.query(
+            `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+             values ($1, $2, $3, $4, $5, clock_timestamp() - $6::interval)`,
+            [o, newUserFixed, ROUTE, freshKey(), hashOf(hex()), age]
+          )
+        )
+      for (const age of ['3 hours', '4 hours', '5 hours', '2 minutes']) {
+        await put(org, age)
+      }
+      await put(other, '3 hours')
+      const purge = (o: string, n: number | null, age = 0) =>
+        inOrg(o, (c) => c.query(IDEMPOTENCY_PURGE, [o, age, n]))
+      // An age of zero is raised to the hour, so the two-minute key stays.
+      expect((await purge(org, null)).rowCount).toBe(1)
+      expect((await purge(org, 2_000_000_000)).rowCount).toBe(2)
+      expect((await purge(org, 10)).rowCount).toBe(0)
+      expect(
+        (await inOrg(org, (c) => c.query('select 1 from playbook.idempotency_keys'))).rowCount
+      ).toBe(1)
+      expect(
+        (await inOrg(other, (c) => c.query('select 1 from playbook.idempotency_keys'))).rowCount
+      ).toBe(1)
+    })
+
+    test('no other service role can reach it', async () => {
+      expect(await rejectionOf(core.query('select 1 from playbook.idempotency_keys'))).toContain(
+        'permission denied'
+      )
+    })
+  })
+
+  describe('isolation: statements that give the owner of the rows a row', () => {
+    const TABLES = [
+      'documents',
+      'ingestion_jobs',
+      'consumed_message',
+      'index_settings',
+      'idempotency_keys',
+      'organization_usage',
+    ]
+    /** Every row of every playbook table of one Organization, as text, read as the owner in its scope. */
+    const snapshot = (org: string) =>
+      asOwner(org, async (c) => {
+        const out: Record<string, string[]> = {}
+        for (const table of TABLES) {
+          const rows = await c.query(
+            `select to_jsonb(t)::text as r from playbook.${table} t order by to_jsonb(t)::text`
+          )
+          out[table] = rows.rows.map((r) => r.r)
+        }
+        return out
+      })
+    const USER = `usr_${'3'.repeat(32)}`
+    const ROUTE = 'documents.upload'
+    const future = () => new Date(Date.now() + 86_400_000)
+
+    const deletedDoc = async (org: string, due: boolean) => {
+      const doc = await mustAdd(org)
+      await remove(org, doc.id)
+      if (due) {
+        await makeDue(org, doc.id)
+      }
+      return doc
+    }
+    const claimedJob = async (org: string) => {
+      const doc = await mustAdd(org)
+      const [claim] = (await claimJobs(org)).rows
+      return { doc, token: claim.claim_token as string }
+    }
+    const spentJob = async (org: string) => {
+      const doc = await mustAdd(org)
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.ingestion_jobs set attempts = 20, state = 'running', claim_token = gen_random_uuid(), next_attempt_at = clock_timestamp() - interval '1 second' where id = $1`,
+          [doc.jobId]
+        )
+      )
+      return doc
+    }
+    const claimedMessage = async (org: string, done = false) => {
+      const token = crypto.randomUUID()
+      await inOrg(org, (c) => c.query(CONSUMED_CLAIM, ['c', org, 'm1', token, 60_000]))
+      if (done) {
+        await inOrg(org, (c) => c.query(CONSUMED_COMPLETE, ['c', org, 'm1', token]))
+      }
+      return token
+    }
+    const idempotencyRow = async (org: string, completed: boolean, age = '0 seconds') => {
+      const key = `key-${hex()}`
+      await inOrg(org, async (c) => {
+        await c.query(
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+           values ($1, $2, $3, $4, $5, clock_timestamp() - $6::interval)`,
+          [org, USER, ROUTE, key, hashOf(key), age]
+        )
+        if (completed) {
+          await c.query(IDEMPOTENCY_COMPLETE, [org, USER, ROUTE, key, 200, '{}'])
+        }
+      })
+      return key
+    }
+
+    interface Case {
+      name: string
+      text: string
+      prepare: (org: string) => Promise<unknown[]>
+      /** True for an insert: the policy refuses it from another scope instead of hiding the row. */
+      refused?: boolean
+    }
+    const cases: Case[] = [
+      {
+        name: 'QUOTA_USAGE',
+        text: QUOTA_USAGE,
+        prepare: async (a) => {
+          await mustAdd(a)
+          return [a]
+        },
+      },
+      {
+        name: 'DOCUMENT_GET',
+        text: DOCUMENT_GET,
+        prepare: async (a) => [a, (await mustAdd(a)).id],
+      },
+      {
+        name: 'DOCUMENT_BY_HASH',
+        text: DOCUMENT_BY_HASH,
+        prepare: async (a) => [a, (await mustAdd(a)).hash],
+      },
+      {
+        name: 'DOCUMENT_LIST',
+        text: DOCUMENT_LIST,
+        prepare: async (a) => {
+          await mustAdd(a)
+          return [a, 'infinity', '', 50]
+        },
+      },
+      {
+        name: 'DOCUMENT_LIST_DELETED',
+        text: DOCUMENT_LIST_DELETED,
+        prepare: async (a) => {
+          await deletedDoc(a, false)
+          return [a, 'infinity', '', 50]
+        },
+      },
+      {
+        name: 'DOCUMENT_SOFT_DELETE',
+        text: DOCUMENT_SOFT_DELETE,
+        prepare: async (a) => [a, (await mustAdd(a)).id, newUser(), HOUR],
+      },
+      {
+        name: 'DOCUMENT_RESTORE',
+        text: DOCUMENT_RESTORE,
+        prepare: async (a) => [a, (await deletedDoc(a, false)).id, newJob()],
+      },
+      {
+        name: 'DOCUMENT_RESTORE_FOR_UPLOAD',
+        text: DOCUMENT_RESTORE_FOR_UPLOAD,
+        prepare: async (a) => [a, (await deletedDoc(a, true)).id, newJob()],
+      },
+      {
+        name: 'DOCUMENT_REQUEUE',
+        text: DOCUMENT_REQUEUE,
+        prepare: async (a) => {
+          const { doc, token } = await claimedJob(a)
+          await inOrg(a, (c) => c.query(INGESTION_JOB_FAIL, [a, doc.jobId, token, 'unreadable']))
+          return [a, doc.id, newJob()]
+        },
+      },
+      {
+        name: 'DOCUMENT_CLEANUP_BEGIN',
+        text: DOCUMENT_CLEANUP_BEGIN,
+        prepare: async (a) => [a, (await deletedDoc(a, false)).id, 1],
+      },
+      {
+        name: 'DOCUMENT_CLEANUP_DONE',
+        text: DOCUMENT_CLEANUP_DONE,
+        prepare: async (a) => [a, (await deletedDoc(a, false)).id, 1],
+      },
+      {
+        name: 'DOCUMENT_PURGE_CLAIM',
+        text: DOCUMENT_PURGE_CLAIM,
+        prepare: async (a) => {
+          await deletedDoc(a, true)
+          return [a, 10, 60_000]
+        },
+      },
+      {
+        name: 'DOCUMENT_PURGE_COMPLETE',
+        text: DOCUMENT_PURGE_COMPLETE,
+        prepare: async (a) => {
+          const doc = await deletedDoc(a, true)
+          await claimPurge(a)
+          await inOrg(a, (c) => c.query(DOCUMENT_CLEANUP_DONE, [a, doc.id, 1]))
+          return [a, doc.id]
+        },
+      },
+      {
+        name: 'INGESTION_JOB_CLAIM',
+        text: INGESTION_JOB_CLAIM,
+        prepare: async (a) => {
+          await mustAdd(a)
+          return [a, 10, 60_000, null]
+        },
+      },
+      {
+        name: 'INGESTION_JOB_HEARTBEAT',
+        text: INGESTION_JOB_HEARTBEAT,
+        prepare: async (a) => {
+          const j = await claimedJob(a)
+          return [a, j.doc.jobId, j.token, 60_000]
+        },
+      },
+      {
+        name: 'INGESTION_JOB_ADVANCE',
+        text: INGESTION_JOB_ADVANCE,
+        prepare: async (a) => {
+          const j = await claimedJob(a)
+          return [a, j.doc.jobId, j.token, 'chunk', 'k', 1, null, null, 60_000]
+        },
+      },
+      {
+        name: 'INGESTION_JOB_RETRY',
+        text: INGESTION_JOB_RETRY,
+        prepare: async (a) => {
+          const j = await claimedJob(a)
+          return [a, j.doc.jobId, j.token, 0]
+        },
+      },
+      {
+        name: 'INGESTION_JOB_COMPLETE',
+        text: INGESTION_JOB_COMPLETE,
+        prepare: async (a) => {
+          const j = await claimedJob(a)
+          return [a, j.doc.jobId, j.token]
+        },
+      },
+      {
+        name: 'INGESTION_JOB_FAIL',
+        text: INGESTION_JOB_FAIL,
+        prepare: async (a) => {
+          const j = await claimedJob(a)
+          return [a, j.doc.jobId, j.token, 'unreadable']
+        },
+      },
+      {
+        name: 'INGESTION_JOB_GIVE_UP_SPENT',
+        text: INGESTION_JOB_GIVE_UP_SPENT,
+        prepare: async (a) => {
+          await spentJob(a)
+          return [a, 10]
+        },
+      },
+      {
+        name: 'CONSUMED_LOOKUP',
+        text: CONSUMED_LOOKUP,
+        prepare: async (a) => {
+          await claimedMessage(a)
+          return ['c', a, 'm1']
+        },
+      },
+      {
+        name: 'CONSUMED_RENEW',
+        text: CONSUMED_RENEW,
+        prepare: async (a) => ['c', a, 'm1', await claimedMessage(a), 60_000],
+      },
+      {
+        name: 'CONSUMED_COMPLETE',
+        text: CONSUMED_COMPLETE,
+        prepare: async (a) => ['c', a, 'm1', await claimedMessage(a)],
+      },
+      {
+        name: 'CONSUMED_RELEASE',
+        text: CONSUMED_RELEASE,
+        prepare: async (a) => ['c', a, 'm1', await claimedMessage(a)],
+      },
+      {
+        name: 'CONSUMED_PURGE',
+        text: CONSUMED_PURGE,
+        prepare: async (a) => {
+          await claimedMessage(a, true)
+          return [a, future(), 10]
+        },
+      },
+      {
+        name: 'INDEX_VECTORS_MARK',
+        text: INDEX_VECTORS_MARK,
+        prepare: async (a) => {
+          await inOrg(a, (c) => c.query(INDEX_SETTINGS_UPSERT, [a, 'm', 8]))
+          return [a]
+        },
+      },
+      {
+        name: 'IDEMPOTENCY_LOOKUP',
+        text: IDEMPOTENCY_LOOKUP,
+        prepare: async (a) => [a, USER, ROUTE, await idempotencyRow(a, true)],
+      },
+      {
+        name: 'IDEMPOTENCY_COMPLETE',
+        text: IDEMPOTENCY_COMPLETE,
+        prepare: async (a) => [a, USER, ROUTE, await idempotencyRow(a, false), 201, '{}'],
+      },
+      {
+        name: 'IDEMPOTENCY_PURGE',
+        text: IDEMPOTENCY_PURGE,
+        prepare: async (a) => {
+          await idempotencyRow(a, true, '3 hours')
+          return [a, 0, 10]
+        },
+      },
+      {
+        name: 'DOCUMENT_INSERT',
+        text: DOCUMENT_INSERT,
+        refused: true,
+        prepare: async (a) => [
+          a,
+          newDoc(),
+          'x.pdf',
+          hashOf(hex()),
+          1,
+          'application/pdf',
+          'pdf',
+          newUser(),
+          'k',
+          newJob(),
+          BIG,
+          10 ** 12,
+        ],
+      },
+      {
+        name: 'CONSUMED_CLAIM',
+        text: CONSUMED_CLAIM,
+        refused: true,
+        prepare: async (a) => ['c', a, 'fresh', crypto.randomUUID(), 60_000],
+      },
+      {
+        name: 'INDEX_SETTINGS_UPSERT',
+        text: INDEX_SETTINGS_UPSERT,
+        refused: true,
+        prepare: async (a) => [a, 'm', 8],
+      },
+      {
+        name: 'IDEMPOTENCY_BEGIN',
+        text: IDEMPOTENCY_BEGIN,
+        refused: true,
+        prepare: async (a) => [a, USER, ROUTE, `key-${hex()}`, hashOf('x')],
+      },
+    ]
+
+    test.each(cases)(
+      '$name: B gets nothing and changes nothing, then A gets the row',
+      async (c) => {
+        const a = newOrg()
+        const b = newOrg()
+        const params = await c.prepare(a)
+        const [beforeA, beforeB] = [await snapshot(a), await snapshot(b)]
+        if (c.refused) {
+          expect(await rejectionOf(inOrg(b, (cl) => cl.query(c.text, params)))).toContain(
+            'row-level security'
+          )
+        } else {
+          const none = await inOrg(b, (cl) => cl.query(c.text, params))
+          expect([c.name, none.rowCount]).toEqual([c.name, 0])
+        }
+        expect(await snapshot(a)).toEqual(beforeA)
+        expect(await snapshot(b)).toEqual(beforeB)
+        const mine = await inOrg(a, (cl) => cl.query(c.text, params))
+        expect([c.name, (mine.rowCount ?? 0) > 0]).toEqual([c.name, true])
+      }
+    )
+  })
+
+  describe('more races on separate connections', () => {
+    test('two identical uploads at once: one wins, the other gets no row, the hash finds the winner, the counter counts one', async () => {
+      for (const withLock of [true, false]) {
+        const org = newOrg()
+        const hash = hashOf(`same ${hex()}`)
+        const insert = (c: PoolClient, id: string) =>
+          c.query(DOCUMENT_INSERT, [
+            org,
+            id,
+            'a.pdf',
+            hash,
+            7,
+            'application/pdf',
+            'pdf',
+            newUser(),
+            'k',
+            newJob(),
+            BIG,
+            10 ** 12,
+          ])
+        const [winnerId, loserId] = [newDoc(), newDoc()]
+        const first = await open(org)
+        const second = await open(org)
+        try {
+          if (withLock) {
+            await first.client.query(QUOTA_LOCK, [org])
+          }
+          expect((await insert(first.client, winnerId)).rowCount).toBe(1)
+          const waiting = withLock
+            ? second.client.query(QUOTA_LOCK, [org])
+            : insert(second.client, loserId)
+          await untilBlocked(second.pid)
+          await first.client.query('commit')
+          const result = await waiting
+          if (withLock) {
+            expect((await insert(second.client, loserId)).rowCount).toBe(0)
+          } else {
+            expect(result.rowCount).toBe(0)
+          }
+          await second.client.query('commit')
+        } finally {
+          releaseAll(first, second)
+        }
+        const found = await inOrg(org, (c) => c.query(DOCUMENT_BY_HASH, [org, hash]))
+        expect(found.rows.map((r) => r.id)).toEqual([winnerId])
+        expect(await usage(org)).toEqual({ document_count: 1, byte_count: 7 })
+        expect(await usage(org)).toEqual(await actualUsage(org))
+      }
+    })
+
+    test.each(['heartbeat', 'advance', 'complete', 'claim'])(
+      'a delete against a job %s: the job never sets ready on the deleted document',
+      async (kind) => {
+        const org = newOrg()
+        const doc = await mustAdd(org)
+        let token = ''
+        if (kind !== 'claim') {
+          token = (await claimJobs(org)).rows[0].claim_token
+        }
+        const call: Record<string, [string, unknown[]]> = {
+          heartbeat: [INGESTION_JOB_HEARTBEAT, [org, doc.jobId, token, 60_000]],
+          advance: [
+            INGESTION_JOB_ADVANCE,
+            [org, doc.jobId, token, 'chunk', null, null, null, null, 60_000],
+          ],
+          complete: [INGESTION_JOB_COMPLETE, [org, doc.jobId, token]],
+          claim: [INGESTION_JOB_CLAIM, [org, 10, 60_000, null]],
+        }
+        const [text, params] = call[kind] as [string, unknown[]]
+        const deleting = await open(org)
+        const worker = await open(org)
+        try {
+          expect(
+            (await deleting.client.query(DOCUMENT_SOFT_DELETE, [org, doc.id, newUser(), HOUR]))
+              .rowCount
+          ).toBe(1)
+          const waiting = worker.client.query(text, params)
+          if (kind !== 'claim') {
+            // The job row is locked by the delete's cancel: the worker waits, then finds it cancelled.
+            await untilBlocked(worker.pid)
+          }
+          await deleting.client.query('commit')
+          expect((await waiting).rowCount).toBe(0)
+          await worker.client.query('commit')
+        } finally {
+          releaseAll(deleting, worker)
+        }
+        expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
+        expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'cancelled' })
+        expect((await claimJobs(org)).rowCount).toBe(0)
+      }
+    )
+
+    test('a completion that commits first leaves the document ready, then the delete deletes it', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      const token = (await claimJobs(org)).rows[0].claim_token
+      const worker = await open(org)
+      const deleting = await open(org)
+      try {
+        expect(
+          (await worker.client.query(INGESTION_JOB_COMPLETE, [org, doc.jobId, token])).rowCount
+        ).toBe(1)
+        const waiting = deleting.client.query(DOCUMENT_SOFT_DELETE, [org, doc.id, newUser(), HOUR])
+        await untilBlocked(deleting.pid)
+        await worker.client.query('commit')
+        expect((await waiting).rows[0]).toMatchObject({
+          state: 'deleted',
+          deletion_seq: 1,
+          changed: true,
+        })
+        await deleting.client.query('commit')
+      } finally {
+        releaseAll(worker, deleting)
+      }
+      expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
+      expect(await jobRow(org, doc.jobId)).toMatchObject({ state: 'succeeded' })
+    })
+
+    test('requeue against delete, in both orders', async () => {
+      const failed = async (org: string) => {
+        const doc = await mustAdd(org)
+        const [claim] = (await claimJobs(org)).rows
+        await inOrg(org, (c) =>
+          c.query(INGESTION_JOB_FAIL, [org, doc.jobId, claim.claim_token, 'no_text'])
+        )
+        return doc
+      }
+      // The delete first: the requeue waits, finds the document deleted and writes nothing.
+      const org = newOrg()
+      const doc = await failed(org)
+      const deleting = await open(org)
+      const requeueing = await open(org)
+      try {
+        await deleting.client.query(DOCUMENT_SOFT_DELETE, [org, doc.id, newUser(), HOUR])
+        const waiting = requeueing.client.query(DOCUMENT_REQUEUE, [org, doc.id, newJob()])
+        await untilBlocked(requeueing.pid)
+        await deleting.client.query('commit')
+        expect((await waiting).rowCount).toBe(0)
+        await requeueing.client.query('commit')
+      } finally {
+        releaseAll(deleting, requeueing)
+      }
+      expect(await row(org, doc.id)).toMatchObject({ state: 'deleted' })
+      expect(await activeJobs(org, doc.id)).toBe(0)
+      // The requeue first: the delete waits and then deletes the requeued document.
+      const second = newOrg()
+      const other = await failed(second)
+      const requeue = await open(second)
+      const del = await open(second)
+      try {
+        expect(
+          (await requeue.client.query(DOCUMENT_REQUEUE, [second, other.id, newJob()])).rowCount
+        ).toBe(1)
+        const waiting = del.client.query(DOCUMENT_SOFT_DELETE, [second, other.id, newUser(), HOUR])
+        await untilBlocked(del.pid)
+        await requeue.client.query('commit')
+        expect((await waiting).rows[0]).toMatchObject({ state: 'deleted', changed: true })
+        await del.client.query('commit')
+      } finally {
+        releaseAll(requeue, del)
+      }
+      expect((await claimJobs(second)).rowCount).toBe(0)
+      expect(await activeJobs(second, other.id)).toBe(0)
+    })
+
+    test('two consumed-message purges at once take different rows and together remove every one', async () => {
+      const org = newOrg()
+      for (let i = 0; i < 4; i++) {
+        const token = crypto.randomUUID()
+        await inOrg(org, (c) => c.query(CONSUMED_CLAIM, ['c', org, `m${i}`, token, 60_000]))
+        await inOrg(org, (c) => c.query(CONSUMED_COMPLETE, ['c', org, `m${i}`, token]))
+      }
+      const cutoff = new Date(Date.now() + 86_400_000)
+      const first = await open(org)
+      const second = await open(org)
+      let removed = 0
+      try {
+        const one = await first.client.query(CONSUMED_PURGE, [org, cutoff, 2])
+        const two = await second.client.query(CONSUMED_PURGE, [org, cutoff, 4])
+        expect(one.rowCount).toBe(2)
+        // The second skips the two rows the first holds.
+        expect(two.rowCount).toBe(2)
+        removed = (one.rowCount ?? 0) + (two.rowCount ?? 0)
+        await first.client.query('commit')
+        await second.client.query('commit')
+      } finally {
+        releaseAll(first, second)
+      }
+      expect(removed).toBe(4)
+      expect(
+        (await inOrg(org, (c) => c.query('select 1 from playbook.consumed_message'))).rowCount
+      ).toBe(0)
+    })
+  })
+
   describe('migrations on a database with data in other schemas', () => {
     const databases: string[] = []
     let admin: Pool
@@ -1490,6 +2663,7 @@ describe('the playbook schema', () => {
           [
             'consumed_message',
             'documents',
+            'idempotency_keys',
             'index_settings',
             'ingestion_jobs',
             'organization_usage',
@@ -1498,7 +2672,7 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        expect(applied.rows[0].n).toBe(11)
+        expect(applied.rows[0].n).toBe(12)
         await runMigrations(url.toString())
       } finally {
         await pool.end()
