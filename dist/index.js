@@ -4,8 +4,9 @@ import {
   DOCUMENT_PURGE_MAX_ATTEMPTS2,
   INGESTION_STEPS2,
   INGESTION_JOB_MAX_ATTEMPTS2,
+  WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-k1wt9zrn.js";
+} from "./shared/chunk-fathzqnx.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -329,7 +330,8 @@ var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
   "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
   "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in",
-  "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in"
+  "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
+  "playbook.work_hints": "asked before the Organization is known (a sweep asks which Organizations have purge, job or message work due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by SECURITY DEFINER triggers and the discovery function, and no service role holds any privilege on it: playbook.organizations_with_work is the only way in"
 };
 var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
 var EXTENSION_SCHEMAS = [];
@@ -515,7 +517,7 @@ var DOCUMENT_INSERT = `with ins as (
   select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text
   where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint
     and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint
-  on conflict (organization_id, content_hash) where purge_started_at is null do nothing
+  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing
   returning id, organization_id, epoch),
 queued as (
   insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
@@ -523,7 +525,7 @@ queued as (
 select id, epoch from ins`;
 var DOCUMENT_BY_HASH = `select id, state, epoch, deletion_seq
 from playbook.documents
-where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null`;
+where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null`;
 var COLUMNS_FOR_LIST = "id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at";
 var DOCUMENT_LIST = `select ${COLUMNS_FOR_LIST}
 from playbook.documents
@@ -539,7 +541,7 @@ order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
 var DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
   epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
-  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable
+  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
 from playbook.documents
 where organization_id = $1 and id = $2`;
 var DOCUMENT_SOFT_DELETE = `with j as (
@@ -570,7 +572,7 @@ d as (
   update playbook.documents
   set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,
       purge_due_at = null, updated_at = clock_timestamp()
-  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null${dueGuard}
+  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null and restore_barred_at is null${dueGuard}
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, deletion_seq),
 queued as (
@@ -628,9 +630,14 @@ set purge_started_at = coalesce(d.purge_started_at, clock_timestamp()),
 from due
 where d.organization_id = $1 and d.id = due.id
 returning d.id, d.object_key, d.size_bytes, d.deletion_seq, d.vectors_removed_seq, d.purge_attempts`;
-var DOCUMENT_PURGE_COMPLETE = `delete from playbook.documents
+var DOCUMENT_PURGE_COMPLETE = `with jl as (
+  select state, next_attempt_at from playbook.ingestion_jobs
+  where organization_id = $1 and document_id = $2
+  for update)
+delete from playbook.documents
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
   and vectors_removed_seq = deletion_seq
+  and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
 returning id, size_bytes`;
 var INGESTION_JOB_CLAIM = `with due as (
   select j.id, coalesce(d.state in ('uploaded', 'processing') and d.epoch = j.epoch, false) as live
@@ -820,6 +827,57 @@ var IDEMPOTENCY_PURGE = `with batch as (
 delete from playbook.idempotency_keys k
 using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`;
+var REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
+var DOCUMENT_ERASE_BATCH = `with t as (select clock_timestamp() as now),
+cand as (
+  select id, deletion_seq from playbook.documents
+  where organization_id = $1 and restore_barred_at is null
+  order by id
+  limit ${BATCH("$2")}),
+j as (
+  update playbook.ingestion_jobs
+  set state = 'cancelled', claim_token = null, finished_at = (select now from t), updated_at = (select now from t),
+      next_attempt_at = case when state = 'running' then next_attempt_at else (select now from t) end
+  where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+  returning id),
+d as (
+  update playbook.documents x
+  set state = 'deleted',
+      epoch = case when x.state <> 'deleted' then x.epoch + 1 else x.epoch end,
+      deletion_seq = case when x.state <> 'deleted' then x.deletion_seq + 1 else x.deletion_seq end,
+      deleted_at = case when x.state <> 'deleted' then (select now from t) else x.deleted_at end,
+      deleted_by = case when x.state <> 'deleted' then $3::text else x.deleted_by end,
+      purge_due_at = least(coalesce(x.purge_due_at, (select now from t)), (select now from t)),
+      restore_barred_at = (select now from t), failure_reason = null, updated_at = (select now from t)
+  from cand
+  where x.organization_id = $1 and x.id = cand.id and x.restore_barred_at is null
+    and (select count(*) from j) >= 0
+  returning x.id, x.epoch, x.deletion_seq, (x.deletion_seq <> cand.deletion_seq) as changed)
+select id, epoch, deletion_seq, changed from d order by id`;
+var ORGANIZATION_REMOVE_REST = `select playbook.remove_organization_rest($1::text, $2::text) as removed`;
+var ORGANIZATION_REMOVAL_STATUS = `select
+  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,
+  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,
+  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,
+  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,
+  (not exists (select 1 from playbook.documents where organization_id = $1)
+    and not exists (select 1 from playbook.index_settings where organization_id = $1)
+    and not exists (select 1 from playbook.organization_usage where organization_id = $1)
+    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed
+where $1::text = nullif(current_setting('app.organization_id', true), '')`;
+var DOCUMENT_LIST_SPENT_PURGES = `select id, name, size_bytes, object_key, deletion_seq, vectors_removed_seq, deleted_at,
+  purge_due_at, purge_started_at, purge_lease_until, purge_attempts, restore_barred_at
+from playbook.documents
+where organization_id = $1 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS2}
+  and id > $2::text
+order by id
+limit ${CLAMP("$3", DOCUMENT_LIST_MAX_PAGE)}`;
+var DOCUMENT_PURGE_RESET = `update playbook.documents
+set purge_attempts = 0, purge_started_at = null, purge_lease_until = null,
+    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS2}
+returning id, purge_attempts`;
+var ORGANIZATIONS_WITH_WORK = `select organization_id from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
 var PLAYBOOK_STATEMENTS = {
   QUOTA_LOCK,
   QUOTA_USAGE,
@@ -854,7 +912,13 @@ var PLAYBOOK_STATEMENTS = {
   IDEMPOTENCY_BEGIN,
   IDEMPOTENCY_LOOKUP,
   IDEMPOTENCY_COMPLETE,
-  IDEMPOTENCY_PURGE
+  IDEMPOTENCY_PURGE,
+  DOCUMENT_ERASE_BATCH,
+  ORGANIZATION_REMOVE_REST,
+  ORGANIZATION_REMOVAL_STATUS,
+  DOCUMENT_LIST_SPENT_PURGES,
+  DOCUMENT_PURGE_RESET,
+  ORGANIZATIONS_WITH_WORK
 };
 
 // src/index.ts
@@ -883,14 +947,17 @@ export {
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
+  DOCUMENT_ERASE_BATCH,
   DOCUMENT_GET,
   DOCUMENT_INSERT,
   DOCUMENT_LIST,
   DOCUMENT_LIST_DELETED,
   DOCUMENT_LIST_MAX_PAGE,
+  DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_MIN_RETENTION_MS,
   DOCUMENT_PURGE_CLAIM,
   DOCUMENT_PURGE_COMPLETE,
+  DOCUMENT_PURGE_RESET,
   DOCUMENT_REQUEUE,
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
@@ -919,6 +986,9 @@ export {
   LOCKOUT_RETRY_AFTER,
   NON_TENANT_TABLES,
   NON_TENANT_TABLE_REASONS,
+  ORGANIZATIONS_WITH_WORK,
+  ORGANIZATION_REMOVAL_STATUS,
+  ORGANIZATION_REMOVE_REST,
   ORGANIZATION_SETTING,
   OWNER_ROLE,
   PACKAGE,
@@ -928,7 +998,9 @@ export {
   QUOTA_LOCK,
   QUOTA_USAGE,
   RATE_HIT,
+  REMOVE_ALL_IDEMPOTENCY_ROUTE,
   TENANT_SCHEMAS,
+  WORK_KINDS2 as WORK_KINDS,
   assertTenantIsolation,
   claimedJobs,
   createDb,

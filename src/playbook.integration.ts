@@ -2908,12 +2908,14 @@ describe('the playbook schema', () => {
             'index_settings',
             'ingestion_jobs',
             'organization_usage',
-          ].map((relname) => ({ relname, forced: true, policies: 1 }))
+          ]
+            .map((relname) => ({ relname, forced: true, policies: 1 }))
+            .concat([{ relname: 'work_hints', forced: false, policies: 0 }])
         )
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        expect(applied.rows[0].n).toBe(12)
+        expect(applied.rows[0].n).toBe(13)
         await runMigrations(url.toString())
       } finally {
         await pool.end()

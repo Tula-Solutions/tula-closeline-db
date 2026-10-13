@@ -89,8 +89,8 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
  * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
  * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
- * only entries are the two `core` directories and the Organization status table, which are asked
- * before an Organization is known. An entry here needs a decision record in the hub. An exempt
+ * only entries are the two `core` directories, the Organization status table and the playbook work
+ * registry, which are asked before an Organization is known. An entry here needs a decision record in the hub. An exempt
  * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
  * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
  * UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN), at table or column level: a read leaks every
@@ -104,6 +104,8 @@ export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
     'asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in',
   'core.organization_state':
     "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
+  'playbook.work_hints':
+    'asked before the Organization is known (a sweep asks which Organizations have purge, job or message work due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by SECURITY DEFINER triggers and the discovery function, and no service role holds any privilege on it: playbook.organizations_with_work is the only way in',
 }
 
 /** The `schema.table` names exempt from the Organization check: the keys of {@link NON_TENANT_TABLE_REASONS}. */

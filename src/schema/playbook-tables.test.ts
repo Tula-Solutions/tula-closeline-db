@@ -22,6 +22,7 @@ const read = (name: string) =>
 const documentsMigration = read('0009_playbook_documents.sql')
 const consumedMigration = read('0010_playbook_consumed_message.sql')
 const idempotencyMigration = read('0011_playbook_idempotency_keys.sql')
+const discoveryMigration = read('0012_playbook_work_discovery.sql')
 
 const NAMES = [
   'consumed_message',
@@ -33,8 +34,16 @@ const NAMES = [
 ]
 
 describe('the playbook schema', () => {
-  test('has the six tenant tables and nothing else', () => {
-    expect(tables.map((t) => t.name).sort()).toEqual(NAMES)
+  test('has the six tenant tables and the work registry, and nothing else', () => {
+    expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
+  })
+
+  test('the work registry is exempt from the Organization check, and no role may touch it', () => {
+    expect(NON_TENANT_TABLES).toContain('playbook.work_hints')
+    expect(discoveryMigration).toContain(
+      'REVOKE ALL ON "playbook"."work_hints" FROM closeline_playbook;'
+    )
+    expect(discoveryMigration).not.toContain('ENABLE ROW LEVEL SECURITY')
   })
 
   test.each(NAMES)('%s has organization_id, the canonical policy, and is not exempt', (name) => {
@@ -116,11 +125,15 @@ describe('the playbook schema', () => {
         ?.indexes.map((i) => i.config.name)
         .sort()
     expect(names('documents')).toEqual([
+      'documents_cleanup_idx',
       'documents_content_hash_key',
       'documents_deleted_list_idx',
       'documents_list_idx',
       'documents_purge_idx',
+      'documents_spent_purge_idx',
+      'documents_unbarred_idx',
     ])
+    expect(names('work_hints')).toEqual(['work_hints_due_idx'])
     expect(names('ingestion_jobs')).toEqual([
       'ingestion_jobs_active_document_key',
       'ingestion_jobs_document_idx',
@@ -177,5 +190,55 @@ describe('the playbook schema', () => {
   test('the role may delete only a deleted document and never a job', () => {
     expect(documentsMigration).toContain('AS RESTRICTIVE FOR DELETE')
     expect(documentsMigration).toContain('REVOKE UPDATE, DELETE ON "playbook"."ingestion_jobs"')
+  })
+
+  describe('migration 0012', () => {
+    test('the discovery function is a pinned, definer, capped, playbook-only entry point', () => {
+      const fn = discoveryMigration.slice(
+        discoveryMigration.indexOf('CREATE FUNCTION "playbook"."organizations_with_work"'),
+        discoveryMigration.indexOf('CREATE FUNCTION "playbook"."remove_organization_rest"')
+      )
+      expect(fn).toContain('SECURITY DEFINER')
+      expect(fn).toContain('SET search_path = pg_catalog, pg_temp')
+      expect(fn).toContain('least(greatest(coalesce(p_batch, 1), 1), 500)')
+      expect(fn).toContain('FOR UPDATE OF h SKIP LOCKED')
+      expect(fn).toContain('p_kind = \'consumed_purge\' OR h."organization_id" <> v_global')
+      expect(discoveryMigration).toContain(
+        'REVOKE ALL ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text) FROM PUBLIC;'
+      )
+      expect(discoveryMigration).toContain(
+        'GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text) TO closeline_playbook;'
+      )
+    })
+
+    test('every function pins its search path, and every definer function lives in the playbook schema', () => {
+      const functions = discoveryMigration.split('CREATE FUNCTION').slice(1)
+      expect(functions.length).toBe(7)
+      for (const body of functions) {
+        expect(body.startsWith(' "playbook".')).toBe(true)
+        expect(body).toContain('SET search_path = pg_catalog, pg_temp')
+        expect(body).toContain('SECURITY DEFINER')
+      }
+    })
+
+    test('the erase and restore bar is a column with a check, and the hash index leaves barred documents out', () => {
+      expect(discoveryMigration).toContain('ADD COLUMN "restore_barred_at"')
+      expect(discoveryMigration).toContain('"documents_barred_only_when_deleted"')
+      expect(discoveryMigration).toContain(
+        '"purge_started_at" is null and "playbook"."documents"."restore_barred_at" is null'
+      )
+    })
+
+    test('the remove-rest function refuses while a document exists and acts on the scoped Organization only', () => {
+      expect(discoveryMigration).toContain(
+        'IF EXISTS (SELECT 1 FROM "playbook"."documents" d WHERE d."organization_id" = p_organization_id) THEN'
+      )
+      expect(discoveryMigration).toContain(
+        "current_setting('app.organization_id', true) IS DISTINCT FROM p_organization_id"
+      )
+      expect(discoveryMigration).toContain(
+        'pg_advisory_xact_lock(hashtextextended(p_organization_id, 0))'
+      )
+    })
   })
 })

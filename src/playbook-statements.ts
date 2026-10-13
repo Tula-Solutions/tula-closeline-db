@@ -90,7 +90,8 @@ where organization_id = $1`
  * means a quota would be passed, or a document with that content hash whose purge has not
  * started exists (the hash is unique among those): read {@link DOCUMENT_BY_HASH}; a row there is
  * the duplicate (restore it if `deleted`, {@link DOCUMENT_REQUEUE} it if `failed`), none means the quota.
- * A document whose purge has started does not block a new one with the same content.
+ * A document whose purge has started, or that erasure has barred from restore, does not block a
+ * new one with the same content.
  */
 export const DOCUMENT_INSERT = `with ins as (
   insert into playbook.documents
@@ -98,7 +99,7 @@ export const DOCUMENT_INSERT = `with ins as (
   select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text
   where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint
     and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint
-  on conflict (organization_id, content_hash) where purge_started_at is null do nothing
+  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing
   returning id, organization_id, epoch),
 queued as (
   insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)
@@ -107,11 +108,12 @@ select id, epoch from ins`
 
 /**
  * Find the document an upload duplicates: the one with that content hash in the Organization
- * whose purge has not started, in any state. `$1` Organization, `$2` content hash.
+ * whose purge has not started and that is not barred from restore, in any state. `$1` Organization,
+ * `$2` content hash.
  */
 export const DOCUMENT_BY_HASH = `select id, state, epoch, deletion_seq
 from playbook.documents
-where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null`
+where organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null`
 
 const COLUMNS_FOR_LIST =
   'id, name, state, size_bytes, detected_type, failure_reason, uploaded_by, created_at'
@@ -151,7 +153,7 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * `purge_started_at`. `$1` Organization, `$2` document. No row means no such document (never
  * existed, or purged). `not_restorable` is computed by the database clock, so the service never
  * compares the purge time with its own: it is true for a `deleted` document whose `purge_due_at`
- * has passed or whose purge has started. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
+ * has passed, whose purge has started or that erasure barred from restore. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
  * restore returns no row and this read shows `state = 'deleted'`, the answer is 410
  * `not_restorable`; no row from this read is 404. (The two reads are separate statements, so a
  * document due between them can show `not_restorable` false right after a refused restore: ask
@@ -159,7 +161,7 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  */
 export const DOCUMENT_GET = `select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,
   epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,
-  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable
+  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable
 from playbook.documents
 where organization_id = $1 and id = $2`
 
@@ -213,7 +215,7 @@ d as (
   update playbook.documents
   set state = 'processing', epoch = epoch + 1, deleted_at = null, deleted_by = null,
       purge_due_at = null, updated_at = clock_timestamp()
-  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null${dueGuard}
+  where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null and restore_barred_at is null${dueGuard}
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, deletion_seq),
 queued as (
@@ -355,12 +357,25 @@ returning d.id, d.object_key, d.size_bytes, d.deletion_seq, d.vectors_removed_se
  * fall in the same transaction). `$1` Organization, `$2` document. It succeeds only for a
  * `deleted` document whose purge was claimed and whose current deletion's vector cleanup is
  * recorded; a row back means the record is gone. No row means one of those does not hold (run the
- * cleanup statements, then again), or the document is already purged: the file removal before it
- * is idempotent, so a repeat is safe. Run it after the file is removed from storage.
+ * cleanup statements, then again), the document is already purged (the file removal before it
+ * is idempotent, so a repeat is safe), or a worker may still hold a lease on one of its jobs (a
+ * `running` job with an unexpired lease, left by a claim that raced the delete): wait out the lease
+ * as {@link DOCUMENT_CLEANUP_BEGIN} does and run it again. Run it after the file is removed from storage.
+ *
+ * **Lock order.** The statement locks the document's job rows first (`for update`) and the document
+ * row second, the same order as {@link INGESTION_JOB_CLAIM} and the delete, so the cascade that
+ * removes the jobs finds them already locked and an immediate purge of a just-erased document cannot
+ * deadlock with a claim (it waits for the claim's short transaction instead). The lease check reads
+ * the job rows as locked, so it sees a claim that committed while this one waited.
  */
-export const DOCUMENT_PURGE_COMPLETE = `delete from playbook.documents
+export const DOCUMENT_PURGE_COMPLETE = `with jl as (
+  select state, next_attempt_at from playbook.ingestion_jobs
+  where organization_id = $1 and document_id = $2
+  for update)
+delete from playbook.documents
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
   and vectors_removed_seq = deletion_seq
+  and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
 returning id, size_bytes`
 
 /**
@@ -767,6 +782,146 @@ delete from playbook.idempotency_keys k
 using batch b
 where k.organization_id = $1 and k.user_id = b.user_id and k.route = b.route and k.key = b.key`
 
+/**
+ * The route the remove-all call stores its idempotency key under. Pass it to
+ * {@link ORGANIZATION_REMOVE_REST} so the call's own key survives the removal it belongs to.
+ */
+export const REMOVE_ALL_IDEMPOTENCY_ROUTE = 'organizations.remove_all'
+
+/**
+ * One batch of an erasure: bar the Organization's documents from restore and make them due for
+ * purge at once, in one write. `$1` Organization, `$2` batch size (clamped to
+ * 1..{@link PLAYBOOK_MAX_BATCH}), `$3` the actor stored as `deleted_by` (an internal call has no
+ * user: pass `usr_` and 32 zeros). It takes the first `$2` documents, in id order, that are not yet
+ * barred (`documents_unbarred_idx`): a live document is soft-deleted as {@link DOCUMENT_SOFT_DELETE}
+ * does (`epoch` and `deletion_seq` up by one, its queued or running job cancelled, a running job's
+ * lease end kept as the fence {@link DOCUMENT_CLEANUP_BEGIN} waits for), and an already deleted one
+ * keeps its sequence and has its purge time pulled forward to now (never pushed back). Every taken
+ * document gets `restore_barred_at`, so neither restore can bring it back and a re-upload of its
+ * content creates a new document, and `purge_due_at` is now, so {@link DOCUMENT_PURGE_CLAIM} takes
+ * it on the next sweep. Erasure overrides retention (ADR 0016).
+ *
+ * The rows are the documents taken: `id`, `epoch`, `deletion_seq` and `changed`, true when the
+ * document's `deletion_seq` is higher than the one this call first read (it deleted a live document,
+ * or a restore it waited for had brought one back): publish its vector cleanup with that
+ * `deletion_seq`. False for an already deleted one (its cleanup was published when it was deleted). Repeat until no row comes
+ * back: the barred documents drop out of the scan, so a repeat is idempotent and a call that finds
+ * nothing means every document the Organization had when it started is barred or gone. A document
+ * uploaded meanwhile is taken by a later call; whether the Organization is empty is
+ * {@link ORGANIZATION_REMOVAL_STATUS}'s answer.
+ *
+ * **Locks.** Jobs first, documents second, as the delete does: the job update locks the active jobs
+ * of the candidate documents (waiting for a claim's short transaction), and the document update
+ * depends on it, so it runs after. A job a concurrent restore or requeue commits after this
+ * statement's snapshot is cancelled by {@link INGESTION_JOB_CLAIM} (the document is no longer live
+ * at its epoch). A document a concurrent purge claim holds is waited for, then re-read.
+ */
+export const DOCUMENT_ERASE_BATCH = `with t as (select clock_timestamp() as now),
+cand as (
+  select id, deletion_seq from playbook.documents
+  where organization_id = $1 and restore_barred_at is null
+  order by id
+  limit ${BATCH('$2')}),
+j as (
+  update playbook.ingestion_jobs
+  set state = 'cancelled', claim_token = null, finished_at = (select now from t), updated_at = (select now from t),
+      next_attempt_at = case when state = 'running' then next_attempt_at else (select now from t) end
+  where organization_id = $1 and state in ('queued', 'running') and document_id in (select id from cand)
+  returning id),
+d as (
+  update playbook.documents x
+  set state = 'deleted',
+      epoch = case when x.state <> 'deleted' then x.epoch + 1 else x.epoch end,
+      deletion_seq = case when x.state <> 'deleted' then x.deletion_seq + 1 else x.deletion_seq end,
+      deleted_at = case when x.state <> 'deleted' then (select now from t) else x.deleted_at end,
+      deleted_by = case when x.state <> 'deleted' then $3::text else x.deleted_by end,
+      purge_due_at = least(coalesce(x.purge_due_at, (select now from t)), (select now from t)),
+      restore_barred_at = (select now from t), failure_reason = null, updated_at = (select now from t)
+  from cand
+  where x.organization_id = $1 and x.id = cand.id and x.restore_barred_at is null
+    and (select count(*) from j) >= 0
+  returning x.id, x.epoch, x.deletion_seq, (x.deletion_seq <> cand.deletion_seq) as changed)
+select id, epoch, deletion_seq, changed from d order by id`
+
+/**
+ * Remove what an Organization has left once it has no document: index settings, the usage row,
+ * consumed messages, idempotency keys and work hints. `$1` Organization, `$2` a route whose
+ * idempotency keys are kept (pass {@link REMOVE_ALL_IDEMPOTENCY_ROUTE}, so the remove-all call's own
+ * key survives; kept keys age out through {@link IDEMPOTENCY_PURGE}). Run it inside the
+ * Organization's scope, in a transaction of its own after the last purge. The one row has `removed`:
+ * true when nothing is left (also when called again), false, with nothing deleted, while any
+ * document row exists, soft-deleted ones included. It is a `SECURITY DEFINER` function
+ * (`playbook.remove_organization_rest`) because the service role may not delete these rows, and it
+ * acts only on the Organization the transaction is scoped to, so it cannot strip another, and not on
+ * one that still has a document. It takes the upload lock ({@link QUOTA_LOCK}'s key) first, so an
+ * upload in flight is seen or waits.
+ */
+export const ORGANIZATION_REMOVE_REST = `select playbook.remove_organization_rest($1::text, $2::text) as removed`
+
+/**
+ * Whether an Organization is fully removed: the answer of the internal remove-all route. `$1`
+ * Organization. One row: `no_documents`, `no_settings`, `no_usage`, `no_messages` (the
+ * Organization's own consumed messages) and `removed`, true when all four hold. Idempotency keys
+ * are not part of it (the remove-all call's own key stays until it ages out). Run it inside the
+ * Organization's scope; in any other scope it returns no row, because the tenant tables would
+ * otherwise look empty and answer "removed" for an Organization the caller cannot see.
+ */
+export const ORGANIZATION_REMOVAL_STATUS = `select
+  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,
+  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,
+  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,
+  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,
+  (not exists (select 1 from playbook.documents where organization_id = $1)
+    and not exists (select 1 from playbook.index_settings where organization_id = $1)
+    and not exists (select 1 from playbook.organization_usage where organization_id = $1)
+    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed
+where $1::text = nullif(current_setting('app.organization_id', true), '')`
+
+/**
+ * List the documents whose purge reached the attempt bound, one page, for a person to look at. `$1`
+ * Organization, `$2` the last id of the previous page (`''` for the first), `$3` the page size,
+ * clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. Ordered by id on `documents_spent_purge_idx`. A
+ * spent document stays `deleted`, counts toward the quota and is never claimed again until
+ * {@link DOCUMENT_PURGE_RESET} clears it; `object_key` says which file the purge could not remove.
+ */
+export const DOCUMENT_LIST_SPENT_PURGES = `select id, name, size_bytes, object_key, deletion_seq, vectors_removed_seq, deleted_at,
+  purge_due_at, purge_started_at, purge_lease_until, purge_attempts, restore_barred_at
+from playbook.documents
+where organization_id = $1 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS}
+  and id > $2::text
+order by id
+limit ${CLAMP('$3', DOCUMENT_LIST_MAX_PAGE)}`
+
+/**
+ * Give one spent purge another round: reset its attempt count and lease so
+ * {@link DOCUMENT_PURGE_CLAIM} takes it again. `$1` Organization, `$2` document. It applies only to
+ * a `deleted` document whose purge reached the bound; no row means it is not spent (or is gone).
+ * The document is barred from restore for good (`restore_barred_at`), because its file may be half
+ * removed; the purge-claim time starts again at the next claim. A person runs it after fixing
+ * what blocked the purge (the file store, a permission); it is idempotent.
+ */
+export const DOCUMENT_PURGE_RESET = `update playbook.documents
+set purge_attempts = 0, purge_started_at = null, purge_lease_until = null,
+    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= ${DOCUMENT_PURGE_MAX_ATTEMPTS}
+returning id, purge_attempts`
+
+/**
+ * Find the Organizations with due work of one kind: `purge_due` (documents due for purge),
+ * `jobs_due` (jobs queued and due, or running with a lapsed lease, spent ones included),
+ * `cleanup_pending` (deleted documents whose vector cleanup is not recorded, five minutes after the
+ * delete), `consumed_purge` (done messages an hour old, lapsed claims; the all-zero global scope is
+ * included for this kind only), `idempotency_purge` (keys an hour old) and `purge_spent` (documents
+ * whose purge reached the bound). `$1` the kind, `$2` the last Organization id of the previous page
+ * (null or `''` for the first), `$3` the page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here
+ * and again inside the function. Ids only, in id order. Run it outside any Organization's scope (a
+ * scope the caller holds is restored); then run the kind's statement once per id, in that
+ * Organization's scope. An empty page ends the sweep; a short page does not (hints another
+ * transaction was changing are skipped until the next sweep). The function is `SECURITY DEFINER`
+ * and executable by the playbook role only; see the migration for the plan per kind.
+ */
+export const ORGANIZATIONS_WITH_WORK = `select organization_id from playbook.organizations_with_work($1::text, $2::text, ${BATCH('$3')})`
+
 /** Every statement above by name, for the README check and the integration tests. */
 export const PLAYBOOK_STATEMENTS = {
   QUOTA_LOCK,
@@ -803,4 +958,10 @@ export const PLAYBOOK_STATEMENTS = {
   IDEMPOTENCY_LOOKUP,
   IDEMPOTENCY_COMPLETE,
   IDEMPOTENCY_PURGE,
+  DOCUMENT_ERASE_BATCH,
+  ORGANIZATION_REMOVE_REST,
+  ORGANIZATION_REMOVAL_STATUS,
+  DOCUMENT_LIST_SPENT_PURGES,
+  DOCUMENT_PURGE_RESET,
+  ORGANIZATIONS_WITH_WORK,
 } as const

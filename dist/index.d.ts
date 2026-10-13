@@ -179,7 +179,7 @@ declare const AUTH_STATEMENTS: {
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookSchema, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -8624,9 +8624,11 @@ declare const GLOBAL_SCOPE_ORGANIZATION_ID = "org_000000000000000000000000000000
 * Checks tie every state to its columns: a `failed` document has a reason, a `deleted` one has its
 * deletion and purge-due times, and the purge columns exist only on a deleted document.
 *
-* Content hash: unique per Organization among documents whose purge has not started
-* (`documents_content_hash_key`, partial), so an upload that matches a soft-deleted document finds
-* it, and one that matches a document being purged does not and creates a new one.
+* Content hash: unique per Organization among documents whose purge has not started and that are
+* not barred from restore (`documents_content_hash_key`, partial), so an upload that matches a
+* soft-deleted document finds it, and one that matches a document being purged or erased does not
+* and creates a new one. `restore_barred_at` is set by erasure and by the reset of a spent purge:
+* a barred document never comes back, by either restore.
 *
 * Lists served (keyset, `LIMIT` a page):
 * - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
@@ -8975,6 +8977,23 @@ declare const documents: PgTableWithColumns_a5zn0g36<{
 			driverParam: string | number;
 			notNull: true;
 			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		restoreBarredAt: PgColumn_ffrhhp36<{
+			name: string;
+			tableName: "documents";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
@@ -9521,6 +9540,84 @@ declare const indexSettings: PgTableWithColumns_a5zn0g36<{
 	};
 	dialect: "pg";
 }>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
+/**
+* The kinds of due work `playbook.organizations_with_work` finds: documents due for purge, ingestion
+* jobs due or with a lapsed lease, deleted documents whose vector cleanup is not recorded, consumed
+* messages old enough to purge, idempotency keys old enough to purge, and documents whose purge
+* reached the attempt bound.
+*/
+declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent"];
+/**
+* One row per kind of work and Organization that may have work from `due_at` on: the registry the
+* discovery function reads, because row-level security hides every tenant table from any role
+* outside one Organization's scope. **Not a tenant table.** SECURITY DEFINER triggers on the
+* tenant tables write it (an upsert that only moves `due_at` earlier); the discovery function
+* verifies a due row against the tenant tables in that Organization's scope, then moves it to the
+* next due time or removes it. A row is a hint, never the truth: it may be earlier than the real
+* work or outlive it until the next verification, and is never later. No service role holds any
+* privilege on it; the function and the triggers are the only way in. The all-zero global scope
+* appears only for `consumed_purge`.
+*/
+declare const playbookWorkHints: PgTableWithColumns_a5zn0g37<{
+	name: "work_hints";
+	schema: "playbook";
+	columns: {
+		kind: PgColumn_ffrhhp37<{
+			name: "kind";
+			tableName: "work_hints";
+			dataType: "string";
+			columnType: "PgText";
+			data: "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "jobs_due" | "purge_due" | "purge_spent";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp37<{
+			name: "organization_id";
+			tableName: "work_hints";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dueAt: PgColumn_ffrhhp37<{
+			name: "due_at";
+			tableName: "work_hints";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
 /** The Drizzle schema object: every Postgres schema the services own. */
 type Schema = typeof exports_schema;
 /** A Drizzle database over a node-postgres pool. */
@@ -9681,8 +9778,8 @@ declare const CONTROL_PLANE_TABLES: readonly string[];
 * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
 * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
 * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
-* only entries are the two `core` directories and the Organization status table, which are asked
-* before an Organization is known. An entry here needs a decision record in the hub. An exempt
+* only entries are the two `core` directories, the Organization status table and the playbook work
+* registry, which are asked before an Organization is known. An entry here needs a decision record in the hub. An exempt
 * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
 * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
 * UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER or MAINTAIN), at table or column level: a read leaks every
@@ -9820,14 +9917,16 @@ declare const QUOTA_USAGE = "select document_count, byte_count\nfrom playbook.or
 * means a quota would be passed, or a document with that content hash whose purge has not
 * started exists (the hash is unique among those): read {@link DOCUMENT_BY_HASH}; a row there is
 * the duplicate (restore it if `deleted`, {@link DOCUMENT_REQUEUE} it if `failed`), none means the quota.
-* A document whose purge has started does not block a new one with the same content.
+* A document whose purge has started, or that erasure has barred from restore, does not block a
+* new one with the same content.
 */
-declare const DOCUMENT_INSERT = "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
+declare const DOCUMENT_INSERT = "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
 /**
 * Find the document an upload duplicates: the one with that content hash in the Organization
-* whose purge has not started, in any state. `$1` Organization, `$2` content hash.
+* whose purge has not started and that is not barred from restore, in any state. `$1` Organization,
+* `$2` content hash.
 */
-declare const DOCUMENT_BY_HASH = "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null";
+declare const DOCUMENT_BY_HASH = "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null";
 /**
 * One page of the Organization's documents that are not deleted, newest first. `$1` Organization,
 * `$2` and `$3` the cursor, the `created_at` and `id` of the last row of the previous page (pass
@@ -9851,13 +9950,13 @@ declare const DOCUMENT_LIST_DELETED: string;
 * `purge_started_at`. `$1` Organization, `$2` document. No row means no such document (never
 * existed, or purged). `not_restorable` is computed by the database clock, so the service never
 * compares the purge time with its own: it is true for a `deleted` document whose `purge_due_at`
-* has passed or whose purge has started. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
+* has passed, whose purge has started or that erasure barred from restore. It agrees with {@link DOCUMENT_RESTORE}: when the explicit
 * restore returns no row and this read shows `state = 'deleted'`, the answer is 410
 * `not_restorable`; no row from this read is 404. (The two reads are separate statements, so a
 * document due between them can show `not_restorable` false right after a refused restore: ask
 * again.)
 */
-declare const DOCUMENT_GET = "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
+declare const DOCUMENT_GET = "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
 /**
 * Soft delete: hide the document at once and set when it may be purged, in one write. `$1`
 * Organization, `$2` document, `$3` who deleted it, `$4` the retention in milliseconds, raised to
@@ -9962,10 +10061,18 @@ declare const DOCUMENT_PURGE_CLAIM: string;
 * fall in the same transaction). `$1` Organization, `$2` document. It succeeds only for a
 * `deleted` document whose purge was claimed and whose current deletion's vector cleanup is
 * recorded; a row back means the record is gone. No row means one of those does not hold (run the
-* cleanup statements, then again), or the document is already purged: the file removal before it
-* is idempotent, so a repeat is safe. Run it after the file is removed from storage.
+* cleanup statements, then again), the document is already purged (the file removal before it
+* is idempotent, so a repeat is safe), or a worker may still hold a lease on one of its jobs (a
+* `running` job with an unexpired lease, left by a claim that raced the delete): wait out the lease
+* as {@link DOCUMENT_CLEANUP_BEGIN} does and run it again. Run it after the file is removed from storage.
+*
+* **Lock order.** The statement locks the document's job rows first (`for update`) and the document
+* row second, the same order as {@link INGESTION_JOB_CLAIM} and the delete, so the cascade that
+* removes the jobs finds them already locked and an immediate purge of a just-erased document cannot
+* deadlock with a claim (it waits for the claim's short transaction instead). The lease check reads
+* the job rows as locked, so it sees a claim that committed while this one waited.
 */
-declare const DOCUMENT_PURGE_COMPLETE = "delete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\nreturning id, size_bytes";
+declare const DOCUMENT_PURGE_COMPLETE = "with jl as (\\n  select state, next_attempt_at from playbook.ingestion_jobs\\n  where organization_id = $1 and document_id = $2\\n  for update)\\ndelete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
 /**
 * Claim due ingestion jobs as a lease, in a short transaction that commits at once. `$1`
 * Organization, `$2` batch size, `$3` the lease in milliseconds (raised to
@@ -10181,13 +10288,102 @@ declare const IDEMPOTENCY_COMPLETE = "update playbook.idempotency_keys\nset stat
 * the backlog is empty). The row count is the number removed.
 */
 declare const IDEMPOTENCY_PURGE: string;
+/**
+* The route the remove-all call stores its idempotency key under. Pass it to
+* {@link ORGANIZATION_REMOVE_REST} so the call's own key survives the removal it belongs to.
+*/
+declare const REMOVE_ALL_IDEMPOTENCY_ROUTE = "organizations.remove_all";
+/**
+* One batch of an erasure: bar the Organization's documents from restore and make them due for
+* purge at once, in one write. `$1` Organization, `$2` batch size (clamped to
+* 1..{@link PLAYBOOK_MAX_BATCH}), `$3` the actor stored as `deleted_by` (an internal call has no
+* user: pass `usr_` and 32 zeros). It takes the first `$2` documents, in id order, that are not yet
+* barred (`documents_unbarred_idx`): a live document is soft-deleted as {@link DOCUMENT_SOFT_DELETE}
+* does (`epoch` and `deletion_seq` up by one, its queued or running job cancelled, a running job's
+* lease end kept as the fence {@link DOCUMENT_CLEANUP_BEGIN} waits for), and an already deleted one
+* keeps its sequence and has its purge time pulled forward to now (never pushed back). Every taken
+* document gets `restore_barred_at`, so neither restore can bring it back and a re-upload of its
+* content creates a new document, and `purge_due_at` is now, so {@link DOCUMENT_PURGE_CLAIM} takes
+* it on the next sweep. Erasure overrides retention (ADR 0016).
+*
+* The rows are the documents taken: `id`, `epoch`, `deletion_seq` and `changed`, true when the
+* document's `deletion_seq` is higher than the one this call first read (it deleted a live document,
+* or a restore it waited for had brought one back): publish its vector cleanup with that
+* `deletion_seq`. False for an already deleted one (its cleanup was published when it was deleted). Repeat until no row comes
+* back: the barred documents drop out of the scan, so a repeat is idempotent and a call that finds
+* nothing means every document the Organization had when it started is barred or gone. A document
+* uploaded meanwhile is taken by a later call; whether the Organization is empty is
+* {@link ORGANIZATION_REMOVAL_STATUS}'s answer.
+*
+* **Locks.** Jobs first, documents second, as the delete does: the job update locks the active jobs
+* of the candidate documents (waiting for a claim's short transaction), and the document update
+* depends on it, so it runs after. A job a concurrent restore or requeue commits after this
+* statement's snapshot is cancelled by {@link INGESTION_JOB_CLAIM} (the document is no longer live
+* at its epoch). A document a concurrent purge claim holds is waited for, then re-read.
+*/
+declare const DOCUMENT_ERASE_BATCH: string;
+/**
+* Remove what an Organization has left once it has no document: index settings, the usage row,
+* consumed messages, idempotency keys and work hints. `$1` Organization, `$2` a route whose
+* idempotency keys are kept (pass {@link REMOVE_ALL_IDEMPOTENCY_ROUTE}, so the remove-all call's own
+* key survives; kept keys age out through {@link IDEMPOTENCY_PURGE}). Run it inside the
+* Organization's scope, in a transaction of its own after the last purge. The one row has `removed`:
+* true when nothing is left (also when called again), false, with nothing deleted, while any
+* document row exists, soft-deleted ones included. It is a `SECURITY DEFINER` function
+* (`playbook.remove_organization_rest`) because the service role may not delete these rows, and it
+* acts only on the Organization the transaction is scoped to, so it cannot strip another, and not on
+* one that still has a document. It takes the upload lock ({@link QUOTA_LOCK}'s key) first, so an
+* upload in flight is seen or waits.
+*/
+declare const ORGANIZATION_REMOVE_REST = "select playbook.remove_organization_rest($1::text, $2::text) as removed";
+/**
+* Whether an Organization is fully removed: the answer of the internal remove-all route. `$1`
+* Organization. One row: `no_documents`, `no_settings`, `no_usage`, `no_messages` (the
+* Organization's own consumed messages) and `removed`, true when all four hold. Idempotency keys
+* are not part of it (the remove-all call's own key stays until it ages out). Run it inside the
+* Organization's scope; in any other scope it returns no row, because the tenant tables would
+* otherwise look empty and answer "removed" for an Organization the caller cannot see.
+*/
+declare const ORGANIZATION_REMOVAL_STATUS = "select\\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\\n  (not exists (select 1 from playbook.documents where organization_id = $1)\\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed\\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
+/**
+* List the documents whose purge reached the attempt bound, one page, for a person to look at. `$1`
+* Organization, `$2` the last id of the previous page (`''` for the first), `$3` the page size,
+* clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. Ordered by id on `documents_spent_purge_idx`. A
+* spent document stays `deleted`, counts toward the quota and is never claimed again until
+* {@link DOCUMENT_PURGE_RESET} clears it; `object_key` says which file the purge could not remove.
+*/
+declare const DOCUMENT_LIST_SPENT_PURGES: string;
+/**
+* Give one spent purge another round: reset its attempt count and lease so
+* {@link DOCUMENT_PURGE_CLAIM} takes it again. `$1` Organization, `$2` document. It applies only to
+* a `deleted` document whose purge reached the bound; no row means it is not spent (or is gone).
+* The document is barred from restore for good (`restore_barred_at`), because its file may be half
+* removed; the purge-claim time starts again at the next claim. A person runs it after fixing
+* what blocked the purge (the file store, a permission); it is idempotent.
+*/
+declare const DOCUMENT_PURGE_RESET = "update playbook.documents\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
+/**
+* Find the Organizations with due work of one kind: `purge_due` (documents due for purge),
+* `jobs_due` (jobs queued and due, or running with a lapsed lease, spent ones included),
+* `cleanup_pending` (deleted documents whose vector cleanup is not recorded, five minutes after the
+* delete), `consumed_purge` (done messages an hour old, lapsed claims; the all-zero global scope is
+* included for this kind only), `idempotency_purge` (keys an hour old) and `purge_spent` (documents
+* whose purge reached the bound). `$1` the kind, `$2` the last Organization id of the previous page
+* (null or `''` for the first), `$3` the page size, clamped to 1..{@link PLAYBOOK_MAX_BATCH} here
+* and again inside the function. Ids only, in id order. Run it outside any Organization's scope (a
+* scope the caller holds is restored); then run the kind's statement once per id, in that
+* Organization's scope. An empty page ends the sweep; a short page does not (hints another
+* transaction was changing are skipped until the next sweep). The function is `SECURITY DEFINER`
+* and executable by the playbook role only; see the migration for the plan per kind.
+*/
+declare const ORGANIZATIONS_WITH_WORK: string;
 /** Every statement above by name, for the README check and the integration tests. */
 declare const PLAYBOOK_STATEMENTS: {
 	readonly QUOTA_LOCK: "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
 	readonly QUOTA_USAGE: "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
-	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
-	readonly DOCUMENT_BY_HASH: "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null";
-	readonly DOCUMENT_GET: "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
+	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
+	readonly DOCUMENT_BY_HASH: "select id, state, epoch, deletion_seq\nfrom playbook.documents\nwhere organization_id = $1 and content_hash = $2::bytea and purge_started_at is null and restore_barred_at is null";
+	readonly DOCUMENT_GET: "select id, name, state, size_bytes, declared_type, detected_type, uploaded_by, failure_reason,\\n  epoch, deletion_seq, deleted_at, deleted_by, purge_due_at, purge_started_at, created_at, updated_at,\\n  (state = 'deleted' and (purge_due_at <= clock_timestamp() or purge_started_at is not null or restore_barred_at is not null)) as not_restorable\\nfrom playbook.documents\\nwhere organization_id = $1 and id = $2";
 	readonly DOCUMENT_LIST: string;
 	readonly DOCUMENT_LIST_DELETED: string;
 	readonly DOCUMENT_SOFT_DELETE: "with j as (\\n  update playbook.ingestion_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and document_id = $2 and state in ('queued', 'running')\\n  returning id),\\nd as (\\n  update playbook.documents\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, state, deletion_seq, purge_due_at)\\nselect id, state, deletion_seq, purge_due_at, true as changed from d\\nunion all\\nselect id, state, deletion_seq, purge_due_at, false from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from d)";
@@ -10197,7 +10393,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly DOCUMENT_CLEANUP_BEGIN: "select d.id, d.epoch,\\n  not exists (\\n    select 1 from playbook.ingestion_jobs j\\n    where j.organization_id = d.organization_id and j.document_id = d.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.documents d\\nwhere d.organization_id = $1 and d.id = $2 and d.state = 'deleted' and d.deletion_seq = $3::int";
 	readonly DOCUMENT_CLEANUP_DONE: "update playbook.documents\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
 	readonly DOCUMENT_PURGE_CLAIM: string;
-	readonly DOCUMENT_PURGE_COMPLETE: "delete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\nreturning id, size_bytes";
+	readonly DOCUMENT_PURGE_COMPLETE: "with jl as (\\n  select state, next_attempt_at from playbook.ingestion_jobs\\n  where organization_id = $1 and document_id = $2\\n  for update)\\ndelete from playbook.documents\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
 	readonly INGESTION_JOB_CLAIM: string;
 	readonly INGESTION_JOB_HEARTBEAT: string;
 	readonly INGESTION_JOB_ADVANCE: string;
@@ -10217,6 +10413,12 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly IDEMPOTENCY_LOOKUP: "select request_hash, status, response, created_at\nfrom playbook.idempotency_keys\nwhere organization_id = $1 and user_id = $2 and route = $3 and key = $4";
 	readonly IDEMPOTENCY_COMPLETE: "update playbook.idempotency_keys\nset status = $5::smallint, response = $6::jsonb\nwhere organization_id = $1 and user_id = $2 and route = $3 and key = $4 and status is null\nreturning key";
 	readonly IDEMPOTENCY_PURGE: string;
+	readonly DOCUMENT_ERASE_BATCH: string;
+	readonly ORGANIZATION_REMOVE_REST: "select playbook.remove_organization_rest($1::text, $2::text) as removed";
+	readonly ORGANIZATION_REMOVAL_STATUS: "select\\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\\n  (not exists (select 1 from playbook.documents where organization_id = $1)\\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed\\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
+	readonly DOCUMENT_LIST_SPENT_PURGES: string;
+	readonly DOCUMENT_PURGE_RESET: "update playbook.documents\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
+	readonly ORGANIZATIONS_WITH_WORK: string;
 };
 /** The one database role that owns every schema and table and runs every migration. */
 declare const OWNER_ROLE = "closeline_owner";
@@ -10255,4 +10457,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, assertTenantIsolation, claimedJobs, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, assertTenantIsolation, claimedJobs, createDb, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

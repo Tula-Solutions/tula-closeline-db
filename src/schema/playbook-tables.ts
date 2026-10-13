@@ -82,9 +82,11 @@ const updatedAt = () => ts('updated_at').notNull().defaultNow()
  * Checks tie every state to its columns: a `failed` document has a reason, a `deleted` one has its
  * deletion and purge-due times, and the purge columns exist only on a deleted document.
  *
- * Content hash: unique per Organization among documents whose purge has not started
- * (`documents_content_hash_key`, partial), so an upload that matches a soft-deleted document finds
- * it, and one that matches a document being purged does not and creates a new one.
+ * Content hash: unique per Organization among documents whose purge has not started and that are
+ * not barred from restore (`documents_content_hash_key`, partial), so an upload that matches a
+ * soft-deleted document finds it, and one that matches a document being purged or erased does not
+ * and creates a new one. `restore_barred_at` is set by erasure and by the reset of a spent purge:
+ * a barred document never comes back, by either restore.
  *
  * Lists served (keyset, `LIMIT` a page):
  * - Documents not deleted, newest first: `WHERE organization_id = $1 AND state <> 'deleted' AND
@@ -118,6 +120,7 @@ export const documents = playbookSchema.table(
     purgeStartedAt: ts('purge_started_at'),
     purgeLeaseUntil: ts('purge_lease_until'),
     purgeAttempts: integer('purge_attempts').notNull().default(0),
+    restoreBarredAt: ts('restore_barred_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -181,9 +184,13 @@ export const documents = playbookSchema.table(
       'documents_purge_attempts_bounds',
       sql`${t.purgeAttempts} between 0 and ${sql.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS))}`
     ),
+    check(
+      'documents_barred_only_when_deleted',
+      sql`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`
+    ),
     uniqueIndex('documents_content_hash_key')
       .on(t.organizationId, t.contentHash)
-      .where(sql`${t.purgeStartedAt} is null`),
+      .where(sql`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
     index('documents_list_idx')
       .on(t.organizationId, t.createdAt, t.id)
       .where(sql`${t.state} <> 'deleted'`),
@@ -195,6 +202,22 @@ export const documents = playbookSchema.table(
       .on(t.organizationId, t.purgeDueAt, t.id)
       .where(
         sql`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS))}`
+      ),
+    // The erase batch walks the documents not yet barred from restore, in id order.
+    index('documents_unbarred_idx')
+      .on(t.organizationId, t.id)
+      .where(sql`${t.restoreBarredAt} is null`),
+    // Deleted documents whose vector cleanup is not recorded for the current deletion.
+    index('documents_cleanup_idx')
+      .on(t.organizationId, t.deletedAt)
+      .where(
+        sql`${t.state} = 'deleted' and (${t.vectorsRemovedSeq} is null or ${t.vectorsRemovedSeq} < ${t.deletionSeq})`
+      ),
+    // Documents whose purge reached the attempt bound, for a person to list and reset.
+    index('documents_spent_purge_idx')
+      .on(t.organizationId, t.id)
+      .where(
+        sql`${t.state} = 'deleted' and ${t.purgeAttempts} >= ${sql.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS))}`
       ),
   ]
 )

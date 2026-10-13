@@ -237,11 +237,12 @@ describe('the auth table categories', () => {
     }
   })
 
-  test('exempt only the two core directories and the status table, each with a precise reason, and no auth table', () => {
+  test('exempt only the two core directories, the status table and the playbook work registry, each with a precise reason, and no auth table', () => {
     expect([...NON_TENANT_TABLES].sort()).toEqual([
       'core.invitation_directory',
       'core.membership_directory',
       'core.organization_state',
+      'playbook.work_hints',
     ])
     expect(Object.keys(NON_TENANT_TABLE_REASONS).sort()).toEqual([...NON_TENANT_TABLES].sort())
     for (const reason of Object.values(NON_TENANT_TABLE_REASONS)) {
