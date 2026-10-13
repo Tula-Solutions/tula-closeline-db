@@ -98,7 +98,20 @@ __export(exports_schema, {
 
 // src/schema/auth/abandon-cases.ts
 import { sql as sql2 } from "drizzle-orm";
-import { check, index as index4, integer, pgPolicy as pgPolicy2, text as text4, timestamp as timestamp2, unique as unique3, uuid as uuid5 } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey as foreignKey2,
+  index as index4,
+  integer,
+  pgPolicy as pgPolicy2,
+  text as text4,
+  timestamp as timestamp2,
+  unique as unique3,
+  uuid as uuid5
+} from "drizzle-orm/pg-core";
+
+// src/schema/auth/environments.ts
+import { index as index2, text as text3, unique, uuid as uuid3 } from "drizzle-orm/pg-core";
 
 // src/schema/auth/mixins.ts
 import { timestamp, uuid } from "drizzle-orm/pg-core";
@@ -115,13 +128,6 @@ function timestamps() {
 // src/schema/auth/pg-schema.ts
 import { pgSchema } from "drizzle-orm/pg-core";
 var authSchema2 = pgSchema("auth");
-
-// src/schema/auth/tenant-columns.ts
-import { sql } from "drizzle-orm";
-import { foreignKey, index as index3, pgPolicy, unique as unique2, uuid as uuid4 } from "drizzle-orm/pg-core";
-
-// src/schema/auth/environments.ts
-import { index as index2, text as text3, unique, uuid as uuid3 } from "drizzle-orm/pg-core";
 
 // src/schema/auth/projects.ts
 import { index, text as text2, uuid as uuid2 } from "drizzle-orm/pg-core";
@@ -156,6 +162,8 @@ var environments2 = authSchema2.table("environments", {
 ]);
 
 // src/schema/auth/tenant-columns.ts
+import { sql } from "drizzle-orm";
+import { foreignKey, index as index3, pgPolicy, unique as unique2, uuid as uuid4 } from "drizzle-orm/pg-core";
 var TENANT_SETTING = "tula.environment_id";
 var TENANT_PREDICATE = sql.raw(`environment_id = nullif(current_setting('${TENANT_SETTING}', true), '')::uuid`);
 function tenantColumns() {
@@ -197,22 +205,35 @@ var ABANDON_CASE_OUTCOMES2 = ["done", "refused", "gave_up"];
 var abandonCases2 = authSchema2.table("abandon_cases", {
   id: primaryKey(),
   ...tenantColumns(),
-  coreOrganizationId: uuid5("core_organization_id").notNull(),
+  coreOrganizationId: uuid5("core_organization_id"),
   userId: uuid5("user_id").notNull(),
   attemptId: uuid5("attempt_id").notNull(),
   attempts: integer("attempts").notNull().default(0),
-  nextAttemptAt: timestamp2("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+  attemptExpiresAt: timestamp2("attempt_expires_at", { withTimezone: true }).notNull(),
+  nextAttemptAt: timestamp2("next_attempt_at", { withTimezone: true }).notNull(),
   resolvedAt: timestamp2("resolved_at", { withTimezone: true }),
   outcome: text4("outcome", { enum: ABANDON_CASE_OUTCOMES2 }),
   ...timestamps()
 }, (t) => [
   unique3("abandon_cases_environment_organization_key").on(t.environmentId, t.coreOrganizationId),
+  unique3("abandon_cases_environment_attempt_key").on(t.environmentId, t.attemptId),
+  check("abandon_cases_due_after_expiry", sql2`${t.nextAttemptAt} >= ${t.attemptExpiresAt}`),
   check("abandon_cases_attempts_bounds", sql2`${t.attempts} between 0 and ${sql2.raw(String(ABANDON_CASE_MAX_ATTEMPTS2))}`),
   check("abandon_cases_outcome_known", sql2`${t.outcome} in ('done', 'refused', 'gave_up')`),
   check("abandon_cases_resolution_whole", sql2`(${t.resolvedAt} is null) = (${t.outcome} is null)`),
   index4("abandon_cases_due_idx").on(t.environmentId, t.nextAttemptAt).where(sql2`${t.resolvedAt} is null`),
   index4("abandon_cases_purge_idx").on(t.environmentId, t.resolvedAt).where(sql2`${t.resolvedAt} is not null`),
-  ...tenantConstraints("abandon_cases", t),
+  foreignKey2({
+    name: "abandon_cases_environment_project_fk",
+    columns: [t.environmentId, t.projectId],
+    foreignColumns: [environments2.id, environments2.projectId]
+  }).onDelete("cascade"),
+  pgPolicy2("abandon_cases_tenant_isolation", {
+    as: "permissive",
+    for: "all",
+    using: TENANT_PREDICATE,
+    withCheck: TENANT_PREDICATE
+  }),
   pgPolicy2("abandon_cases_resolved_only", {
     as: "restrictive",
     for: "delete",
@@ -220,7 +241,7 @@ var abandonCases2 = authSchema2.table("abandon_cases", {
   })
 ]);
 // src/schema/auth/api-keys.ts
-import { foreignKey as foreignKey2, index as index5, text as text5, timestamp as timestamp3, unique as unique4, uuid as uuid6 } from "drizzle-orm/pg-core";
+import { foreignKey as foreignKey3, index as index5, text as text5, timestamp as timestamp3, unique as unique4, uuid as uuid6 } from "drizzle-orm/pg-core";
 var API_KEY_KINDS2 = ["publishable", "secret", "agent"];
 var apiKeys2 = authSchema2.table("api_keys", {
   id: primaryKey(),
@@ -235,7 +256,7 @@ var apiKeys2 = authSchema2.table("api_keys", {
   ...timestamps()
 }, (t) => [
   unique4("api_keys_key_hash_key").on(t.keyHash),
-  foreignKey2({
+  foreignKey3({
     name: "api_keys_environment_project_fk",
     columns: [t.environmentId, t.projectId],
     foreignColumns: [environments2.id, environments2.projectId]
@@ -277,7 +298,7 @@ var attemptCounters2 = authSchema2.table("attempt_counters", {
   check2("attempt_counters_hits_bounds", sql3`${t.hits} between 1 and ${sql3.raw(String(ATTEMPT_COUNTER_MAX_HITS2))}`),
   check2("attempt_counters_window_order", sql3`${t.expiresAt} > ${t.startedAt}`),
   check2("attempt_counters_lock_whole", sql3`(${t.kind} = 'lockout') = (${t.lockedUntil} is not null)`),
-  check2("attempt_counters_lock_within_window", sql3`${t.lockedUntil} is null or (${t.lockedUntil} >= ${t.startedAt} and ${t.lockedUntil} <= ${t.expiresAt})`),
+  check2("attempt_counters_lock_before_expiry", sql3`${t.lockedUntil} is null or ${t.lockedUntil} <= ${t.expiresAt}`),
   index6("attempt_counters_purge_idx").on(t.expiresAt)
 ]);
 // src/schema/auth/audit-logs.ts
@@ -914,7 +935,7 @@ import { sql as sql17 } from "drizzle-orm";
 import {
   check as check12,
   customType as customType3,
-  foreignKey as foreignKey3,
+  foreignKey as foreignKey4,
   index as index23,
   integer as integer12,
   jsonb as jsonb10,
@@ -1009,12 +1030,12 @@ var teamMembers2 = coreSchema2.table("team_members", {
     columns: [t.organizationId, t.teamId, t.membershipId]
   }),
   check12("team_members_organization_id_shape", idShape("organization_id", "org")),
-  foreignKey3({
+  foreignKey4({
     name: "team_members_team_fk",
     columns: [t.organizationId, t.teamId],
     foreignColumns: [teams2.organizationId, teams2.id]
   }).onDelete("cascade"),
-  foreignKey3({
+  foreignKey4({
     name: "team_members_membership_fk",
     columns: [t.organizationId, t.membershipId],
     foreignColumns: [memberships2.organizationId, memberships2.id]
@@ -1056,7 +1077,7 @@ var invitations2 = coreSchema2.table("invitations", {
         or (${t.state} = 'revoked' and ${t.revokedAt} is not null and ${t.acceptedAt} is null)`),
   unique22("invitations_organization_id_id_key").on(t.organizationId, t.id),
   unique22("invitations_token_hash_key").on(t.tokenHash),
-  foreignKey3({
+  foreignKey4({
     name: "invitations_team_fk",
     columns: [t.organizationId, t.teamId],
     foreignColumns: [teams2.organizationId, teams2.id]

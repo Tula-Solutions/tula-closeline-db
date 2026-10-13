@@ -122,24 +122,89 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     and the flow attempt id (no foreign keys to either: neither has an account or outlives its
     purge). It is environment-scoped like `flow_attempts` (written at the same point of a sign-up,
     when the environment is known), so it is in `ENVIRONMENT_SCOPED_TABLES` and needs no allowlist
-    entry. One row per Organization per environment, so `insert ... on conflict
-    (environment_id, core_organization_id) do nothing` records a case once. `attempts` is 0 to 100,
-    `outcome` is `done`, `refused` or `gave_up` and is set exactly when `resolved_at` is. The
-    sweep takes a batch with `for update skip locked` (index `abandon_cases_due_idx`, partial on
-    open cases):
+    entry. `attempts` is 0 to 100, `outcome` is `done`, `refused` or `gave_up` and is set exactly
+    when `resolved_at` is.
+    - **One case per Organization and one per attempt** in an environment (two unique keys).
+      `core_organization_id` is nullable, for a timed-out create whose Organization id was never
+      learned: that case is keyed by its attempt, and the service fills the id in once it learns
+      it (`update ... set core_organization_id`). The Organization key relies on Postgres treating
+      nulls as distinct in a unique key (`NULLS DISTINCT`, the default), so any number of cases
+      without an id coexist.
+    - **A resolved case blocks a new case for the same Organization (and attempt) until the purge
+      removes it.** That is acceptable because core gives a retrying user a fresh Organization id
+      (a create is idempotent on the user id, and abandoning frees it), so the same id is not
+      recorded again; and it is why `on conflict do nothing` is silent by design: no row back
+      means "already recorded", never an error to retry.
+    - **The sweep's rule.** `attempt_expires_at` is the time after which the attempt can no longer
+      write an account, supplied at insert (the attempt's expiry), so the sweep does not depend on
+      the `flow_attempts` row, which is purged seconds after it expires. The table keeps
+      `next_attempt_at >= attempt_expires_at` (`abandon_cases_due_after_expiry`), and a case is due
+      when `next_attempt_at` has passed by the database clock: so a case is never due while its
+      attempt can still write the account, and the claim needs no second condition. Record the
+      case with `next_attempt_at` equal to `attempt_expires_at`.
+    - **The batch is a lease, not one long transaction.** A short transaction claims due cases
+      with `for update skip locked`, pushes `next_attempt_at` forward by the lease and counts the
+      attempt, and commits; core is called outside any transaction; a second short transaction
+      records the outcome. A worker that dies leaves its cases due again when the lease ends. The
+      service gives up (`gave_up`) at its own attempt limit, below the table's bound of 100. The
+      service role may update `core_organization_id`, `attempts`, `next_attempt_at`,
+      `resolved_at`, `outcome` and `updated_at` and nothing else, and may delete only resolved
+      rows (`abandon_cases_resolved_only`). Run the sweep once per environment inside
+      `withEnvironment`. The statements, exactly as the integration tests run them (also exported
+      from the library as `ABANDON_RECORD`, `ABANDON_CLAIM`, `ABANDON_RESOLVE` and
+      `ABANDON_PURGE_BATCH`):
+
+    Record a case:
 
     ```sql
-    select id, core_organization_id, user_id, attempt_id, attempts from auth.abandon_cases
-     where environment_id = $1 and resolved_at is null and next_attempt_at <= $2
-     order by next_attempt_at limit $3 for update skip locked
+    insert into auth.abandon_cases
+      (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
+       attempt_expires_at, next_attempt_at)
+    values ($1, $2, $3, $4, $5, $6, $7::timestamptz, $7::timestamptz)
+    on conflict do nothing
+    returning id
     ```
 
-    then, per case, one `update ... set attempts = attempts + 1, next_attempt_at = $4,
-    updated_at = $2` or, when the case ends, `set resolved_at = $2, outcome = $5, attempts = ...`.
-    Purge resolved rows in bounded batches (index `abandon_cases_purge_idx`); the service role
-    cannot delete an open case (`abandon_cases_resolved_only`), and may update only `attempts`,
-    `next_attempt_at`, `resolved_at`, `outcome` and `updated_at`. The sweep runs once per
-    environment inside `withEnvironment`.
+    Claim a batch (`$3` is the lease in milliseconds):
+
+    ```sql
+    with due as (
+      select id from auth.abandon_cases
+      where environment_id = $1 and resolved_at is null and next_attempt_at <= clock_timestamp()
+      order by next_attempt_at
+      limit $2
+      for update skip locked)
+    update auth.abandon_cases c
+    set attempts = c.attempts + 1,
+        next_attempt_at = clock_timestamp() + make_interval(secs => $3::float8 / 1000),
+        updated_at = clock_timestamp()
+    from due
+    where c.id = due.id
+    returning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts
+    ```
+
+    Record the outcome:
+
+    ```sql
+    update auth.abandon_cases
+    set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
+    where id = $1 and environment_id = $2 and resolved_at is null
+    returning id
+    ```
+
+    Purge resolved cases, one bounded batch at a time:
+
+    ```sql
+    delete from auth.abandon_cases
+    where id in (
+      select id from auth.abandon_cases
+      where environment_id = $1 and resolved_at is not null
+        and resolved_at < clock_timestamp() - interval '1 day'
+      order by resolved_at
+      limit $2
+      for update skip locked)
+    ```
+
   - `auth.attempt_counters` (migration `0007`, hub issue 30, ADR 0014): the sign-in lockout and
     rate-limit counters, moved from process memory so every instance shares one budget. **One
     table for both ports**, `kind` being `lockout` or `rate_limit`: a lockout row is failures, a
@@ -149,65 +214,101 @@ tula-auth's migrations (`0000` to `0035`) at their latest state, with `tula` ren
     only add an index to a table written on every sign-in). `key_hash` is 32 bytes, an HMAC-SHA-256
     of the port's key computed by the service with a key that never reaches the database: **no
     address and no IP address is stored**, and a guess at one cannot be tested against the rows.
-    Rotating the key restarts every counter, and rows live for hours, so nothing is migrated. It has
-    no row-level security and no `organization_id` (a sign-in is counted before any account is
-    known), so it is a `CONTROL_PLANE_TABLES` entry with its reason, not an Organization-allowlist
-    entry (those forbid every service-role privilege, and the service must write this one). Its
-    reach is the grants: `SELECT`, `INSERT`, `DELETE`, and `UPDATE` of `hits`, `started_at`,
-    `locked_until` and `expires_at` only. Checks: kind known, `key_hash` 32 bytes, `hits` 1 to
-    1,000,000, `expires_at > started_at`, a lock exactly on `lockout` rows and within
-    `started_at .. expires_at`.
+    Rotating the key restarts every counter, and rows live for hours, so nothing is migrated.
+    - **The database clock is the authority.** Every statement reads `clock_timestamp()` inside
+      itself (in a `do update`, after the row lock is taken) for the lock test, the window expiry
+      and every stored time. The service passes durations (the wait schedule, the window length),
+      never a point in time, so instance clock skew and two sign-ins that read their clocks before
+      waiting for a connection cannot make a stored time go backwards. Tests move time by
+      back-dating rows, never by sleeping. Several `clock_timestamp()` calls in one statement
+      differ by microseconds, which is why no check orders a lock against `started_at`.
+    - **Checks:** kind known; `key_hash` 32 bytes; `hits` 1 to 1,000,000; `expires_at >
+      started_at`; a lock exactly on `lockout` rows (`lock_whole`); a lock no later than
+      `expires_at` (`lock_before_expiry`). Dropped: `locked_until >= started_at`, which the
+      service's own times could violate when two sign-ins were counted out of order and which the
+      database clock makes meaningless to enforce.
+    - **No row-level security and no `organization_id`** (a sign-in is counted before any account
+      is known), so it is a `CONTROL_PLANE_TABLES` entry with its reason, not an
+      Organization-allowlist entry (those forbid every service-role privilege, and the service
+      must write this one). Its reach is the grants: `SELECT`, `INSERT`, `DELETE`, and `UPDATE` of
+      `hits`, `started_at`, `locked_until` and `expires_at` only. Without row-level security the
+      service role can delete another environment's counters in the same Region; that is the same
+      trust level as the other control-plane tables, and the rows hold only hashes.
 
-    One failed or attempted sign-in is one statement. `$1` environment, `$2` key hash, `$3` the
-    time from the port, `$4` the wait in milliseconds after failure 1, 2, 3, ... as an `int[]`
-    built from `lockoutDelayMs` (the last element applies to every later failure, so the policy
-    stays in the service), `$5` the forgetting period in milliseconds. No row back means locked
-    (a refused attempt is not counted); read `locked_until` for the retry time.
+    One attempted sign-in is one statement (`$1` environment, `$2` key hash, `$3` the wait in
+    milliseconds after failure 1, 2, 3, ... as an `int[]` built from `lockoutDelayMs`, whose last
+    element serves every later failure so the policy stays in the service, `$4` the forgetting
+    period in milliseconds). A row back means the attempt goes ahead (`wait_ms` is the wait this
+    failure imposes). No row back means the address is locked and the attempt was not counted; the
+    retry time then comes from a second read, which can race (the row may be cleared or unlocked
+    in between, giving no row or 0), and the service just tries again.
 
     ```sql
     insert into auth.attempt_counters as c
       (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
-    values ($1, 'lockout', $2, 1, $3,
-            $3 + make_interval(secs => ($4::int[])[1]::float8 / 1000),
-            $3 + make_interval(secs => (($4::int[])[1] + $5::int)::float8 / 1000))
+    values ($1, 'lockout', $2, 1, clock_timestamp(),
+            clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),
+            clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))
     on conflict (environment_id, kind, key_hash) do update set
-      hits = least(N, 1000000),
-      started_at = case when c.expires_at <= $3 then $3 else c.started_at end,
-      locked_until = $3 + make_interval(secs =>
-        ($4::int[])[least(N, cardinality($4::int[]))]::float8 / 1000),
-      expires_at = $3 + make_interval(secs =>
-        (($4::int[])[least(N, cardinality($4::int[]))] + $5::int)::float8 / 1000)
-    where c.locked_until <= $3
-    returning hits, locked_until
-    -- N is: case when c.expires_at <= $3 then 1 else c.hits + 1 end
+      hits = least(case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end, 1000000),
+      started_at = case when c.expires_at <= clock_timestamp() then clock_timestamp() else c.started_at end,
+      locked_until = clock_timestamp() + make_interval(secs => ($3::int[])[least(case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end, cardinality($3::int[]))]::float8 / 1000),
+      expires_at = clock_timestamp() + make_interval(secs => (($3::int[])[least(case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end, cardinality($3::int[]))] + $4::int)::float8 / 1000)
+    where c.locked_until <= clock_timestamp()
+    returning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms
+    ```
+
+    After a refused attempt:
+
+    ```sql
+    select greatest(0, ceil(extract(epoch from locked_until - clock_timestamp()) * 1000))::int as retry_after_ms
+    from auth.attempt_counters
+    where environment_id = $1 and kind = 'lockout' and key_hash = $2
+    ```
+
+    A right password:
+
+    ```sql
+    delete from auth.attempt_counters
+    where environment_id = $1 and kind = 'lockout' and key_hash = $2
+    ```
+
+    A rate-limit hit (`$3` is the window in milliseconds; allowed when `hits <= limit`; requests
+    over the limit are counted too, as the memory adapter does):
+
+    ```sql
+    insert into auth.attempt_counters as c
+      (environment_id, kind, key_hash, hits, started_at, expires_at)
+    values ($1, 'rate_limit', $2, 1, clock_timestamp(),
+            clock_timestamp() + make_interval(secs => $3::float8 / 1000))
+    on conflict (environment_id, kind, key_hash) do update set
+      hits = case when c.expires_at <= clock_timestamp() then 1 else least(c.hits + 1, 1000000) end,
+      started_at = case when c.expires_at <= clock_timestamp() then clock_timestamp() else c.started_at end,
+      expires_at = case when c.expires_at <= clock_timestamp()
+                        then clock_timestamp() + make_interval(secs => $3::float8 / 1000)
+                        else c.expires_at end
+    returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms
     ```
 
     Postgres serialises concurrent statements on the row (a second instance waits for the first
     to commit, then adds to its result), so two instances never lose a count; a first failure that
-    races for a new row is counted by the loser's `do update`. A right password removes the row:
-    `delete from auth.attempt_counters where environment_id = $1 and kind = 'lockout' and key_hash = $2`.
-    A rate-limit hit (`$4` is the window in milliseconds; allowed when `hits <= limit`; requests
-    over the limit are counted too, as the memory adapter does):
+    races for a new row is counted by the loser's `do update`. A row is dead once `expires_at` has
+    passed (the next attempt restarts it), so purge expired rows in bounded batches over
+    `attempt_counters_purge_idx`, a minute behind the clock, repeating while a batch comes back
+    full:
 
     ```sql
-    insert into auth.attempt_counters as c (environment_id, kind, key_hash, hits, started_at, expires_at)
-    values ($1, 'rate_limit', $2, 1, $3, $3 + make_interval(secs => $4::float8 / 1000))
-    on conflict (environment_id, kind, key_hash) do update set
-      hits = case when c.expires_at <= $3 then 1 else least(c.hits + 1, 1000000) end,
-      started_at = case when c.expires_at <= $3 then $3 else c.started_at end,
-      expires_at = case when c.expires_at <= $3
-                        then $3 + make_interval(secs => $4::float8 / 1000) else c.expires_at end
-    returning hits, expires_at
+    delete from auth.attempt_counters
+    where (environment_id, kind, key_hash) in (
+      select environment_id, kind, key_hash from auth.attempt_counters
+      where expires_at < clock_timestamp() - interval '1 minute'
+      order by expires_at
+      limit $1
+      for update skip locked)
     ```
 
-    The times are the service's clock (the port passes `now`), so instances whose clocks differ
-    by a few seconds shift a window by that much; run NTP. **Purge**: a row is dead once
-    `expires_at` has passed (the next attempt restarts it), so remove expired rows in bounded
-    batches over `attempt_counters_purge_idx`, a minute or more behind the clock:
-    `delete from auth.attempt_counters where (environment_id, kind, key_hash) in (select
-    environment_id, kind, key_hash from auth.attempt_counters where expires_at < $1 order by
-    expires_at limit $2 for update skip locked)`, repeating while a batch comes back full. The
-    **known-device cookie** (ADR 0014) is signed and verified in the service and needs no table.
+    The **known-device cookie** (ADR 0014) is signed and verified in the service and needs no
+    table.
 - One fixed project per Region is data, not schema: nothing in the tables limits a Region to one
   project. The auth service must bootstrap one workspace and one project, with a development and a
   production environment, and refuse to create more.

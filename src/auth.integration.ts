@@ -53,7 +53,7 @@ const TABLE_GRANTS: Record<string, string> = {
 
 /** The columns `closeline_auth` may UPDATE on a table where it holds no table-wide UPDATE. */
 const COLUMN_GRANTS: Record<string, string> = {
-  abandon_cases: 'attempts,next_attempt_at,outcome,resolved_at,updated_at',
+  abandon_cases: 'attempts,core_organization_id,next_attempt_at,outcome,resolved_at,updated_at',
   attempt_counters: 'expires_at,hits,locked_until,started_at',
   events: 'delivered_at',
   hook_call_counts: 'calls,last_at,updated_at',
@@ -545,8 +545,9 @@ describe('the auth schema, against Postgres', () => {
       {
         // Deleted rows must be resolved, so the case is written resolved to reach the delete check.
         table: 'abandon_cases',
-        columns: 'core_organization_id, user_id, attempt_id, resolved_at, outcome',
-        values: `gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), now(), 'done'`,
+        columns:
+          'core_organization_id, user_id, attempt_id, attempt_expires_at, next_attempt_at, resolved_at, outcome',
+        values: `gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), now(), now(), now(), 'done'`,
         update: 'attempts = 5',
       },
     ]

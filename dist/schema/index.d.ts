@@ -20,14 +20,18 @@ declare const ABANDON_CASE_OUTCOMES: readonly ["done", "refused", "gave_up"];
 * (`attempt_id`, no foreign key either: attempts are purged seconds after they expire and the case
 * must outlive them). No address, name or Organization name.
 *
-* One row per Organization in an environment (`abandon_cases_environment_organization_key`), so
-* recording a case twice is `insert ... on conflict do nothing`. It is an environment-scoped
+* One row per Organization and one per attempt in an environment, so recording a case twice is
+* `insert ... on conflict do nothing`. **A resolved case keeps blocking a new case for the same
+* Organization until the purge removes it**; that is by design (core gives a retrying user a
+* fresh Organization id, so the same id is never recorded again) and the conflict is silent. It is an environment-scoped
 * table like `flow_attempts`, which is written at the same point of a sign-up: the environment is
 * known then, the Organization is not a scope here, and it carries no `organization_id` column
 * (auth users are global within a Region, ADR 0005), hence the longer name.
 *
-* A sweep takes a batch with `for update skip locked` over `abandon_cases_due_idx`, so instances
-* never take the same case. The service role may delete only resolved rows
+* A sweep claims a batch as a lease (the README has the statements): a short transaction takes due
+* cases with `for update skip locked` over `abandon_cases_due_idx`, pushes `next_attempt_at`
+* forward and counts the attempt; core is called outside any transaction; a second short
+* transaction records the outcome. The service role may delete only resolved rows
 * (`abandon_cases_resolved_only`): the record of an orphan cannot be dropped before it has an
 * outcome. It may update only the columns that move a case along.
 */
@@ -127,7 +131,7 @@ declare const abandonCases: PgTableWithColumns_a5zn0g<{
 			columnType: "PgUUID";
 			data: string;
 			driverParam: string;
-			notNull: true;
+			notNull: false;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
@@ -188,6 +192,23 @@ declare const abandonCases: PgTableWithColumns_a5zn0g<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		attemptExpiresAt: PgColumn_ffrhhp<{
+			name: "attempt_expires_at";
+			tableName: "abandon_cases";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 		nextAttemptAt: PgColumn_ffrhhp<{
 			name: "next_attempt_at";
 			tableName: "abandon_cases";
@@ -196,7 +217,7 @@ declare const abandonCases: PgTableWithColumns_a5zn0g<{
 			data: Date;
 			driverParam: string;
 			notNull: true;
-			hasDefault: true;
+			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;

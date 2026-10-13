@@ -1,5 +1,5 @@
 {
-  "id": "b8628a76-923f-45ad-9682-85d2cc8ed564",
+  "id": "cde1ca14-6f63-40d2-a971-5eaae86a4835",
   "prevId": "81300ed8-211a-4d81-8f2d-273caca68a67",
   "version": "7",
   "dialect": "postgresql",
@@ -30,7 +30,7 @@
           "name": "core_organization_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -51,12 +51,17 @@
           "notNull": true,
           "default": 0
         },
+        "attempt_expires_at": {
+          "name": "attempt_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
         "next_attempt_at": {
           "name": "next_attempt_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "resolved_at": {
           "name": "resolved_at",
@@ -129,21 +134,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "abandon_cases_environment_id_idx": {
-          "name": "abandon_cases_environment_id_idx",
-          "columns": [
-            {
-              "expression": "environment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -184,6 +174,11 @@
           "name": "abandon_cases_environment_organization_key",
           "nullsNotDistinct": false,
           "columns": ["environment_id", "core_organization_id"]
+        },
+        "abandon_cases_environment_attempt_key": {
+          "name": "abandon_cases_environment_attempt_key",
+          "nullsNotDistinct": false,
+          "columns": ["environment_id", "attempt_id"]
         }
       },
       "policies": {
@@ -204,6 +199,10 @@
         }
       },
       "checkConstraints": {
+        "abandon_cases_due_after_expiry": {
+          "name": "abandon_cases_due_after_expiry",
+          "value": "\"auth\".\"abandon_cases\".\"next_attempt_at\" >= \"auth\".\"abandon_cases\".\"attempt_expires_at\""
+        },
         "abandon_cases_attempts_bounds": {
           "name": "abandon_cases_attempts_bounds",
           "value": "\"auth\".\"abandon_cases\".\"attempts\" between 0 and 100"

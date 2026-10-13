@@ -87,8 +87,8 @@ export const attemptCounters = authSchema.table(
       sql`(${t.kind} = 'lockout') = (${t.lockedUntil} is not null)`
     ),
     check(
-      'attempt_counters_lock_within_window',
-      sql`${t.lockedUntil} is null or (${t.lockedUntil} >= ${t.startedAt} and ${t.lockedUntil} <= ${t.expiresAt})`
+      'attempt_counters_lock_before_expiry',
+      sql`${t.lockedUntil} is null or ${t.lockedUntil} <= ${t.expiresAt}`
     ),
     // The purge: expired rows, oldest first.
     index('attempt_counters_purge_idx').on(t.expiresAt),

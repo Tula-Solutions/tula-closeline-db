@@ -5,6 +5,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Pool } from 'pg'
 import {
+  ABANDON_CLAIM,
+  ABANDON_PURGE_BATCH,
+  ABANDON_RECORD,
+  ABANDON_RESOLVE,
+} from './auth-statements'
+import {
   type AuthRegion,
   adminUrl,
   dropStaleTestObjects,
@@ -22,43 +28,55 @@ const MIGRATIONS = fileURLToPath(new URL('../migrations', import.meta.url))
 const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`
 const uuid = (): string => crypto.randomUUID()
 
+/** A column value written as SQL text (a time relative to the database clock), not a parameter. */
+class Raw {
+  constructor(readonly sql: string) {}
+}
+const raw = (sql: string): Raw => new Raw(sql)
+
 describe('auth.abandon_cases', () => {
   let owner: Pool
   let authPool: Pool
   let corePool: Pool
+  /** Holds the rules, row-level security and grants tests. */
   let region: AuthRegion
+  /** Holds the bulk (environment a) and the lease tests (environment b), so counts are exact. */
+  let bulk: AuthRegion
 
-  /** Insert a case in an environment; `extra` sets columns after the three ids. */
+  /**
+   * Insert a case in an environment. By default it is due, its attempt long over: the attempt
+   * expired two hours ago and the case has been due for one. `columns` overrides any column.
+   */
   const addCase = (
     environmentId: string,
     columns: Record<string, unknown> = {},
-    organizationId: string = uuid()
+    organizationId: string | null = uuid(),
+    projectId: string = region.a.projectId
   ) => {
-    const names = [
-      'id',
-      'project_id',
-      'environment_id',
-      'core_organization_id',
-      'user_id',
-      'attempt_id',
-    ]
-    const values: unknown[] = [
-      uuid(),
-      region.a.projectId,
-      environmentId,
-      organizationId,
-      uuid(),
-      uuid(),
-    ]
-    for (const [name, value] of Object.entries(columns)) {
-      names.push(name)
-      values.push(value)
+    const row: Record<string, unknown> = {
+      id: uuid(),
+      project_id: projectId,
+      environment_id: environmentId,
+      core_organization_id: organizationId,
+      user_id: uuid(),
+      attempt_id: uuid(),
+      attempt_expires_at: raw(`clock_timestamp() - interval '2 hours'`),
+      next_attempt_at: raw(`clock_timestamp() - interval '1 hour'`),
+      ...columns,
     }
-    const marks = values.map((_, i) => `$${i + 1}`).join(', ')
+    const params: unknown[] = []
+    const marks = Object.values(row).map((value) => {
+      if (value instanceof Raw) {
+        return value.sql
+      }
+      params.push(value)
+      return `$${params.length}`
+    })
     return inAuthEnvironment(authPool, environmentId, (client) =>
       client.query(
-        `insert into auth.abandon_cases (${names.join(', ')}) values (${marks}) returning id`,
-        values
+        `insert into auth.abandon_cases (${Object.keys(row).join(', ')})
+         values (${marks.join(', ')}) returning id`,
+        params
       )
     )
   }
@@ -70,19 +88,22 @@ describe('auth.abandon_cases', () => {
     authPool = new Pool({ connectionString: env.auth, max: 6 })
     corePool = new Pool({ connectionString: env.core, max: 1 })
     region = await seedAuthRegion(authPool)
+    bulk = await seedAuthRegion(authPool)
   })
 
   afterAll(async () => {
-    await owner.query('delete from auth.workspaces where id = $1', [region?.workspaceId])
+    await owner.query('delete from auth.workspaces where id = any($1)', [
+      [region?.workspaceId, bulk?.workspaceId],
+    ])
     await Promise.all([owner.end(), authPool.end(), corePool.end()])
   })
 
   describe('the rules the table keeps', () => {
-    test('a new case is open, unattempted and due now', async () => {
+    test('a new case is open, unattempted and due by the database clock', async () => {
       const added = await addCase(region.b.environmentId)
       const row = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
         client.query(
-          `select attempts, resolved_at, outcome, next_attempt_at <= now() as due
+          `select attempts, resolved_at, outcome, next_attempt_at <= clock_timestamp() as due
              from auth.abandon_cases where id = $1`,
           [added.rows[0]?.id]
         )
@@ -101,7 +122,7 @@ describe('auth.abandon_cases', () => {
 
     test('an outcome outside done, refused and gave_up is refused', async () => {
       const message = await rejectionOf(
-        addCase(region.b.environmentId, { resolved_at: new Date(), outcome: 'abandoned' })
+        addCase(region.b.environmentId, { resolved_at: raw('now()'), outcome: 'abandoned' })
       )
       expect(message).toContain('abandon_cases_outcome_known')
     })
@@ -109,13 +130,13 @@ describe('auth.abandon_cases', () => {
     test.each(['done', 'refused', 'gave_up'])(
       'a case resolved as %s is accepted',
       async (outcome) => {
-        await addCase(region.b.environmentId, { resolved_at: new Date(), outcome })
+        await addCase(region.b.environmentId, { resolved_at: raw('now()'), outcome })
       }
     )
 
     test('a resolved case must have an outcome, and an open case must have none', async () => {
       const noOutcome = await rejectionOf(
-        addCase(region.b.environmentId, { resolved_at: new Date() })
+        addCase(region.b.environmentId, { resolved_at: raw('now()') })
       )
       expect(noOutcome).toContain('abandon_cases_resolution_whole')
       const noTime = await rejectionOf(addCase(region.b.environmentId, { outcome: 'done' }))
@@ -123,8 +144,7 @@ describe('auth.abandon_cases', () => {
     })
 
     test('an open case is resolved by an update that sets both, and by no update that sets one', async () => {
-      const added = await addCase(region.b.environmentId)
-      const id = added.rows[0]?.id
+      const id = (await addCase(region.b.environmentId)).rows[0]?.id
       const one = await rejectionOf(
         inAuthEnvironment(authPool, region.b.environmentId, (client) =>
           client.query(`update auth.abandon_cases set outcome = 'done' where id = $1`, [id])
@@ -132,12 +152,27 @@ describe('auth.abandon_cases', () => {
       )
       expect(one).toContain('abandon_cases_resolution_whole')
       const both = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
-        client.query(
-          `update auth.abandon_cases set outcome = 'done', resolved_at = now() where id = $1`,
-          [id]
-        )
+        client.query(ABANDON_RESOLVE, [id, region.b.environmentId, 'done'])
       )
-      expect(both.rowCount).toBe(1)
+      expect(both.rows).toEqual([{ id }])
+      const again = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
+        client.query(ABANDON_RESOLVE, [id, region.b.environmentId, 'gave_up'])
+      )
+      expect(again.rows).toEqual([])
+    })
+
+    test('a case is never due before its attempt has ended', async () => {
+      const message = await rejectionOf(
+        addCase(region.b.environmentId, {
+          attempt_expires_at: raw(`clock_timestamp() + interval '1 hour'`),
+          next_attempt_at: raw(`clock_timestamp() + interval '1 minute'`),
+        })
+      )
+      expect(message).toContain('abandon_cases_due_after_expiry')
+      await addCase(region.b.environmentId, {
+        attempt_expires_at: raw(`timestamptz '2031-01-01 00:00:00+00'`),
+        next_attempt_at: raw(`timestamptz '2031-01-01 00:00:00+00'`),
+      })
     })
 
     test('an Organization has one case in an environment, and may have one in another', async () => {
@@ -148,21 +183,78 @@ describe('auth.abandon_cases', () => {
       await addCase(region.a.environmentId, {}, organizationId)
     })
 
-    test('recording a case twice with on conflict do nothing keeps the first', async () => {
+    test('an attempt has one case in an environment, whatever Organization it names', async () => {
+      const attemptId = uuid()
+      await addCase(region.b.environmentId, { attempt_id: attemptId })
+      const again = await rejectionOf(addCase(region.b.environmentId, { attempt_id: attemptId }))
+      expect(again).toContain('abandon_cases_environment_attempt_key')
+    })
+
+    test('cases with no Organization id yet coexist (nulls are distinct in a unique key), one per attempt', async () => {
+      // Postgres treats nulls as distinct in a unique constraint (NULLS DISTINCT, the default), so
+      // the Organization key never collides on null; the attempt key keeps each to one case.
+      await addCase(region.b.environmentId, {}, null)
+      await addCase(region.b.environmentId, {}, null)
+      const attemptId = uuid()
+      await addCase(region.b.environmentId, { attempt_id: attemptId }, null)
+      const again = await rejectionOf(
+        addCase(region.b.environmentId, { attempt_id: attemptId }, null)
+      )
+      expect(again).toContain('abandon_cases_environment_attempt_key')
+    })
+
+    test('a case with no Organization id is found by the due batch and gets its id once learned', async () => {
+      const attemptId = uuid()
+      const id = (
+        await addCase(bulk.b.environmentId, { attempt_id: attemptId }, null, bulk.projectId)
+      ).rows[0]?.id
+      const claimed = await inAuthEnvironment(authPool, bulk.b.environmentId, (client) =>
+        client.query(ABANDON_CLAIM, [bulk.b.environmentId, 100, 3_600_000])
+      )
+      expect(claimed.rows.find((row) => row.id === id)).toMatchObject({
+        core_organization_id: null,
+        attempt_id: attemptId,
+        attempts: 1,
+      })
       const organizationId = uuid()
-      const record = (attemptId: string) =>
+      const filled = await inAuthEnvironment(authPool, bulk.b.environmentId, (client) =>
+        client.query(
+          'update auth.abandon_cases set core_organization_id = $2 where id = $1 returning id',
+          [id, organizationId]
+        )
+      )
+      expect(filled.rowCount).toBe(1)
+    })
+
+    test('recording a case twice keeps the first, silently, and a resolved case still blocks its Organization', async () => {
+      const organizationId = uuid()
+      const record = (attemptId: string, org: string | null) =>
         inAuthEnvironment(authPool, region.b.environmentId, (client) =>
-          client.query(
-            `insert into auth.abandon_cases
-               (id, project_id, environment_id, core_organization_id, user_id, attempt_id)
-             values ($1, $2, $3, $4, $5, $6)
-             on conflict (environment_id, core_organization_id) do nothing`,
-            [uuid(), region.b.projectId, region.b.environmentId, organizationId, uuid(), attemptId]
-          )
+          client.query(ABANDON_RECORD, [
+            uuid(),
+            region.b.projectId,
+            region.b.environmentId,
+            org,
+            uuid(),
+            attemptId,
+            new Date(Date.UTC(2020, 0, 1)),
+          ])
         )
       const first = uuid()
-      expect((await record(first)).rowCount).toBe(1)
-      expect((await record(uuid())).rowCount).toBe(0)
+      expect((await record(first, organizationId)).rowCount).toBe(1)
+      // The same Organization under another attempt, and the same attempt under another
+      // Organization: both are conflicts, both silent.
+      expect((await record(uuid(), organizationId)).rowCount).toBe(0)
+      expect((await record(first, uuid())).rowCount).toBe(0)
+      const resolved = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
+        client.query(
+          `update auth.abandon_cases set resolved_at = clock_timestamp(), outcome = 'done'
+            where core_organization_id = $1 returning id`,
+          [organizationId]
+        )
+      )
+      expect(resolved.rowCount).toBe(1)
+      expect((await record(uuid(), organizationId)).rowCount).toBe(0)
       const kept = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
         client.query('select attempt_id from auth.abandon_cases where core_organization_id = $1', [
           organizationId,
@@ -197,8 +289,9 @@ describe('auth.abandon_cases', () => {
         inAuthEnvironment(authPool, null, (client) =>
           client.query(
             `insert into auth.abandon_cases
-               (id, project_id, environment_id, core_organization_id, user_id, attempt_id)
-             values ($1, $2, $3, $4, $5, $6)`,
+               (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
+                attempt_expires_at, next_attempt_at)
+             values ($1, $2, $3, $4, $5, $6, now(), now())`,
             [uuid(), region.a.projectId, region.a.environmentId, uuid(), uuid(), uuid()]
           )
         )
@@ -226,7 +319,7 @@ describe('auth.abandon_cases', () => {
     test('the service role cannot remove an open case, and can remove a resolved one', async () => {
       const open = (await addCase(region.b.environmentId)).rows[0]?.id
       const resolved = (
-        await addCase(region.b.environmentId, { resolved_at: new Date(), outcome: 'done' })
+        await addCase(region.b.environmentId, { resolved_at: raw('now()'), outcome: 'done' })
       ).rows[0]?.id
       const removed = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
         client.query('delete from auth.abandon_cases where id = any($1) returning id', [
@@ -240,22 +333,22 @@ describe('auth.abandon_cases', () => {
       expect(still.rowCount).toBe(1)
     })
 
-    test('an open case moves along by the five columns, and by no other', async () => {
+    test('a case moves along by six columns, and by no other', async () => {
       const id = (await addCase(region.b.environmentId)).rows[0]?.id
       const moved = await inAuthEnvironment(authPool, region.b.environmentId, (client) =>
         client.query(
           `update auth.abandon_cases
-              set attempts = attempts + 1, next_attempt_at = now() + interval '1 minute',
-                  updated_at = now()
+              set attempts = attempts + 1, next_attempt_at = clock_timestamp() + interval '1 minute',
+                  updated_at = clock_timestamp()
             where id = $1`,
           [id]
         )
       )
       expect(moved.rowCount).toBe(1)
       for (const set of [
-        'core_organization_id = gen_random_uuid()',
         'user_id = gen_random_uuid()',
         'attempt_id = gen_random_uuid()',
+        'attempt_expires_at = now()',
         'environment_id = gen_random_uuid()',
         'project_id = gen_random_uuid()',
         'created_at = now()',
@@ -282,126 +375,137 @@ describe('auth.abandon_cases', () => {
   describe('the batch and the purge', () => {
     const OPEN = 3000
     const RESOLVED = 3000
-    /** Cases already due in environment a before the bulk is seeded: earlier tests add some. */
-    let dueBefore = 0
 
     beforeAll(async () => {
-      const earlier = await inAuthEnvironment(authPool, region.a.environmentId, (client) =>
-        client.query<{ n: number }>(
-          `select count(*)::int as n from auth.abandon_cases
-            where environment_id = $1 and resolved_at is null and next_attempt_at <= now()`,
-          [region.a.environmentId]
-        )
-      )
-      dueBefore = earlier.rows[0]?.n ?? 0
-      // Environment a holds the bulk: most open cases are not due for days, a few are due, and
-      // resolved cases are spread over a year with a few old ones.
-      await inAuthEnvironment(authPool, region.a.environmentId, async (client) => {
+      // Environment a of the bulk region holds nothing else: 20 open cases are due, the rest are
+      // not due for days; resolved cases are recent but for 50 that ended 400 days ago.
+      await inAuthEnvironment(authPool, bulk.a.environmentId, async (client) => {
         await client.query(
           `insert into auth.abandon_cases
-             (id, project_id, environment_id, core_organization_id, user_id, attempt_id, next_attempt_at)
+             (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
+              attempt_expires_at, next_attempt_at)
            select gen_random_uuid(), $1, $2, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
-                  case when n <= 20 then now() - make_interval(mins => n)
-                       else now() + make_interval(mins => n) end
-             from generate_series(1, $3::int) n`,
-          [region.a.projectId, region.a.environmentId, OPEN]
+                  due - interval '1 hour', due
+             from (select case when n <= 20 then clock_timestamp() - make_interval(mins => n)
+                               else clock_timestamp() + make_interval(mins => n) end as due
+                     from generate_series(1, $3::int) n) s`,
+          [bulk.projectId, bulk.a.environmentId, OPEN]
         )
         await client.query(
           `insert into auth.abandon_cases
              (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
-              resolved_at, outcome)
+              attempt_expires_at, next_attempt_at, resolved_at, outcome)
            select gen_random_uuid(), $1, $2, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
-                  case when n <= 50 then now() - interval '400 days' + make_interval(mins => n)
-                       else now() - make_interval(mins => n) end,
+                  clock_timestamp() - interval '500 days', clock_timestamp() - interval '500 days',
+                  case when n <= 50 then clock_timestamp() - interval '400 days' + make_interval(mins => n)
+                       else clock_timestamp() - make_interval(secs => n) end,
                   'done'
              from generate_series(1, $3::int) n`,
-          [region.a.projectId, region.a.environmentId, RESOLVED]
+          [bulk.projectId, bulk.a.environmentId, RESOLVED]
         )
       })
       await owner.query('vacuum analyze auth.abandon_cases')
     })
 
     const plan = async (sql: string, params: unknown[]): Promise<string> => {
-      const result = await inAuthEnvironment(authPool, region.a.environmentId, (client) =>
+      const result = await inAuthEnvironment(authPool, bulk.a.environmentId, (client) =>
         client.query<{ 'QUERY PLAN': object }>(`explain (format json) ${sql}`, params)
       )
       return JSON.stringify(result.rows[0]?.['QUERY PLAN'])
     }
 
-    test('the batch of due open cases, oldest first, uses the due index', async () => {
+    test('the selection inside the claim, oldest first, uses the due index', async () => {
       const text = await plan(
         `select id from auth.abandon_cases
-          where environment_id = $1 and resolved_at is null and next_attempt_at <= now()
+          where environment_id = $1 and resolved_at is null and next_attempt_at <= clock_timestamp()
           order by next_attempt_at
           limit 10
             for update skip locked`,
-        [region.a.environmentId]
+        [bulk.a.environmentId]
       )
       expect(text).toContain('abandon_cases_due_idx')
       expect(text).not.toContain('Seq Scan')
       expect(text).not.toContain('"Sort"')
     })
 
-    test('the batch finds the due cases and none of the others', async () => {
-      const due = await inAuthEnvironment(authPool, region.a.environmentId, (client) =>
+    test('the due cases are the 20 whose time has passed, and a case whose attempt can still write an account is not among them', async () => {
+      // An open case far in the future for its attempt: not due.
+      await addCase(
+        bulk.a.environmentId,
+        {
+          attempt_expires_at: raw(`clock_timestamp() + interval '1 hour'`),
+          next_attempt_at: raw(`clock_timestamp() + interval '1 hour'`),
+        },
+        uuid(),
+        bulk.projectId
+      )
+      const due = await inAuthEnvironment(authPool, bulk.a.environmentId, (client) =>
         client.query(
           `select id from auth.abandon_cases
-            where environment_id = $1 and resolved_at is null and next_attempt_at <= now()`,
-          [region.a.environmentId]
+            where environment_id = $1 and resolved_at is null and next_attempt_at <= clock_timestamp()`,
+          [bulk.a.environmentId]
         )
       )
-      // The 20 seeded due cases, and whatever earlier tests left due; the other 2980 are not due.
-      expect(due.rowCount).toBe(dueBefore + 20)
+      expect(due.rowCount).toBe(20)
     })
 
     test('the purge of old resolved cases uses the purge index', async () => {
       const text = await plan(
         `select id from auth.abandon_cases
           where environment_id = $1 and resolved_at is not null
-            and resolved_at < now() - interval '90 days'
+            and resolved_at < clock_timestamp() - interval '1 day'
           order by resolved_at
           limit 100`,
-        [region.a.environmentId]
+        [bulk.a.environmentId]
       )
       expect(text).toContain('abandon_cases_purge_idx')
       expect(text).not.toContain('Seq Scan')
       expect(text).not.toContain('"Sort"')
     })
 
-    test('a purge batch removes old resolved cases in bounded batches and leaves open ones', async () => {
+    test('the purge statement removes old resolved cases in bounded batches and leaves the rest', async () => {
       const purge = () =>
-        inAuthEnvironment(authPool, region.a.environmentId, (client) =>
-          client.query(
-            `delete from auth.abandon_cases
-              where id in (select id from auth.abandon_cases
-                            where environment_id = $1 and resolved_at is not null
-                              and resolved_at < now() - interval '90 days'
-                            order by resolved_at
-                            limit 30
-                              for update skip locked)`,
-            [region.a.environmentId]
-          )
+        inAuthEnvironment(authPool, bulk.a.environmentId, (client) =>
+          client.query(ABANDON_PURGE_BATCH, [bulk.a.environmentId, 30])
         )
       expect((await purge()).rowCount).toBe(30)
       expect((await purge()).rowCount).toBe(20)
       expect((await purge()).rowCount).toBe(0)
-      const open = await inAuthEnvironment(authPool, region.a.environmentId, (client) =>
+      const left = await inAuthEnvironment(authPool, bulk.a.environmentId, (client) =>
         client.query(
-          'select count(*)::int as n from auth.abandon_cases where resolved_at is null and environment_id = $1',
-          [region.a.environmentId]
+          `select count(*) filter (where resolved_at is null)::int as open,
+                  count(*) filter (where resolved_at is not null)::int as resolved
+             from auth.abandon_cases where environment_id = $1`,
+          [bulk.a.environmentId]
         )
       )
-      expect(open.rows[0]?.n).toBeGreaterThanOrEqual(OPEN)
+      expect(left.rows).toEqual([{ open: OPEN + 1, resolved: RESOLVED - 50 }])
     })
   })
 
-  describe('two sweeps at once', () => {
-    test('a skip locked batch shared by two connections takes no case twice', async () => {
+  describe('the lease', () => {
+    test('two claims at once take different cases, each case once, and a lease keeps them away until it ends', async () => {
+      const environmentId = bulk.b.environmentId
+      // One case whose attempt is not over, and ten that are due.
+      const notDue = (
+        await addCase(
+          environmentId,
+          {
+            attempt_expires_at: raw(`clock_timestamp() + interval '1 hour'`),
+            next_attempt_at: raw(`clock_timestamp() + interval '1 hour'`),
+          },
+          uuid(),
+          bulk.projectId
+        )
+      ).rows[0]?.id
       const ids = new Set<string>()
       for (let i = 0; i < 10; i++) {
-        const row = await addCase(region.b.environmentId, {
-          next_attempt_at: new Date(Date.now() - 3_600_000 - i * 1000),
-        })
+        const row = await addCase(
+          environmentId,
+          { next_attempt_at: raw(`clock_timestamp() - make_interval(secs => ${60 + i})`) },
+          uuid(),
+          bulk.projectId
+        )
         ids.add(row.rows[0]?.id)
       }
       const first = await authPool.connect()
@@ -411,33 +515,60 @@ describe('auth.abandon_cases', () => {
           await client.query('begin')
           await client.query('select set_config($1, $2, true)', [
             'tula.environment_id',
-            region.b.environmentId,
+            environmentId,
           ])
         }
-        const batch = (client: typeof first) =>
-          client.query<{ id: string }>(
-            `select id from auth.abandon_cases
-              where environment_id = $1 and resolved_at is null
-                and next_attempt_at <= now() - interval '1 hour'
-                and id = any($2)
-              order by next_attempt_at
-              limit 6
-                for update skip locked`,
-            [region.b.environmentId, [...ids]]
-          )
-        // Both transactions hold their rows when the second asks, so any overlap would show.
-        const one = await batch(first)
-        const two = await batch(second)
+        // The first transaction still holds its rows when the second claims, so an overlap shows.
+        const one = await first.query(ABANDON_CLAIM, [environmentId, 6, 300_000])
+        const two = await second.query(ABANDON_CLAIM, [environmentId, 6, 300_000])
         expect(one.rows).toHaveLength(6)
-        expect(two.rows).toHaveLength(4)
-        const taken = [...one.rows, ...two.rows].map((row) => row.id)
+        const taken = [...one.rows, ...two.rows].map((row) => row.id as string)
+        expect(new Set(taken).size).toBe(taken.length)
         expect(new Set(taken)).toEqual(ids)
+        expect(taken).not.toContain(notDue)
+        expect([...one.rows, ...two.rows].every((row) => row.attempts === 1)).toBe(true)
+        await first.query('commit')
+        await second.query('commit')
       } finally {
-        for (const client of [first, second]) {
-          await client.query('rollback')
-          client.release()
-        }
+        first.release()
+        second.release()
       }
+      // Leased: nothing is due now, and the lease is in the future by the database clock.
+      const again = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_CLAIM, [environmentId, 100, 300_000])
+      )
+      expect(again.rows).toEqual([])
+      const leased = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(
+          `select count(*)::int as n from auth.abandon_cases
+            where id = any($1) and next_attempt_at > clock_timestamp()`,
+          [[...ids]]
+        )
+      )
+      expect(leased.rows[0]?.n).toBe(10)
+      // A crashed worker's lease ends: back-date one so it is due again; it is tried a second time.
+      const target = [...ids][0]
+      await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(
+          'update auth.abandon_cases set next_attempt_at = clock_timestamp() where id = $1',
+          [target]
+        )
+      )
+      const retried = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_CLAIM, [environmentId, 100, 300_000])
+      )
+      expect(retried.rows.map((row) => ({ id: row.id, attempts: row.attempts }))).toEqual([
+        { id: target, attempts: 2 },
+      ])
+      // The outcome is recorded in a second short transaction, once.
+      const resolved = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_RESOLVE, [target, environmentId, 'done'])
+      )
+      expect(resolved.rows).toEqual([{ id: target }])
+      const none = await inAuthEnvironment(authPool, environmentId, (client) =>
+        client.query(ABANDON_RESOLVE, [target, environmentId, 'done'])
+      )
+      expect(none.rows).toEqual([])
     })
   })
 

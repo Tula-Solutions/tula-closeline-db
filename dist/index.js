@@ -1,8 +1,88 @@
 import {
   TENANT_SETTING,
   exports_schema
-} from "./shared/chunk-nyfzmwdv.js";
+} from "./shared/chunk-xsn6xs9b.js";
 
+// src/auth-statements.ts
+var NEXT_FAILURES = "case when c.expires_at <= clock_timestamp() then 1 else c.hits + 1 end";
+var SCHEDULE_AT = `($3::int[])[least(${NEXT_FAILURES}, cardinality($3::int[]))]`;
+var LOCKOUT_ATTEMPT = `insert into auth.attempt_counters as c
+  (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
+values ($1, 'lockout', $2, 1, clock_timestamp(),
+        clock_timestamp() + make_interval(secs => ($3::int[])[1]::float8 / 1000),
+        clock_timestamp() + make_interval(secs => (($3::int[])[1] + $4::int)::float8 / 1000))
+on conflict (environment_id, kind, key_hash) do update set
+  hits = least(${NEXT_FAILURES}, 1000000),
+  started_at = case when c.expires_at <= clock_timestamp() then clock_timestamp() else c.started_at end,
+  locked_until = clock_timestamp() + make_interval(secs => ${SCHEDULE_AT}::float8 / 1000),
+  expires_at = clock_timestamp() + make_interval(secs => (${SCHEDULE_AT} + $4::int)::float8 / 1000)
+where c.locked_until <= clock_timestamp()
+returning hits, ($3::int[])[least(hits, cardinality($3::int[]))] as wait_ms`;
+var LOCKOUT_RETRY_AFTER = `select greatest(0, ceil(extract(epoch from locked_until - clock_timestamp()) * 1000))::int as retry_after_ms
+from auth.attempt_counters
+where environment_id = $1 and kind = 'lockout' and key_hash = $2`;
+var LOCKOUT_CLEAR = `delete from auth.attempt_counters
+where environment_id = $1 and kind = 'lockout' and key_hash = $2`;
+var RATE_HIT = `insert into auth.attempt_counters as c
+  (environment_id, kind, key_hash, hits, started_at, expires_at)
+values ($1, 'rate_limit', $2, 1, clock_timestamp(),
+        clock_timestamp() + make_interval(secs => $3::float8 / 1000))
+on conflict (environment_id, kind, key_hash) do update set
+  hits = case when c.expires_at <= clock_timestamp() then 1 else least(c.hits + 1, 1000000) end,
+  started_at = case when c.expires_at <= clock_timestamp() then clock_timestamp() else c.started_at end,
+  expires_at = case when c.expires_at <= clock_timestamp()
+                    then clock_timestamp() + make_interval(secs => $3::float8 / 1000)
+                    else c.expires_at end
+returning hits, greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()) * 1000))::int as retry_after_ms`;
+var COUNTER_PURGE_BATCH = `delete from auth.attempt_counters
+where (environment_id, kind, key_hash) in (
+  select environment_id, kind, key_hash from auth.attempt_counters
+  where expires_at < clock_timestamp() - interval '1 minute'
+  order by expires_at
+  limit $1
+  for update skip locked)`;
+var ABANDON_RECORD = `insert into auth.abandon_cases
+  (id, project_id, environment_id, core_organization_id, user_id, attempt_id,
+   attempt_expires_at, next_attempt_at)
+values ($1, $2, $3, $4, $5, $6, $7::timestamptz, $7::timestamptz)
+on conflict do nothing
+returning id`;
+var ABANDON_CLAIM = `with due as (
+  select id from auth.abandon_cases
+  where environment_id = $1 and resolved_at is null and next_attempt_at <= clock_timestamp()
+  order by next_attempt_at
+  limit $2
+  for update skip locked)
+update auth.abandon_cases c
+set attempts = c.attempts + 1,
+    next_attempt_at = clock_timestamp() + make_interval(secs => $3::float8 / 1000),
+    updated_at = clock_timestamp()
+from due
+where c.id = due.id
+returning c.id, c.core_organization_id, c.user_id, c.attempt_id, c.attempts`;
+var ABANDON_RESOLVE = `update auth.abandon_cases
+set resolved_at = clock_timestamp(), outcome = $3, updated_at = clock_timestamp()
+where id = $1 and environment_id = $2 and resolved_at is null
+returning id`;
+var ABANDON_PURGE_BATCH = `delete from auth.abandon_cases
+where id in (
+  select id from auth.abandon_cases
+  where environment_id = $1 and resolved_at is not null
+    and resolved_at < clock_timestamp() - interval '1 day'
+  order by resolved_at
+  limit $2
+  for update skip locked)`;
+var AUTH_STATEMENTS = {
+  LOCKOUT_ATTEMPT,
+  LOCKOUT_RETRY_AFTER,
+  LOCKOUT_CLEAR,
+  RATE_HIT,
+  COUNTER_PURGE_BATCH,
+  ABANDON_RECORD,
+  ABANDON_CLAIM,
+  ABANDON_RESOLVE,
+  ABANDON_PURGE_BATCH
+};
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -379,17 +459,27 @@ ${lines.join(`
 // src/index.ts
 var PACKAGE = "tula-closeline-db";
 export {
+  ABANDON_CLAIM,
+  ABANDON_PURGE_BATCH,
+  ABANDON_RECORD,
+  ABANDON_RESOLVE,
+  AUTH_STATEMENTS,
   CONTROL_PLANE_TABLES,
   CONTROL_PLANE_TABLE_REASONS,
+  COUNTER_PURGE_BATCH,
   DEFAULT_POOL_OPTIONS,
   ENVIRONMENT_POLICY_EXPRESSION,
   ENVIRONMENT_SCOPED_TABLES,
   ENVIRONMENT_SETTING,
+  LOCKOUT_ATTEMPT,
+  LOCKOUT_CLEAR,
+  LOCKOUT_RETRY_AFTER,
   NON_TENANT_TABLES,
   NON_TENANT_TABLE_REASONS,
   ORGANIZATION_SETTING,
   OWNER_ROLE,
   PACKAGE,
+  RATE_HIT,
   TENANT_SCHEMAS,
   assertTenantIsolation,
   createDb,

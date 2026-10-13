@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Pool, type QueryResult, type QueryResultRow } from 'pg'
-import { createDb, type DbHandle } from './client'
+import {
+  COUNTER_PURGE_BATCH,
+  LOCKOUT_ATTEMPT,
+  LOCKOUT_CLEAR,
+  LOCKOUT_RETRY_AFTER,
+  RATE_HIT,
+} from './auth-statements'
+import { createDb } from './client'
 import {
   type AuthRegion,
   adminUrl,
@@ -43,41 +50,8 @@ function delayMs(failures: number): number {
     : Math.min(POLICY.maxDelayMs, POLICY.baseDelayMs * 2 ** Math.min(over - 1, 30))
 }
 
-/** The delays for failures 1 to 12; the last applies to every failure after it. */
+/** The waits for failures 1 to 12; the last applies to every failure after it. */
 const SCHEDULE = Array.from({ length: 12 }, (_, i) => delayMs(i + 1))
-
-/** The failure count a lockout statement would give the row, as the statement writes it. */
-const NEXT_HITS = 'case when c.expires_at <= $3::timestamptz then 1 else c.hits + 1 end'
-
-/** One failed or attempted sign-in: the README's statement, one round trip. */
-const LOCKOUT_ATTEMPT = `
-  insert into auth.attempt_counters as c
-    (environment_id, kind, key_hash, hits, started_at, locked_until, expires_at)
-  values ($1, 'lockout', $2, 1, $3::timestamptz,
-          $3::timestamptz + make_interval(secs => ($4::int[])[1]::float8 / 1000),
-          $3::timestamptz + make_interval(secs => (($4::int[])[1] + $5::int)::float8 / 1000))
-  on conflict (environment_id, kind, key_hash) do update set
-    hits = least(${NEXT_HITS}, 1000000),
-    started_at = case when c.expires_at <= $3::timestamptz then $3::timestamptz else c.started_at end,
-    locked_until = $3::timestamptz + make_interval(secs =>
-      ($4::int[])[least(${NEXT_HITS}, cardinality($4::int[]))]::float8 / 1000),
-    expires_at = $3::timestamptz + make_interval(secs =>
-      (($4::int[])[least(${NEXT_HITS}, cardinality($4::int[]))] + $5::int)::float8 / 1000)
-  where c.locked_until <= $3::timestamptz
-  returning hits, locked_until`
-
-/** One request against a fixed-window limit. */
-const RATE_HIT = `
-  insert into auth.attempt_counters as c (environment_id, kind, key_hash, hits, started_at, expires_at)
-  values ($1, 'rate_limit', $2, 1, $3::timestamptz,
-          $3::timestamptz + make_interval(secs => $4::float8 / 1000))
-  on conflict (environment_id, kind, key_hash) do update set
-    hits = case when c.expires_at <= $3::timestamptz then 1 else least(c.hits + 1, 1000000) end,
-    started_at = case when c.expires_at <= $3::timestamptz then $3::timestamptz else c.started_at end,
-    expires_at = case when c.expires_at <= $3::timestamptz
-                      then $3::timestamptz + make_interval(secs => $4::float8 / 1000)
-                      else c.expires_at end
-  returning hits, expires_at`
 
 /** What `attempt` and `hit` need: a pool, or one connection of it inside a transaction. */
 interface Queryable {
@@ -90,6 +64,7 @@ const keyHash = (label: string): Buffer => {
   return Buffer.from(bytes)
 }
 
+/** A time for a row written directly (a constraint test), far from any database clock reading. */
 const at = (ms: number): Date => new Date(Date.UTC(2030, 0, 1) + ms)
 
 describe('auth.attempt_counters', () => {
@@ -97,39 +72,57 @@ describe('auth.attempt_counters', () => {
   let authPool: Pool
   let otherInstance: Pool
   let corePool: Pool
-  let handle: DbHandle
   let region: AuthRegion
   let seq = 0
 
-  const attempt = async (db: Queryable, environmentId: string, hash: Buffer, now: Date) => {
-    const result = await db.query<{ hits: number; locked_until: Date }>(LOCKOUT_ATTEMPT, [
+  /** One attempted sign-in, the README statement: the wait it imposed, or `refused`. */
+  const attempt = async (db: Queryable, environmentId: string, hash: Buffer) => {
+    const result = await db.query<{ hits: number; wait_ms: number }>(LOCKOUT_ATTEMPT, [
       environmentId,
       hash,
-      now,
       SCHEDULE,
       POLICY.forgetAfterMs,
     ])
     const row = result.rows[0]
     return row
-      ? { allowed: true as const, hits: row.hits, lockedUntil: row.locked_until }
+      ? { allowed: true as const, hits: row.hits, waitMs: row.wait_ms }
       : { allowed: false as const }
   }
 
-  const hit = async (
-    db: Queryable,
-    environmentId: string,
-    hash: Buffer,
-    now: Date,
-    windowMs: number
-  ) => {
-    const result = await db.query<{ hits: number; expires_at: Date }>(RATE_HIT, [
+  const hit = async (db: Queryable, environmentId: string, hash: Buffer, windowMs: number) => {
+    const result = await db.query<{ hits: number; retry_after_ms: number }>(RATE_HIT, [
       environmentId,
       hash,
-      now,
       windowMs,
     ])
     return result.rows[0]
   }
+
+  const retryAfter = async (environmentId: string, hash: Buffer) =>
+    (await authPool.query<{ retry_after_ms: number }>(LOCKOUT_RETRY_AFTER, [environmentId, hash]))
+      .rows[0]?.retry_after_ms
+
+  /**
+   * Move a row back in time by `ms`, as if that long had passed: the three times shift together.
+   * Tests drive time this way, never by sleeping or by asserting on the wall clock.
+   */
+  const backdate = (environmentId: string, hash: Buffer, ms: number) =>
+    authPool.query(
+      `update auth.attempt_counters
+          set started_at = started_at - make_interval(secs => $3::float8 / 1000),
+              locked_until = locked_until - make_interval(secs => $3::float8 / 1000),
+              expires_at = expires_at - make_interval(secs => $3::float8 / 1000)
+        where environment_id = $1 and key_hash = $2`,
+      [environmentId, hash, ms]
+    )
+
+  /** End a lock exactly now by the database clock (the boundary: locked_until <= now). */
+  const unlock = (environmentId: string, hash: Buffer) =>
+    authPool.query(
+      `update auth.attempt_counters set locked_until = clock_timestamp()
+        where environment_id = $1 and kind = 'lockout' and key_hash = $2`,
+      [environmentId, hash]
+    )
 
   const rowOf = async (environmentId: string, hash: Buffer) =>
     (
@@ -147,13 +140,11 @@ describe('auth.attempt_counters', () => {
     authPool = new Pool({ connectionString: env.auth, max: 8 })
     otherInstance = new Pool({ connectionString: env.auth, max: 3 })
     corePool = new Pool({ connectionString: env.core, max: 1 })
-    handle = createDb(env.auth, { max: 2 })
     region = await seedAuthRegion(authPool)
   })
 
   afterAll(async () => {
     await owner.query('delete from auth.workspaces where id = $1', [region?.workspaceId])
-    await handle.close()
     await Promise.all([owner.end(), authPool.end(), otherInstance.end(), corePool.end()])
   })
 
@@ -204,14 +195,9 @@ describe('auth.attempt_counters', () => {
       ['a lockout with no lock', { kind: 'lockout' }, 'attempt_counters_lock_whole'],
       ['a rate limit with a lock', { locked_until: at(10) }, 'attempt_counters_lock_whole'],
       [
-        'a lock before the count began',
-        { kind: 'lockout', locked_until: at(-1) },
-        'attempt_counters_lock_within_window',
-      ],
-      [
         'a lock past the row expiring',
         { kind: 'lockout', locked_until: at(60_001) },
-        'attempt_counters_lock_within_window',
+        'attempt_counters_lock_before_expiry',
       ],
     ])('refuses %s', async (_name, columns, constraint) => {
       expect(await rejectionOf(insert(columns))).toContain(constraint)
@@ -221,6 +207,9 @@ describe('auth.attempt_counters', () => {
       ['a rate limit at the bound', { hits: 1_000_000 }],
       ['a lockout locked for the whole window', { kind: 'lockout', locked_until: at(60_000) }],
       ['a lockout not yet locked', { kind: 'lockout', locked_until: at(0) }],
+      // Relaxed: a lock may precede started_at, because the statement reads the clock several
+      // times and the database clock, not an instance, decides the order.
+      ['a lock a moment before the count began', { kind: 'lockout', locked_until: at(-1) }],
     ])('accepts %s', async (_name, columns) => {
       await insert(columns)
     })
@@ -233,7 +222,7 @@ describe('auth.attempt_counters', () => {
       await insert({ key_hash: hash, kind: 'lockout', locked_until: at(0) })
     })
 
-    test('the row of a missing environment is refused, and goes with its environment', async () => {
+    test('the row of a missing environment is refused', async () => {
       const message = await rejectionOf(
         insert({ environment_id: crypto.randomUUID(), key_hash: keyHash('orphan') })
       )
@@ -258,128 +247,161 @@ describe('auth.attempt_counters', () => {
   })
 
   describe('the lockout statement', () => {
-    test('five free failures, then waits that double, and a refused attempt is not counted', async () => {
+    test('five free failures, then the waits double up to the cap, as the schedule says', async () => {
       const hash = keyHash('schedule')
-      const env = region.a.environmentId
-      let now = 0
-      for (let failure = 1; failure <= 5; failure++) {
-        const result = await attempt(authPool, env, hash, at(now))
-        expect(result).toEqual({ allowed: true, hits: failure, lockedUntil: at(now) })
-      }
-      const sixth = await attempt(authPool, env, hash, at(now))
-      expect(sixth).toEqual({ allowed: true, hits: 6, lockedUntil: at(now + 30_000) })
-      // Locked: refused, and the count stays at 6.
-      expect(await attempt(authPool, env, hash, at(now + 29_999))).toEqual({ allowed: false })
-      expect((await rowOf(env, hash)).hits).toBe(6)
-      // At the lock's end the next failure is allowed and waits twice as long.
-      now += 30_000
-      expect(await attempt(authPool, env, hash, at(now))).toEqual({
-        allowed: true,
-        hits: 7,
-        lockedUntil: at(now + 60_000),
-      })
-    })
-
-    test('each failure waits as long as the schedule says, and no longer than the cap', async () => {
-      const hash = keyHash('cap')
-      let now = 0
+      const environmentId = region.a.environmentId
       for (let failure = 1; failure <= 16; failure++) {
         const wait = SCHEDULE[Math.min(failure, SCHEDULE.length) - 1] ?? 0
-        expect(
-          await attempt(authPool, region.a.environmentId, hash, at(now)),
-          `failure ${failure}`
-        ).toEqual({ allowed: true, hits: failure, lockedUntil: at(now + wait) })
-        now += wait
+        expect(await attempt(authPool, environmentId, hash), `failure ${failure}`).toEqual({
+          allowed: true,
+          hits: failure,
+          waitMs: wait,
+        })
+        // The lock has to pass before the next failure can be counted.
+        await unlock(environmentId, hash)
       }
       expect(SCHEDULE.at(-1)).toBe(POLICY.maxDelayMs)
     })
 
+    test('a locked address refuses, is not counted, and says how long is left', async () => {
+      const hash = keyHash('refuse')
+      const environmentId = region.a.environmentId
+      for (let failure = 1; failure <= 6; failure++) {
+        expect(await attempt(authPool, environmentId, hash)).toMatchObject({ allowed: true })
+      }
+      expect(await attempt(authPool, environmentId, hash)).toEqual({ allowed: false })
+      expect((await rowOf(environmentId, hash)).hits).toBe(6)
+      const left = await retryAfter(environmentId, hash)
+      expect(left).toBeGreaterThan(0)
+      expect(left).toBeLessThanOrEqual(30_000)
+    })
+
+    test('a lock refuses whatever the client passes: it carries no time, and a zero schedule changes nothing', async () => {
+      const hash = keyHash('refuse-any-client')
+      const environmentId = region.a.environmentId
+      for (let failure = 1; failure <= 6; failure++) {
+        await attempt(authPool, environmentId, hash)
+      }
+      const result = await authPool.query(LOCKOUT_ATTEMPT, [
+        environmentId,
+        hash,
+        SCHEDULE.map(() => 0),
+        0,
+      ])
+      expect(result.rows).toEqual([])
+    })
+
+    test('a lock that has just passed by the database clock lets the next attempt through', async () => {
+      const hash = keyHash('boundary')
+      const environmentId = region.a.environmentId
+      for (let failure = 1; failure <= 6; failure++) {
+        await attempt(authPool, environmentId, hash)
+      }
+      expect(await attempt(authPool, environmentId, hash)).toEqual({ allowed: false })
+      await unlock(environmentId, hash)
+      expect(await attempt(authPool, environmentId, hash)).toEqual({
+        allowed: true,
+        hits: 7,
+        waitMs: 60_000,
+      })
+    })
+
     test('failures are forgotten after the quiet period and counted from one again', async () => {
       const hash = keyHash('forget')
-      const env = region.a.environmentId
+      const environmentId = region.a.environmentId
       for (let failure = 1; failure <= 6; failure++) {
-        await attempt(authPool, env, hash, at(0))
+        await attempt(authPool, environmentId, hash)
       }
-      const row = await rowOf(env, hash)
-      // Locked for 30 s, forgotten an hour after that.
-      expect(row.expires_at).toEqual(at(30_000 + POLICY.forgetAfterMs))
-      expect(
-        await attempt(authPool, env, hash, at(30_000 + POLICY.forgetAfterMs - 1))
-      ).toMatchObject({ allowed: true, hits: 7 })
-      const later = at(30_000 + POLICY.forgetAfterMs + 60_000 + 3_600_000)
-      expect(await attempt(authPool, env, hash, later)).toEqual({
+      // Just inside the period the lock is over, the row lives, and the count goes on.
+      await backdate(environmentId, hash, 30_000 + POLICY.forgetAfterMs - 60_000)
+      expect(await attempt(authPool, environmentId, hash)).toMatchObject({ allowed: true, hits: 7 })
+      // Past the period it starts over.
+      await backdate(environmentId, hash, 60_000 + POLICY.forgetAfterMs + 1_000)
+      const before = await rowOf(environmentId, hash)
+      expect(await attempt(authPool, environmentId, hash)).toEqual({
         allowed: true,
         hits: 1,
-        lockedUntil: later,
+        waitMs: 0,
       })
-      expect((await rowOf(env, hash)).started_at).toEqual(later)
+      const after = await rowOf(environmentId, hash)
+      expect(after.started_at.getTime()).toBeGreaterThan(before.started_at.getTime())
     })
 
     test('a right password clears the lockout by one delete', async () => {
       const hash = keyHash('clear')
-      const env = region.a.environmentId
+      const environmentId = region.a.environmentId
       for (let failure = 1; failure <= 6; failure++) {
-        await attempt(authPool, env, hash, at(0))
+        await attempt(authPool, environmentId, hash)
       }
-      const cleared = await authPool.query(
-        `delete from auth.attempt_counters where environment_id = $1 and kind = 'lockout' and key_hash = $2`,
-        [env, hash]
-      )
+      const cleared = await authPool.query(LOCKOUT_CLEAR, [environmentId, hash])
       expect(cleared.rowCount).toBe(1)
-      expect(await attempt(authPool, env, hash, at(1))).toMatchObject({ allowed: true, hits: 1 })
+      expect(await attempt(authPool, environmentId, hash)).toMatchObject({ allowed: true, hits: 1 })
     })
 
     test('the same key in two environments, and as a rate limit, is counted apart', async () => {
       const hash = keyHash('apart')
       for (let failure = 1; failure <= 6; failure++) {
-        await attempt(authPool, region.a.environmentId, hash, at(0))
+        await attempt(authPool, region.a.environmentId, hash)
       }
-      expect(await attempt(authPool, region.a.environmentId, hash, at(1))).toEqual({
-        allowed: false,
-      })
-      expect(await attempt(authPool, region.b.environmentId, hash, at(1))).toMatchObject({
+      expect(await attempt(authPool, region.a.environmentId, hash)).toEqual({ allowed: false })
+      expect(await attempt(authPool, region.b.environmentId, hash)).toMatchObject({
         allowed: true,
         hits: 1,
       })
-      expect(await hit(authPool, region.a.environmentId, hash, at(1), 60_000)).toMatchObject({
-        hits: 1,
-      })
+      expect(await hit(authPool, region.a.environmentId, hash, 60_000)).toMatchObject({ hits: 1 })
     })
   })
 
   describe('the rate-limit statement', () => {
-    test('counts in a fixed window and starts a new one when it ends', async () => {
+    test('counts in a fixed window, and says how long the window has left', async () => {
       const hash = keyHash('window')
-      const env = region.a.environmentId
-      expect(await hit(authPool, env, hash, at(0), 60_000)).toEqual({
-        hits: 1,
-        expires_at: at(60_000),
-      })
-      expect(await hit(authPool, env, hash, at(59_999), 60_000)).toEqual({
-        hits: 2,
-        expires_at: at(60_000),
-      })
+      const environmentId = region.a.environmentId
+      const first = await hit(authPool, environmentId, hash, 60_000)
+      expect(first?.hits).toBe(1)
+      expect(first?.retry_after_ms).toBeGreaterThan(0)
+      expect(first?.retry_after_ms).toBeLessThanOrEqual(60_000)
+      expect((await hit(authPool, environmentId, hash, 60_000))?.hits).toBe(2)
       // Requests over the limit are still counted, as the memory adapter counts them.
-      expect(await hit(authPool, env, hash, at(59_999), 60_000)).toMatchObject({ hits: 3 })
-      expect(await hit(authPool, env, hash, at(60_000), 60_000)).toEqual({
-        hits: 1,
-        expires_at: at(120_000),
-      })
-      expect((await rowOf(env, hash)).started_at).toEqual(at(60_000))
+      expect((await hit(authPool, environmentId, hash, 60_000))?.hits).toBe(3)
+    })
+
+    test('a window that has ended by the database clock starts a new one', async () => {
+      const hash = keyHash('window-end')
+      const environmentId = region.a.environmentId
+      await hit(authPool, environmentId, hash, 60_000)
+      await hit(authPool, environmentId, hash, 60_000)
+      // A moment inside the window: still the same window.
+      await authPool.query(
+        `update auth.attempt_counters set started_at = started_at - interval '30 seconds',
+            expires_at = expires_at - interval '30 seconds'
+          where environment_id = $1 and key_hash = $2`,
+        [environmentId, hash]
+      )
+      expect((await hit(authPool, environmentId, hash, 60_000))?.hits).toBe(3)
+      const before = await rowOf(environmentId, hash)
+      // Past its end: a new window of one.
+      await authPool.query(
+        `update auth.attempt_counters set expires_at = clock_timestamp()
+          where environment_id = $1 and key_hash = $2`,
+        [environmentId, hash]
+      )
+      expect((await hit(authPool, environmentId, hash, 60_000))?.hits).toBe(1)
+      const after = await rowOf(environmentId, hash)
+      expect(after.started_at.getTime()).toBeGreaterThan(before.started_at.getTime())
     })
   })
 
   describe('several instances at once', () => {
     test('six wrong passwords split across two instances lock the sixth', async () => {
       const hash = keyHash('two-instances')
-      const env = region.a.environmentId
+      const environmentId = region.a.environmentId
       const instances = [authPool, otherInstance]
       for (let failure = 1; failure <= 6; failure++) {
-        const result = await attempt(instances[failure % 2] ?? authPool, env, hash, at(0))
+        const result = await attempt(instances[failure % 2] ?? authPool, environmentId, hash)
         expect(result, `failure ${failure}`).toMatchObject({ allowed: true, hits: failure })
       }
       for (const instance of instances) {
-        expect(await attempt(instance, env, hash, at(1))).toEqual({ allowed: false })
+        expect(await attempt(instance, environmentId, hash)).toEqual({ allowed: false })
       }
     })
 
@@ -397,8 +419,10 @@ describe('auth.attempt_counters', () => {
       throw new Error(`backend ${pid} never waited for a lock`)
     }
 
-    const twoConnections = async () => {
-      const [first, second] = await Promise.all([authPool.connect(), otherInstance.connect()])
+    /** Two connections of two "instances", in either order of who goes first. */
+    const connections = async (swap: boolean) => {
+      const [a, b] = await Promise.all([authPool.connect(), otherInstance.connect()])
+      const [first, second] = swap ? [b, a] : [a, b]
       const pid = (await second.query<{ pid: number }>('select pg_backend_pid() as pid')).rows[0]
         ?.pid
       if (pid === undefined) {
@@ -407,59 +431,95 @@ describe('auth.attempt_counters', () => {
       return { first, second, pid }
     }
 
-    test('an increment that waits for another instance’s open transaction is added, not lost', async () => {
-      const hash = keyHash('wait-update')
-      const env = region.a.environmentId
-      await hit(authPool, env, hash, at(0), 60_000)
-      const { first, second, pid } = await twoConnections()
-      try {
-        await first.query('begin')
-        await second.query('begin')
-        expect((await hit(first, env, hash, at(1), 60_000))?.hits).toBe(2)
-        const waiting = hit(second, env, hash, at(2), 60_000)
-        await untilBlocked(pid)
-        await first.query('commit')
-        expect((await waiting)?.hits).toBe(3)
-        await second.query('commit')
-      } finally {
-        first.release()
-        second.release()
+    test.each([false, true])(
+      'a failure that waits for another instance’s open transaction is added, not lost or refused (swapped: %p)',
+      async (swap) => {
+        const hash = keyHash(`wait-update-${swap}`)
+        const environmentId = region.a.environmentId
+        await attempt(authPool, environmentId, hash)
+        const { first, second, pid } = await connections(swap)
+        try {
+          await first.query('begin')
+          await second.query('begin')
+          expect(await attempt(first, environmentId, hash)).toMatchObject({
+            allowed: true,
+            hits: 2,
+          })
+          const waiting = attempt(second, environmentId, hash)
+          await untilBlocked(pid)
+          await first.query('commit')
+          // The second statement reads its clock after the row lock, so its times cannot precede
+          // the first's: it is counted, with no constraint violated.
+          expect(await waiting).toMatchObject({ allowed: true, hits: 3 })
+          await second.query('commit')
+        } finally {
+          first.release()
+          second.release()
+        }
+        expect((await rowOf(environmentId, hash)).hits).toBe(3)
       }
-      expect((await rowOf(env, hash)).hits).toBe(3)
-    })
+    )
 
-    test('two first failures that race for a new row are both counted', async () => {
-      const hash = keyHash('wait-insert')
-      const env = region.a.environmentId
-      const { first, second, pid } = await twoConnections()
-      try {
-        await first.query('begin')
-        await second.query('begin')
-        expect(await attempt(first, env, hash, at(0))).toMatchObject({ allowed: true, hits: 1 })
-        const waiting = attempt(second, env, hash, at(0))
-        await untilBlocked(pid)
-        await first.query('commit')
-        expect(await waiting).toMatchObject({ allowed: true, hits: 2 })
-        await second.query('commit')
-      } finally {
-        first.release()
-        second.release()
+    test.each([false, true])(
+      'two first failures that race for a new row are both counted (swapped: %p)',
+      async (swap) => {
+        const hash = keyHash(`wait-insert-${swap}`)
+        const environmentId = region.a.environmentId
+        const { first, second, pid } = await connections(swap)
+        try {
+          await first.query('begin')
+          await second.query('begin')
+          expect(await attempt(first, environmentId, hash)).toMatchObject({
+            allowed: true,
+            hits: 1,
+          })
+          const waiting = attempt(second, environmentId, hash)
+          await untilBlocked(pid)
+          await first.query('commit')
+          expect(await waiting).toMatchObject({ allowed: true, hits: 2 })
+          await second.query('commit')
+        } finally {
+          first.release()
+          second.release()
+        }
+        expect((await rowOf(environmentId, hash)).hits).toBe(2)
       }
-      expect((await rowOf(env, hash)).hits).toBe(2)
-    })
+    )
+
+    test.each([false, true])(
+      'two rate-limit hits that wait on each other are both counted (swapped: %p)',
+      async (swap) => {
+        const hash = keyHash(`wait-rate-${swap}`)
+        const environmentId = region.a.environmentId
+        const { first, second, pid } = await connections(swap)
+        try {
+          await first.query('begin')
+          await second.query('begin')
+          expect((await hit(first, environmentId, hash, 60_000))?.hits).toBe(1)
+          const waiting = hit(second, environmentId, hash, 60_000)
+          await untilBlocked(pid)
+          await first.query('commit')
+          expect((await waiting)?.hits).toBe(2)
+          await second.query('commit')
+        } finally {
+          first.release()
+          second.release()
+        }
+      }
+    )
 
     test('fifty simultaneous hits over several connections are fifty', async () => {
       const hash = keyHash('fifty')
-      const env = region.a.environmentId
+      const environmentId = region.a.environmentId
       const results = await Promise.all(
         Array.from({ length: 50 }, (_, i) =>
-          hit(i % 2 ? authPool : otherInstance, env, hash, at(i), 60_000)
+          hit(i % 2 ? authPool : otherInstance, environmentId, hash, 60_000)
         )
       )
       expect(results.map((row) => row?.hits).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(
         Array.from({ length: 50 }, (_, i) => i + 1)
       )
-      expect((await rowOf(env, hash)).hits).toBe(50)
+      expect((await rowOf(environmentId, hash)).hits).toBe(50)
     })
   })
 
@@ -470,8 +530,13 @@ describe('auth.attempt_counters', () => {
       expect(NON_TENANT_TABLES).not.toContain('auth.attempt_counters')
     })
 
-    test('the catalog check passes with it, and has no organization_id and no row-level security', async () => {
-      expect(await findTenantIsolationGaps(handle.db)).toEqual([])
+    test('the catalog check passes with it, and it has no organization_id and no row-level security', async () => {
+      const handle = createDb(env.auth, { max: 1 })
+      try {
+        expect(await findTenantIsolationGaps(handle.db)).toEqual([])
+      } finally {
+        await handle.close()
+      }
       const found = await owner.query<{ enabled: boolean; policies: number; org: number }>(
         `select c.relrowsecurity as enabled,
                 (select count(*)::int from pg_policies
@@ -484,37 +549,28 @@ describe('auth.attempt_counters', () => {
       expect(found.rows).toEqual([{ enabled: false, policies: 0, org: 0 }])
     })
 
-    test('the check would report it if it ever gained an organization_id column', async () => {
-      await owner.query('alter table auth.attempt_counters add column organization_id text')
-      try {
-        const gaps = await findTenantIsolationGaps(handle.db)
-        expect(gaps.filter((gap) => gap.table === 'attempt_counters')).toEqual([
-          {
-            schema: 'auth',
-            table: 'attempt_counters',
-            reason: expect.stringContaining('organization_id'),
-          },
-        ])
-      } finally {
-        await owner.query('alter table auth.attempt_counters drop column organization_id')
-      }
-    })
-
     test('without row-level security every environment’s rows are visible, which is why they hold only hashes', async () => {
       const hash = keyHash('visible')
-      await hit(authPool, region.b.environmentId, hash, at(0), 60_000)
+      await hit(authPool, region.b.environmentId, hash, 60_000)
       const seen = await authPool.query(
         'select hits from auth.attempt_counters where key_hash = $1',
         [hash]
       )
       expect(seen.rows).toEqual([{ hits: 1 }])
     })
+
+    test('the service role can clear another environment’s counter in the same Region, as with the other control-plane tables', async () => {
+      const hash = keyHash('cross-environment')
+      await attempt(authPool, region.b.environmentId, hash)
+      const removed = await authPool.query(LOCKOUT_CLEAR, [region.b.environmentId, hash])
+      expect(removed.rowCount).toBe(1)
+    })
   })
 
   describe('grants', () => {
     test('the service role updates the four counter columns, and no others', async () => {
       const hash = keyHash('grant')
-      await hit(authPool, region.a.environmentId, hash, at(0), 60_000)
+      await hit(authPool, region.a.environmentId, hash, 60_000)
       const allowed = await authPool.query(
         `update auth.attempt_counters set hits = 2, started_at = $2, expires_at = $3
           where key_hash = $1`,
@@ -569,17 +625,23 @@ describe('auth.attempt_counters', () => {
       return JSON.stringify(result.rows[0]?.['QUERY PLAN'])
     }
 
+    // The selection inside COUNTER_PURGE_BATCH.
     const BATCH = `select environment_id, kind, key_hash from auth.attempt_counters
-                    where expires_at < $1::timestamptz
+                    where expires_at < clock_timestamp() - interval '1 minute'
                     order by expires_at
-                    limit $2
+                    limit $1
                       for update skip locked`
 
     test('the batch of expired rows, oldest first, uses the purge index', async () => {
-      const text = await plan(BATCH, [new Date(), 100])
+      const text = await plan(BATCH, [100])
       expect(text).toContain('attempt_counters_purge_idx')
       expect(text).not.toContain('Seq Scan')
       expect(text).not.toContain('"Sort"')
+    })
+
+    test('the selection is the one inside the purge statement', () => {
+      const flat = (text: string) => text.replace(/\s+/g, ' ').trim()
+      expect(flat(COUNTER_PURGE_BATCH)).toContain(flat(BATCH))
     })
 
     test('a count lookup by environment, kind and key uses the primary key', async () => {
@@ -598,9 +660,8 @@ describe('auth.attempt_counters', () => {
       try {
         await first.query('begin')
         await second.query('begin')
-        const cutoff = new Date()
-        const one = await first.query(BATCH, [cutoff, 300])
-        const two = await second.query(BATCH, [cutoff, 300])
+        const one = await first.query(BATCH, [300])
+        const two = await second.query(BATCH, [300])
         expect(one.rows).toHaveLength(300)
         expect(two.rows.length).toBeGreaterThan(0)
         expect(two.rows.length).toBeLessThanOrEqual(300)
@@ -616,21 +677,16 @@ describe('auth.attempt_counters', () => {
       }
     })
 
-    test('deleting batch by batch removes the expired rows and only them', async () => {
-      const cutoff = new Date()
-      const purge = (size: number) =>
-        authPool.query(
-          `delete from auth.attempt_counters
-            where (environment_id, kind, key_hash) in (${BATCH})`,
-          [cutoff, size]
+    test('the purge statement removes the expired rows batch by batch and only them', async () => {
+      const live = () =>
+        owner.query<{ n: number }>(
+          `select count(*)::int as n from auth.attempt_counters
+            where expires_at >= clock_timestamp() - interval '1 minute'`
         )
-      const before = await owner.query<{ n: number }>(
-        'select count(*)::int as n from auth.attempt_counters where expires_at >= $1',
-        [cutoff]
-      )
+      const before = await live()
       const removed: number[] = []
       for (;;) {
-        const result = await purge(250)
+        const result = await authPool.query(COUNTER_PURGE_BATCH, [250])
         removed.push(result.rowCount ?? 0)
         if ((result.rowCount ?? 0) < 250) {
           break
@@ -638,11 +694,7 @@ describe('auth.attempt_counters', () => {
       }
       expect(Math.max(...removed)).toBeLessThanOrEqual(250)
       expect(removed.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(EXPIRED)
-      const after = await owner.query<{ n: number }>(
-        'select count(*)::int as n from auth.attempt_counters where expires_at >= $1',
-        [cutoff]
-      )
-      expect(after.rows[0]?.n).toBe(before.rows[0]?.n)
+      expect((await live()).rows[0]?.n).toBe(before.rows[0]?.n)
     })
   })
 
@@ -710,6 +762,27 @@ describe('auth.attempt_counters', () => {
       await runMigrations(url)
       const found = await withOwner(url, state)
       expect(found.rows).toEqual([{ present: true, rls: false, selects: true, updatesKey: false }])
+    })
+
+    test('the check would report it if the table ever gained an organization_id column', async () => {
+      const url = await scratch('counters_isolation')
+      await runMigrations(url)
+      await withOwner(url, (pool) =>
+        pool.query('alter table auth.attempt_counters add column organization_id text')
+      )
+      const handle = createDb(url, { max: 1 })
+      try {
+        const gaps = await findTenantIsolationGaps(handle.db)
+        expect(gaps.filter((gap) => gap.table === 'attempt_counters')).toEqual([
+          {
+            schema: 'auth',
+            table: 'attempt_counters',
+            reason: expect.stringContaining('organization_id'),
+          },
+        ])
+      } finally {
+        await handle.close()
+      }
     })
 
     test('applies on a database at 0006 that already holds auth rows', async () => {

@@ -1,6 +1,6 @@
 {
-  "id": "706b2ed4-b57d-41f9-93ae-792a1610843b",
-  "prevId": "b8628a76-923f-45ad-9682-85d2cc8ed564",
+  "id": "972a7699-bf00-4bea-a806-59fbae35eaf1",
+  "prevId": "cde1ca14-6f63-40d2-a971-5eaae86a4835",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -30,7 +30,7 @@
           "name": "core_organization_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -51,12 +51,17 @@
           "notNull": true,
           "default": 0
         },
+        "attempt_expires_at": {
+          "name": "attempt_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
         "next_attempt_at": {
           "name": "next_attempt_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "resolved_at": {
           "name": "resolved_at",
@@ -129,21 +134,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "abandon_cases_environment_id_idx": {
-          "name": "abandon_cases_environment_id_idx",
-          "columns": [
-            {
-              "expression": "environment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -184,6 +174,11 @@
           "name": "abandon_cases_environment_organization_key",
           "nullsNotDistinct": false,
           "columns": ["environment_id", "core_organization_id"]
+        },
+        "abandon_cases_environment_attempt_key": {
+          "name": "abandon_cases_environment_attempt_key",
+          "nullsNotDistinct": false,
+          "columns": ["environment_id", "attempt_id"]
         }
       },
       "policies": {
@@ -204,6 +199,10 @@
         }
       },
       "checkConstraints": {
+        "abandon_cases_due_after_expiry": {
+          "name": "abandon_cases_due_after_expiry",
+          "value": "\"auth\".\"abandon_cases\".\"next_attempt_at\" >= \"auth\".\"abandon_cases\".\"attempt_expires_at\""
+        },
         "abandon_cases_attempts_bounds": {
           "name": "abandon_cases_attempts_bounds",
           "value": "\"auth\".\"abandon_cases\".\"attempts\" between 0 and 100"
@@ -458,9 +457,9 @@
           "name": "attempt_counters_lock_whole",
           "value": "(\"auth\".\"attempt_counters\".\"kind\" = 'lockout') = (\"auth\".\"attempt_counters\".\"locked_until\" is not null)"
         },
-        "attempt_counters_lock_within_window": {
-          "name": "attempt_counters_lock_within_window",
-          "value": "\"auth\".\"attempt_counters\".\"locked_until\" is null or (\"auth\".\"attempt_counters\".\"locked_until\" >= \"auth\".\"attempt_counters\".\"started_at\" and \"auth\".\"attempt_counters\".\"locked_until\" <= \"auth\".\"attempt_counters\".\"expires_at\")"
+        "attempt_counters_lock_before_expiry": {
+          "name": "attempt_counters_lock_before_expiry",
+          "value": "\"auth\".\"attempt_counters\".\"locked_until\" is null or \"auth\".\"attempt_counters\".\"locked_until\" <= \"auth\".\"attempt_counters\".\"expires_at\""
         }
       },
       "isRLSEnabled": false

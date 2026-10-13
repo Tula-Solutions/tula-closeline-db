@@ -12,7 +12,7 @@ CREATE TABLE "auth"."attempt_counters" (
 	CONSTRAINT "attempt_counters_hits_bounds" CHECK ("auth"."attempt_counters"."hits" between 1 and 1000000),
 	CONSTRAINT "attempt_counters_window_order" CHECK ("auth"."attempt_counters"."expires_at" > "auth"."attempt_counters"."started_at"),
 	CONSTRAINT "attempt_counters_lock_whole" CHECK (("auth"."attempt_counters"."kind" = 'lockout') = ("auth"."attempt_counters"."locked_until" is not null)),
-	CONSTRAINT "attempt_counters_lock_within_window" CHECK ("auth"."attempt_counters"."locked_until" is null or ("auth"."attempt_counters"."locked_until" >= "auth"."attempt_counters"."started_at" and "auth"."attempt_counters"."locked_until" <= "auth"."attempt_counters"."expires_at"))
+	CONSTRAINT "attempt_counters_lock_before_expiry" CHECK ("auth"."attempt_counters"."locked_until" is null or "auth"."attempt_counters"."locked_until" <= "auth"."attempt_counters"."expires_at")
 );
 --> statement-breakpoint
 ALTER TABLE "auth"."attempt_counters" ADD CONSTRAINT "attempt_counters_environment_id_environments_id_fk" FOREIGN KEY ("environment_id") REFERENCES "auth"."environments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
