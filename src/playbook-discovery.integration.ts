@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { dropStaleTestObjects, integrationEnv, migrateUp, rejectionOf } from './integration-support'
+import { NON_TENANT_TABLES } from './isolation'
 import {
   CONSUMED_CLAIM,
   CONSUMED_COMPLETE,
@@ -531,6 +532,52 @@ describe('work discovery, erasure and spent purges', () => {
                 has_function_privilege('closeline_playbook', 'playbook.note_work(text,text,timestamptz)', 'execute') as note`
       )
       expect(grants.rows[0]).toEqual({ pub: false, svc: true, note: false })
+    })
+
+    test('work_hints is the only playbook table on the allowlist, holds only a kind, an Organization id and a time, and no role can touch it directly', async () => {
+      expect(NON_TENANT_TABLES.filter((t) => t.startsWith('playbook.'))).toEqual([
+        'playbook.work_hints',
+      ])
+      const columns = await owner.query(
+        `select column_name from information_schema.columns
+          where table_schema = 'playbook' and table_name = 'work_hints' order by column_name`
+      )
+      expect(columns.rows.map((r) => r.column_name)).toEqual(['due_at', 'kind', 'organization_id'])
+      const privileges = [
+        'SELECT',
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'TRUNCATE',
+        'REFERENCES',
+        'TRIGGER',
+      ]
+      for (const role of ['closeline_playbook', 'closeline_core', 'closeline_auth', 'public']) {
+        for (const privilege of privileges) {
+          const held = await owner.query(
+            `select has_table_privilege($1, 'playbook.work_hints', $2) as held`,
+            [role, privilege]
+          )
+          expect([role, privilege, held.rows[0].held]).toEqual([role, privilege, false])
+        }
+        const cols = await owner.query(
+          `select has_any_column_privilege($1, 'playbook.work_hints', 'SELECT,INSERT,UPDATE,REFERENCES') as held`,
+          [role]
+        )
+        expect([role, cols.rows[0].held]).toEqual([role, false])
+      }
+      // The definer functions the triggers and the discovery function run are the only way in.
+      const definers = await owner.query(
+        `select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = 'playbook' and p.prosecdef and p.proname like 'note\\_%' order by p.proname`
+      )
+      expect(definers.rows.map((r) => r.proname)).toEqual([
+        'note_consumed_work',
+        'note_document_work',
+        'note_idempotency_work',
+        'note_job_work',
+        'note_work',
+      ])
     })
 
     test('a job claimed and heartbeated does not move the hint; a delete notes the purge time', async () => {
