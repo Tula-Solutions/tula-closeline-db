@@ -1217,7 +1217,7 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
 
 /**
  * Set a Deal's Outcome (an Owner or Admin may set or correct any Deal's, ADR 0018 choice 5). `$1`
- * Organization, `$2` the Deal, `$3` the Outcome, `$4` the closing time and `$5` whether to set it
+ * Organization, `$2` the Deal, `$3` the Outcome, `$4` the closing date (`YYYY-MM-DD`, a calendar date with no time or zone; a full timestamp is cut to its date text) and `$5` whether to set it
  * (false leaves `closed_at` as it is; true with a null `$4` clears it). The row is locked first, so
  * two changes queue and each sees the other's result. When the Outcome or the closing time
  * changes, `outcome_seq` rises by exactly one in the same write (a trigger refuses any other
@@ -1229,11 +1229,11 @@ export const DEAL_SET_OUTCOME = `with cur as (
   select * from playbook.deals where organization_id = $1 and id = $2 for no key update),
 u as (
   update playbook.deals d
-  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,
+  set outcome = $3::text, closed_at = case when $5::boolean then $4::date else d.closed_at end,
       outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()
   from cur
   where d.organization_id = $1 and d.id = cur.id
-    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
+    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::date))
   returning d.*)
 select ${DEAL_COLUMNS_OF('u')}, true as changed from u
 union all
@@ -1338,7 +1338,7 @@ returning id, attempts`
  * Organization's Deal limit (the service's number, ADR 0018 leaves it to the ticket), `$6` how many
  * rows to take (clamped to 1..{@link DEAL_IMPORT_APPLY_BATCH}; the first rows by row number are
  * taken and the answer's `taken` says how many). Each element is
- * `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` as the contract's
+ * `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` (`closed_at` a `YYYY-MM-DD` date) as the contract's
  * `checkDealImportRow` produced it: `reason` is its rejection or null, `deal_id` is null only for
  * `invalid_deal_id`, `wrong_column_count` and `blank_row` (a row with no cells), a blank cell is null. **Run {@link QUOTA_LOCK} first
  * in the same transaction** (the statement refuses without it), so the Deal count and the existing
@@ -1389,7 +1389,7 @@ export const DEAL_IMPORT_APPLY = `with imp as (
   for update),
 raw as (
   select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
-  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at date, amount numeric, currency text, name text)),
 refuse as (
   select case
     when exists (select 1 from raw where row_number is null or row_number not between 2 and ${DEAL_IMPORT_MAX_ROWS + 1}) then 'row_number_range'

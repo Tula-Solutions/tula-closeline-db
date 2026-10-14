@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { dropStaleTestObjects, integrationEnv, migrateUp, rejectionOf } from './integration-support'
+import { DB_TYPES } from './pg-types'
 import {
   DEAL_BY_DEAL_ID,
   DEAL_ERASE_BATCH,
@@ -81,7 +82,7 @@ describe('sales history, part one', () => {
     await migrateUp(env.owner)
     owner = new Pool({ connectionString: env.owner, max: 4 })
     await dropStaleTestObjects(owner, env.owner)
-    playbook = new Pool({ connectionString: env.playbook, max: 12 })
+    playbook = new Pool({ connectionString: env.playbook, max: 12, types: DB_TYPES })
     core = new Pool({ connectionString: env.core, max: 1 })
   })
 
@@ -1458,6 +1459,49 @@ describe('sales history, part one', () => {
           await report(org, importId, row, null, reason)
         }
       })
+    })
+  })
+  describe('the closing date is a calendar date (0020)', () => {
+    const closedOf = async (org: string, dealId: string) =>
+      (await q(org, DEAL_BY_DEAL_ID, [org, dealId])).rows[0].closed_at as string | null
+
+    test('a date set on a Deal comes back as the same YYYY-MM-DD string, in every process time zone', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      await apply(org, id, job.claim_token, [row(2, 'T-1')])
+      const deal = (await q(org, DEAL_BY_DEAL_ID, [org, 'T-1'])).rows[0]
+      expect(deal.closed_at).toBeNull()
+      const set = (await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', '2026-01-31', true]))
+        .rows[0]
+      expect(set).toMatchObject({ closed_at: '2026-01-31', changed: true, outcome_seq: 1 })
+      expect(typeof set.closed_at).toBe('string')
+      expect((await q(org, DEAL_GET, [org, deal.id])).rows[0].closed_at).toBe('2026-01-31')
+      expect(await closedOf(org, 'T-1')).toBe('2026-01-31')
+      const listed = (await q(org, DEAL_LIST, [org, 'infinity', '', 10])).rows
+      expect(listed.find((r) => r.deal_id === 'T-1')?.closed_at).toBe('2026-01-31')
+      // The same date again changes nothing; a different date, or a clear, bumps the sequence once.
+      expect(
+        (await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', '2026-01-31', true])).rows[0]
+      ).toMatchObject({ changed: false, outcome_seq: 1 })
+      expect(
+        (await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', '2026-02-01', true])).rows[0]
+      ).toMatchObject({ closed_at: '2026-02-01', changed: true, outcome_seq: 2 })
+      expect(
+        (await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', null, true])).rows[0]
+      ).toMatchObject({ closed_at: null, changed: true, outcome_seq: 3 })
+    })
+
+    test('an import row carries the date through, unchanged', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      await apply(org, id, job.claim_token, [
+        row(2, 'T-2', { outcome: 'won', closed_at: '2026-01-31' }),
+        row(3, 'T-3', { outcome: 'lost', closed_at: '2026-12-31' }),
+      ])
+      expect(await closedOf(org, 'T-2')).toBe('2026-01-31')
+      expect(await closedOf(org, 'T-3')).toBe('2026-12-31')
     })
   })
 })

@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -113,7 +114,7 @@ export const deals = playbookSchema.table(
     outcomeSeq: integer('outcome_seq').notNull().default(0),
     // The Outcome sequence through which every ready Call of the Deal is tagged in the index: the Deal needs a re-tag while this is below `outcome_seq`.
     retagThrough: integer('retag_through').notNull().default(0),
-    closedAt: ts('closed_at'),
+    closedAt: date('closed_at', { mode: 'string' }),
     amount: numeric('amount', { precision: 17, scale: 2 }),
     currency: text('currency'),
     appearedInImport: boolean('appeared_in_import').notNull().default(false),
