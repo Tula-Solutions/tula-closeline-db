@@ -15,6 +15,7 @@ import {
   DEAL_IMPORT_HEARTBEAT,
   DEAL_IMPORT_INSERT,
   DEAL_IMPORT_LIST,
+  DEAL_IMPORT_LIST_ERASED,
   DEAL_IMPORT_OBJECT_REMOVED,
   DEAL_IMPORT_PURGE_BATCH,
   DEAL_IMPORT_RETRY,
@@ -1003,6 +1004,57 @@ describe('sales history, part one', () => {
       })
     })
 
+    // Fails without DEAL_IMPORT_LIST_ERASED: after the erase commits nothing can name the imports.
+    test('an erasure interrupted after the erase is finished from the list of erased imports', async () => {
+      const org = newOrg()
+      const ids = [await addImport(org), await addImport(org), await addImport(org)]
+      const [job] = await claim(org)
+      await apply(org, job.id, job.claim_token, [row(2, 'L-1'), row(3, 'L-2')])
+      expect((await q(org, DEAL_IMPORT_LIST_ERASED, [org, '', 10])).rowCount).toBe(0)
+      const erased = (await q(org, DEAL_IMPORT_ERASE_BATCH, [org, 500])).rows
+      expect(erased.length).toBe(3)
+      // The service "crashes" here: it keeps nothing. The list names every unfinished import.
+      const listed = (await q(org, DEAL_IMPORT_LIST_ERASED, [org, '', 10])).rows
+      expect(listed.map((r) => r.id)).toEqual([...ids].sort())
+      expect(
+        listed.every((r) => typeof r.object_key === 'string' && r.object_pending === true)
+      ).toBe(true)
+      // Finish part of it: remove one CSV and purge it.
+      const [first, ...rest] = listed
+      await q(org, DEAL_IMPORT_OBJECT_REMOVED, [org, first.id])
+      expect(
+        (await q(org, DEAL_IMPORT_LIST_ERASED, [org, '', 10])).rows.find((r) => r.id === first.id)
+          ?.object_pending
+      ).toBe(false)
+      for (let steps = 0; steps < 20; steps++) {
+        if ((await q(org, DEAL_IMPORT_PURGE_BATCH, [org, first.id, 2])).rows[0].import_deleted) {
+          break
+        }
+      }
+      const unfinished = (await q(org, DEAL_IMPORT_LIST_ERASED, [org, '', 10])).rows
+      expect(unfinished.map((r) => r.id)).toEqual(rest.map((r) => r.id))
+      expect((await q(org, ORGANIZATION_REMOVAL_STATUS, [org])).rows[0].no_imports).toBe(false)
+      // A second Organization sees none of them.
+      const other = newOrg()
+      expect((await q(other, DEAL_IMPORT_LIST_ERASED, [other, '', 10])).rowCount).toBe(0)
+      // Page by the id cursor, one at a time.
+      const pageOne = (await q(org, DEAL_IMPORT_LIST_ERASED, [org, '', 1])).rows
+      const pageTwo = (await q(org, DEAL_IMPORT_LIST_ERASED, [org, pageOne[0].id, 1])).rows
+      expect([pageOne[0].id, pageTwo[0].id]).toEqual(rest.map((r) => r.id))
+      expect((await q(org, DEAL_IMPORT_LIST_ERASED, [org, pageTwo[0].id, 1])).rowCount).toBe(0)
+      // Finish the rest from the list alone.
+      for (const r of unfinished) {
+        await q(org, DEAL_IMPORT_OBJECT_REMOVED, [org, r.id])
+        for (let steps = 0; steps < 20; steps++) {
+          if ((await q(org, DEAL_IMPORT_PURGE_BATCH, [org, r.id, 2])).rows[0].import_deleted) {
+            break
+          }
+        }
+      }
+      expect((await q(org, DEAL_IMPORT_LIST_ERASED, [org, '', 10])).rowCount).toBe(0)
+      expect((await q(org, ORGANIZATION_REMOVAL_STATUS, [org])).rows[0].no_imports).toBe(true)
+    })
+
     test('a live import cannot be deleted by the role, and report rows only while their import is erased', async () => {
       const org = newOrg()
       const id = await addImport(org)
@@ -1162,6 +1214,12 @@ describe('sales history, part one', () => {
         expectScan(plan, relation, index, 'Backward')
       }
     )
+
+    test('DEAL_IMPORT_LIST_ERASED: its partial index, in order, with no Sort', async () => {
+      const org = newOrg()
+      const plan = await planOf(org, DEAL_IMPORT_LIST_ERASED, 'text, text, int', `'${org}', '', 50`)
+      expectScan(plan, 'deal_imports', 'deal_imports_erased_idx')
+    })
 
     test.each([
       ['DEAL_BY_DEAL_ID', DEAL_BY_DEAL_ID, 'deals', 'deals_deal_id_key', 'text, text', `'x'`],

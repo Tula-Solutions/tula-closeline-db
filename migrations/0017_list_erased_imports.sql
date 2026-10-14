@@ -1,0 +1,1 @@
+CREATE INDEX "deal_imports_erased_idx" ON "playbook"."deal_imports" USING btree ("organization_id","id") WHERE "playbook"."deal_imports"."erased_at" is not null;

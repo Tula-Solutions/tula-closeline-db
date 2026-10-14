@@ -42,7 +42,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-zzhn1pyk.js";
+} from "./shared/chunk-jakmfw0v.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -1789,6 +1789,11 @@ set state = case when i.state in ('uploaded', 'processing') then 'failed' else i
 from batch
 where i.organization_id = $1 and i.id = batch.id
 returning i.id, i.object_key, (i.object_removed_at is null) as object_pending`;
+var DEAL_IMPORT_LIST_ERASED = `select id, object_key, (object_removed_at is null) as object_pending
+from playbook.deal_imports
+where organization_id = $1 and erased_at is not null and id > $2::text
+order by id
+limit ${CLAMP("$3", DOCUMENT_LIST_MAX_PAGE)}`;
 var DEAL_IMPORT_PURGE_BATCH = `with imp as (
   select id from playbook.deal_imports
   where organization_id = $1 and id = $2 and erased_at is not null and object_removed_at is not null
@@ -1890,6 +1895,7 @@ var PLAYBOOK_STATEMENTS = {
   DEAL_IMPORT_ROWS_LIST,
   DEAL_IMPORT_ROWS_LIST_BY_RESULT,
   DEAL_IMPORT_ERASE_BATCH,
+  DEAL_IMPORT_LIST_ERASED,
   DEAL_IMPORT_PURGE_BATCH,
   DEAL_ERASE_BATCH,
   RIGHTS_GET,
@@ -1989,6 +1995,7 @@ export {
   DEAL_IMPORT_HEARTBEAT,
   DEAL_IMPORT_INSERT,
   DEAL_IMPORT_LIST,
+  DEAL_IMPORT_LIST_ERASED,
   DEAL_IMPORT_MAX_ATTEMPTS2 as DEAL_IMPORT_MAX_ATTEMPTS,
   DEAL_IMPORT_MAX_BYTES2 as DEAL_IMPORT_MAX_BYTES,
   DEAL_IMPORT_MAX_ROWS2 as DEAL_IMPORT_MAX_ROWS,

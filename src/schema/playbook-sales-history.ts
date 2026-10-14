@@ -234,6 +234,10 @@ export const dealImports = playbookSchema.table(
     index('deal_imports_due_idx')
       .on(t.organizationId, t.nextAttemptAt)
       .where(sql`${t.state} in ('uploaded', 'processing')`),
+    // The erased imports not yet purged: a small set that an interrupted erasure is finished from.
+    index('deal_imports_erased_idx')
+      .on(t.organizationId, t.id)
+      .where(sql`${t.erasedAt} is not null`),
     index('deal_imports_unerased_idx').on(t.organizationId, t.id).where(sql`${t.erasedAt} is null`),
   ]
 )

@@ -1871,6 +1871,16 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     returning i.id, i.object_key, (i.object_removed_at is null) as object_pending
     ```
 
+    `DEAL_IMPORT_LIST_ERASED`:
+
+    ```sql
+    select id, object_key, (object_removed_at is null) as object_pending
+    from playbook.deal_imports
+    where organization_id = $1 and erased_at is not null and id > $2::text
+    order by id
+    limit least(greatest(coalesce($3::int, 1), 1), 100)
+    ```
+
     `DEAL_IMPORT_PURGE_BATCH`:
 
     ```sql
@@ -2938,3 +2948,36 @@ Transcript's Rep with its upload.
 it now takes the Deal row `for no key update` instead of `for update`, so an open Outcome change no
 longer holds up a Call upload (the foreign-key `KEY SHARE`). It is a statement change only; there is
 no migration for it.
+
+## Finishing an interrupted import erasure (v0.16.0, migration `0017`)
+
+Once `DEAL_IMPORT_ERASE_BATCH` commits, every other import statement filters `erased_at is null` and
+`DEAL_IMPORT_PURGE_BATCH` needs the id, so a crash, a lock timeout or a cut request between the erase
+and the end of the purge used to lose the ids: `ORGANIZATION_REMOVAL_STATUS.no_imports` stayed false
+for good. `DEAL_IMPORT_LIST_ERASED` lists the Organization's imports that are erased and not yet purged,
+by id (`$2` the last id of the previous page, `''` first; the page size is clamped to the usual
+maximum), with `object_key` and `object_pending` (true while the CSV is not recorded removed). It runs
+on `deal_imports_erased_idx`, a partial index on `erased_at is not null` (the set is small and short
+lived, so the index costs next to nothing), added by migration `0017`.
+
+The erase order becomes **finish the erased imports first, then erase more**:
+
+1. List erased imports until the page is empty of work: for each, remove the CSV if `object_pending`
+   and call `DEAL_IMPORT_OBJECT_REMOVED` (idempotent), then `DEAL_IMPORT_PURGE_BATCH` until
+   `import_deleted`.
+2. Run `DEAL_IMPORT_ERASE_BATCH` and handle its rows the same way. Repeat 1 and 2 until the erase finds
+   nothing and the list is empty.
+3. Then `DEAL_ERASE_BATCH`, then `ORGANIZATION_REMOVE_REST`.
+
+Crash points, and what each leaves: before the erase commits, nothing changed, so run it again; after
+it commits and before the CSV is removed, the list shows the import with `object_pending` true; after
+the CSV is removed and before `DEAL_IMPORT_OBJECT_REMOVED` committed, it still shows it pending, and
+removing the already-gone file again is harmless; between purge steps, the list still shows the
+import, and the purge resumes where it stopped. A second Organization never sees these rows (row-level
+security).
+
+The other erase paths do not have this shape. `DEAL_ERASE_BATCH` takes no id (it deletes the next
+Deals of the Organization), so a lost answer costs nothing. `CALL_ERASE_BATCH` and
+`DOCUMENT_ERASE_BATCH` mark rows deleted and due at once, and `CALL_PURGE_CLAIM` and
+`DOCUMENT_PURGE_CLAIM` find them by state, not by an id the service must remember (a purge that ran out
+of attempts is found by `CALL_LIST_SPENT_PURGES` and its document counterpart).
