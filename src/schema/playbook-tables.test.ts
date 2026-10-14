@@ -25,8 +25,11 @@ const idempotencyMigration = read('0011_playbook_idempotency_keys.sql')
 const discoveryMigration = read('0012_playbook_work_discovery.sql')
 const orphanMigration = read('0014_playbook_pending_cleanup_orphans.sql')
 const salesMigration = read('0015_playbook_sales_history.sql')
+const callsMigration = read('0016_playbook_calls.sql')
 
 const NAMES = [
+  'call_jobs',
+  'calls',
   'consumed_message',
   'deal_import_rows',
   'deal_imports',
@@ -41,7 +44,7 @@ const NAMES = [
 ]
 
 describe('the playbook schema', () => {
-  test('has the eleven tenant tables and the work registry, and nothing else', () => {
+  test('has the thirteen tenant tables and the work registry, and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
   })
 
@@ -61,7 +64,8 @@ describe('the playbook schema', () => {
       consumedMigration +
       idempotencyMigration +
       orphanMigration +
-      salesMigration
+      salesMigration +
+      callsMigration
     for (const statement of tenantRlsStatements('playbook', name)) {
       expect(sql).toContain(statement)
     }

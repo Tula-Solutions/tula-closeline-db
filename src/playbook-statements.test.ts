@@ -83,6 +83,11 @@ const TAKES_A_TIME = [
   'DEAL_LIST_BY_IMPORT_FLAG',
   'DEAL_SET_OUTCOME',
   'DEAL_IMPORT_LIST',
+  'CALL_LIST',
+  'CALL_LIST_BY_STATE',
+  'CALL_LIST_BY_DEAL',
+  'CALL_LIST_BY_DEAL_STATE',
+  'CALL_LIST_PENDING_CLEANUP',
 ]
 
 describe('the documented playbook statements', () => {
@@ -657,7 +662,7 @@ describe('sales history, part one', () => {
 
   test('an Outcome change locks the row first and finishing checks the row count', () => {
     expect(DEAL_SET_OUTCOME).toMatch(
-      /with cur as \(\n\s+select \* from playbook\.deals[\s\S]*for update\)/
+      /with cur as \(\n\s+select \* from playbook\.deals[\s\S]*for no key update\)/
     )
     expect(DEAL_IMPORT_FINISH).toContain('report_through = $4::int + 1')
   })

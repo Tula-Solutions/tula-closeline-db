@@ -179,7 +179,7 @@ declare const AUTH_STATEMENTS: {
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, dealImportRows, dealImports, deals, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, rightsConfirmations, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, calls, consumedMessage, coreSchema, credentials, dealImportRows, dealImports, deals, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, repChangeAllowed, rightsConfirmations, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -8277,6 +8277,950 @@ import { PgSchema as PgSchema_mtt0uw3 } from "drizzle-orm/pg-core";
 declare const playbookSchema: PgSchema_mtt0uw3<"playbook">;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g34 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp34 } from "drizzle-orm/pg-core";
+/** The states a Call is in. Mirrors the contract's `CALL_STATES`. */
+declare const CALL_STATES: readonly ["uploaded", "transcribing", "awaiting_rep", "processing", "ready", "failed", "deleted"];
+/** Why a Call ended `failed`. Mirrors the contract's `CALL_FAILURE_REASONS`. */
+declare const CALL_FAILURE_REASONS: readonly ["no_turns", "too_few_speakers", "too_many_speakers", "rep_label_not_found", "not_per_side", "too_long", "transcription_failed", "transcription_timed_out", "unreadable", "processing_failed"];
+/** What a Call was uploaded as. Mirrors the contract's `CALL_KINDS`. */
+declare const CALL_KINDS: readonly ["transcript", "recording"];
+/** The media type of a stored Call file. Mirrors the contract's `CALL_MEDIA_TYPES`. */
+declare const CALL_MEDIA_TYPES: readonly ["text/plain", "text/vtt", "application/x-subrip", "application/json", "audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/webm", "audio/flac"];
+/** The channels of a per-side Recording. Mirrors the contract's `CALL_CHANNELS`. */
+declare const CALL_CHANNELS: readonly ["left", "right"];
+/** How a Rep is chosen. Mirrors the contract's `repChoiceSchema` discriminator. */
+declare const CALL_REP_BY: readonly ["speaker", "channel"];
+/** The largest Transcript, 5 MiB. Mirrors the contract's `MAX_TRANSCRIPT_BYTES`. */
+declare const CALL_MAX_TRANSCRIPT_BYTES: number;
+/** The largest Recording, 500 MiB. Mirrors the contract's `MAX_RECORDING_BYTES`. */
+declare const CALL_MAX_RECORDING_BYTES: number;
+/** The longest Recording in seconds (3 hours). Mirrors the contract's `MAX_RECORDING_SECONDS`. */
+declare const CALL_MAX_RECORDING_SECONDS: number;
+/** The most speakers a Call may list. Mirrors the contract's `MAX_CALL_SPEAKERS`. */
+declare const CALL_MAX_SPEAKERS = 20;
+/** The longest speaker label in code points. Mirrors the contract's `MAX_SPEAKER_LABEL_LENGTH`. */
+declare const CALL_SPEAKER_LABEL_MAX_LENGTH = 64;
+/** The most UTF-8 bytes a speaker label takes. Mirrors the contract's `MAX_SPEAKER_LABEL_BYTES`. */
+declare const CALL_SPEAKER_LABEL_MAX_BYTES = 256;
+/** The largest Rep or Outcome sequence. Mirrors the contract's `MAX_SEQ`. */
+declare const CALL_MAX_SEQ = 2147483647;
+/** The most times a Call purge may be claimed: the table's bound, as for documents. */
+declare const CALL_PURGE_MAX_ATTEMPTS = 20;
+/** The most times a Call job may be claimed: the table's bound, as for ingestion jobs. */
+declare const CALL_JOB_MAX_ATTEMPTS = 20;
+/** The kinds of Call job: transcribe a Recording, build a Call's Moments, rebuild them after a Rep change. */
+declare const CALL_JOB_KINDS: readonly ["transcribe", "process", "rebuild"];
+/** The states of a Call job; `queued` and `running` are active. */
+declare const CALL_JOB_STATES: readonly ["queued", "running", "succeeded", "failed", "cancelled"];
+/**
+* Whether a Call's Rep may be picked or changed. Mirrors the contract's `repChangeAllowed`, and is
+* the same rule `CALL_SET_REP` applies in SQL: the test pins the two to each other.
+*/
+declare function repChangeAllowed(state: string, failureReason: string | null): boolean;
+/**
+* Whether a same-Deal re-upload of identical content re-queues a failed Call. Mirrors the
+* contract's `callReuploadRequeues`; `CALL_REQUEUE` applies the same rule in SQL.
+*/
+declare function callReuploadRequeues(failureReason: string | null): boolean;
+/**
+* The rows whose vector cleanup is pending, as for documents: deleted, and the cleanup recorded
+* for an older deletion than the current one. One text, used by `calls_cleanup_idx`, the
+* `CALL_LIST_PENDING_CLEANUP` statement and the `call_cleanup` discovery verification.
+*/
+declare const CALL_PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)";
+/**
+* A Call of an Organization (ADR 0018): the record of an uploaded Transcript or Recording and the
+* Deal it belongs to. **Metadata only**: the file is in object storage under `object_key`, the
+* Transcript a Recording produced under `transcript_key`, and the turns and Moments in the vector
+* index. Nothing here holds a turn, a sentence or audio. `speaker_labels` are untrusted text from
+* the file (at most 20, unique), kept so a Rep can be picked from them.
+*
+* Keyed by `(organization_id, id)`; `deal_record_id` references the Deal without a cascade, so a
+* Deal cannot be erased while a Call refers to it: Calls are erased first. The checks tie every
+* state to its columns exactly as the contract's `callSchema` does (see the table checks).
+*
+* `epoch` is bumped by every soft delete and restore (as for documents); `deletion_seq` by every
+* soft delete (a queued vector cleanup carries it); `rep_seq` by every Rep pick or change (a
+* queued rebuild carries it and applies only while it equals the stored one); `tagged_outcome_seq`
+* is the Outcome sequence of the Deal the Call's Moments are tagged with in the index, so a Call is
+* in search only while it is `ready`, its Deal is `won` and the tag is current.
+*
+* Content hash: unique per Organization among Calls whose purge has not started and that are not
+* barred from restore (`calls_content_hash_key`), whatever the Deal: the same content under
+* another Deal is found by the hash and refused. A Transcript and a Recording of the same Call
+* have different hashes and are two Calls.
+*
+* Quota: `organization_usage.call_count` and `recording_byte_count` count every Call, a soft-deleted
+* one and one in `awaiting_rep` included, until it is purged or erased. Recording bytes count
+* Recordings only.
+*
+* Lists (keyset `(created_at, id)`, newest first, always a text `cursor_at`): live Calls
+* (`calls_list_idx`), one state (`calls_state_list_idx`, deleted included), one Deal
+* (`calls_deal_list_idx`).
+*/
+declare const calls: PgTableWithColumns_a5zn0g34<{
+	name: "calls";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp34<{
+			name: "id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealRecordId: PgColumn_ffrhhp34<{
+			name: "deal_record_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		kind: PgColumn_ffrhhp34<{
+			name: "kind";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "recording" | "transcript";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["transcript", "recording"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		fileName: PgColumn_ffrhhp34<{
+			name: "file_name";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		mediaType: PgColumn_ffrhhp34<{
+			name: "media_type";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "application/json" | "application/x-subrip" | "audio/flac" | "audio/mp4" | "audio/mpeg" | "audio/ogg" | "audio/wav" | "audio/webm" | "text/plain" | "text/vtt";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["text/plain", "text/vtt", "application/x-subrip", "application/json", "audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/webm", "audio/flac"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sizeBytes: PgColumn_ffrhhp34<{
+			name: "size_bytes";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		contentHash: PgColumn_ffrhhp34<{
+			name: "content_hash";
+			tableName: "calls";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: Uint8Array<ArrayBufferLike>;
+			driverParam: Uint8Array<ArrayBufferLike>;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		durationSeconds: PgColumn_ffrhhp34<{
+			name: "duration_seconds";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp34<{
+			name: "state";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "awaiting_rep" | "deleted" | "failed" | "processing" | "ready" | "transcribing" | "uploaded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["uploaded", "transcribing", "awaiting_rep", "processing", "ready", "failed", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp34<{
+			name: "failure_reason";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "no_turns" | "not_per_side" | "processing_failed" | "rep_label_not_found" | "too_few_speakers" | "too_long" | "too_many_speakers" | "transcription_failed" | "transcription_timed_out" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["no_turns", "too_few_speakers", "too_many_speakers", "rep_label_not_found", "not_per_side", "too_long", "transcription_failed", "transcription_timed_out", "unreadable", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repBy: PgColumn_ffrhhp34<{
+			name: "rep_by";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "channel" | "speaker";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["speaker", "channel"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repLabel: PgColumn_ffrhhp34<{
+			name: "rep_label";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repChannel: PgColumn_ffrhhp34<{
+			name: "rep_channel";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "left" | "right";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["left", "right"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		speakerLabels: PgColumn_ffrhhp34<{
+			name: "speaker_labels";
+			tableName: "calls";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: string[];
+			driverParam: string[];
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		uploadedBy: PgColumn_ffrhhp34<{
+			name: "uploaded_by";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		objectKey: PgColumn_ffrhhp34<{
+			name: "object_key";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		transcriptKey: PgColumn_ffrhhp34<{
+			name: "transcript_key";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		epoch: PgColumn_ffrhhp34<{
+			name: "epoch";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repSeq: PgColumn_ffrhhp34<{
+			name: "rep_seq";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletionSeq: PgColumn_ffrhhp34<{
+			name: "deletion_seq";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vectorsRemovedSeq: PgColumn_ffrhhp34<{
+			name: "vectors_removed_seq";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		taggedOutcomeSeq: PgColumn_ffrhhp34<{
+			name: "tagged_outcome_seq";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sentToVendorAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vendorSendSeq: PgColumn_ffrhhp34<{
+			name: "vendor_send_seq";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vendorRemovedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedBy: PgColumn_ffrhhp34<{
+			name: "deleted_by";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeDueAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeStartedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeLeaseUntil: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeAttempts: PgColumn_ffrhhp34<{
+			name: "purge_attempts";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		restoreBarredAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A job of one Call: `transcribe` a Recording, `process` (build Moments) a Call whose Rep is
+* known, or `rebuild` them after a Rep pick or change (it carries `rep_seq` and applies only while
+* the Call's stored `rep_seq` equals it). **A sibling of `ingestion_jobs`, not an extension of
+* it:** an ingestion job is keyed to a document and its parse, chunk, embed and index steps, and
+* its columns and checks say so; a Call job has three kinds and no steps, and sharing the table
+* would have made every check conditional on a kind. The lease is the same (`next_attempt_at` is
+* the due time while queued and the lease end while running, `claim_token` fences a worker whose
+* lease lapsed, `attempts` is bounded by the table). One active job per Call
+* (`call_jobs_active_call_key`).
+*/
+declare const callJobs: PgTableWithColumns_a5zn0g34<{
+	name: "call_jobs";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp34<{
+			name: "id";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		callId: PgColumn_ffrhhp34<{
+			name: "call_id";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		kind: PgColumn_ffrhhp34<{
+			name: "kind";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "process" | "rebuild" | "transcribe";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["transcribe", "process", "rebuild"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		epoch: PgColumn_ffrhhp34<{
+			name: "epoch";
+			tableName: "call_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repSeq: PgColumn_ffrhhp34<{
+			name: "rep_seq";
+			tableName: "call_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp34<{
+			name: "state";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "cancelled" | "failed" | "queued" | "running" | "succeeded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["queued", "running", "succeeded", "failed", "cancelled"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		attempts: PgColumn_ffrhhp34<{
+			name: "attempts";
+			tableName: "call_jobs";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		nextAttemptAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "call_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		claimToken: PgColumn_ffrhhp34<{
+			name: "claim_token";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgUUID";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp34<{
+			name: "failure_reason";
+			tableName: "call_jobs";
+			dataType: "string";
+			columnType: "PgText";
+			data: "no_turns" | "not_per_side" | "processing_failed" | "rep_label_not_found" | "too_few_speakers" | "too_long" | "too_many_speakers" | "transcription_failed" | "transcription_timed_out" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["no_turns", "too_few_speakers", "too_many_speakers", "rep_label_not_found", "not_per_side", "too_long", "transcription_failed", "transcription_timed_out", "unreadable", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		finishedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "call_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "call_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "call_jobs";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g35 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp35 } from "drizzle-orm/pg-core";
 /**
 * The messages a playbook queue consumer has handled or is handling: the table behind the kit's
 * `ProcessedStore` (`claim`, `renew`, `complete`, `release`, `purge`), shaped as the kit README
@@ -8294,11 +9238,11 @@ import { PgColumn as PgColumn_ffrhhp34 } from "drizzle-orm/pg-core";
 * Indexes: the key serves `claim`, `renew`, `complete` and `release`; the two partial indexes
 * serve the purge of done records and of lapsed claims.
 */
-declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
+declare const consumedMessage: PgTableWithColumns_a5zn0g35<{
 	name: "consumed_message";
 	schema: "playbook";
 	columns: {
-		consumer: PgColumn_ffrhhp34<{
+		consumer: PgColumn_ffrhhp35<{
 			name: "consumer";
 			tableName: "consumed_message";
 			dataType: "string";
@@ -8315,7 +9259,7 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "consumed_message";
 			dataType: "string";
@@ -8332,7 +9276,7 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		messageId: PgColumn_ffrhhp34<{
+		messageId: PgColumn_ffrhhp35<{
 			name: "message_id";
 			tableName: "consumed_message";
 			dataType: "string";
@@ -8349,7 +9293,7 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp34<{
+		state: PgColumn_ffrhhp35<{
 			name: "state";
 			tableName: "consumed_message";
 			dataType: "string";
@@ -8366,7 +9310,7 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp34<{
+		claimToken: PgColumn_ffrhhp35<{
 			name: "claim_token";
 			tableName: "consumed_message";
 			dataType: "string";
@@ -8383,7 +9327,7 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		leaseExpiresAt: PgColumn_ffrhhp34<{
+		leaseExpiresAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "consumed_message";
 			dataType: "date";
@@ -8400,7 +9344,7 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		completedAt: PgColumn_ffrhhp34<{
+		completedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "consumed_message";
 			dataType: "date";
@@ -8420,8 +9364,8 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g34<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g35 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp35 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 /** The user id of an internal call, which has no user: all zeros, in the `usr_` shape the key needs. */
 declare const INTERNAL_CALL_USER_ID = "usr_00000000000000000000000000000000";
 /**
@@ -8434,11 +9378,11 @@ declare const INTERNAL_CALL_USER_ID = "usr_00000000000000000000000000000000";
 * never rewritten. The purge is per Organization and bounded (`IDEMPOTENCY_PURGE`), on
 * `idempotency_keys_purge_idx`.
 */
-declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
+declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g36<{
 	name: "idempotency_keys";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp35<{
+		organizationId: PgColumn_ffrhhp36<{
 			name: "organization_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -8455,7 +9399,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userId: PgColumn_ffrhhp35<{
+		userId: PgColumn_ffrhhp36<{
 			name: "user_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -8472,7 +9416,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		route: PgColumn_ffrhhp35<{
+		route: PgColumn_ffrhhp36<{
 			name: "route";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -8489,7 +9433,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		key: PgColumn_ffrhhp35<{
+		key: PgColumn_ffrhhp36<{
 			name: "key";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -8506,7 +9450,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestHash: PgColumn_ffrhhp35<{
+		requestHash: PgColumn_ffrhhp36<{
 			name: "request_hash";
 			tableName: "idempotency_keys";
 			dataType: "custom";
@@ -8525,7 +9469,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		status: PgColumn_ffrhhp35<{
+		status: PgColumn_ffrhhp36<{
 			name: "status";
 			tableName: "idempotency_keys";
 			dataType: "number";
@@ -8542,7 +9486,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		response: PgColumn_ffrhhp35<{
+		response: PgColumn_ffrhhp36<{
 			name: "response";
 			tableName: "idempotency_keys";
 			dataType: "json";
@@ -8561,7 +9505,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 		}, {}, {
 			$type: unknown;
 		}>;
-		createdAt: PgColumn_ffrhhp35<{
+		createdAt: PgColumn_ffrhhp36<{
 			name: "created_at";
 			tableName: "idempotency_keys";
 			dataType: "date";
@@ -8581,8 +9525,8 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g35<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
 /**
 * What the `orphan_sweep` work kind remembers between sweeps: one row per Organization, the time
 * through which the service has swept stored objects for orphans (`swept_through`). A **tenant
@@ -8598,11 +9542,11 @@ import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 * written only by that function and read by the discovery function and `orphan_sweep_done`, which
 * treat it as a pending attempt until `swept_through` covers it. It holds a time and no content.
 */
-declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
+declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g37<{
 	name: "orphan_sweeps";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp36<{
+		organizationId: PgColumn_ffrhhp37<{
 			name: "organization_id";
 			tableName: "orphan_sweeps";
 			dataType: "string";
@@ -8619,7 +9563,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sweptThrough: PgColumn_ffrhhp36<{
+		sweptThrough: PgColumn_ffrhhp37<{
 			name: "swept_through";
 			tableName: "orphan_sweeps";
 			dataType: "date";
@@ -8636,7 +9580,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		erasedAttemptAt: PgColumn_ffrhhp36<{
+		erasedAttemptAt: PgColumn_ffrhhp37<{
 			name: "erased_attempt_at";
 			tableName: "orphan_sweeps";
 			dataType: "date";
@@ -8656,8 +9600,8 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
 /** The Outcome of a Deal. Mirrors the contract's `OUTCOMES`. */
 declare const DEAL_OUTCOMES: readonly ["won", "lost", "open"];
 /** The states of a Deal import. Mirrors the contract's `DEAL_IMPORT_STATES`. */
@@ -8703,11 +9647,11 @@ declare const DEAL_IMPORT_APPLY_BATCH = 500;
 * (`deals_outcome_list_idx`), by whether it appeared in an import (`deals_import_list_idx`);
 * lookup by the customer's id: `deals_deal_id_key`.
 */
-declare const deals: PgTableWithColumns_a5zn0g37<{
+declare const deals: PgTableWithColumns_a5zn0g38<{
 	name: "deals";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp37<{
+		id: PgColumn_ffrhhp38<{
 			name: "id";
 			tableName: "deals";
 			dataType: "string";
@@ -8724,7 +9668,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "deals";
 			dataType: "string";
@@ -8741,7 +9685,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealId: PgColumn_ffrhhp37<{
+		dealId: PgColumn_ffrhhp38<{
 			name: "deal_id";
 			tableName: "deals";
 			dataType: "string";
@@ -8758,7 +9702,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp37<{
+		name: PgColumn_ffrhhp38<{
 			name: "name";
 			tableName: "deals";
 			dataType: "string";
@@ -8775,7 +9719,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		outcome: PgColumn_ffrhhp37<{
+		outcome: PgColumn_ffrhhp38<{
 			name: "outcome";
 			tableName: "deals";
 			dataType: "string";
@@ -8792,7 +9736,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		outcomeSeq: PgColumn_ffrhhp37<{
+		outcomeSeq: PgColumn_ffrhhp38<{
 			name: "outcome_seq";
 			tableName: "deals";
 			dataType: "number";
@@ -8809,7 +9753,24 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		closedAt: PgColumn_ffrhhp37<{
+		retagThrough: PgColumn_ffrhhp38<{
+			name: "retag_through";
+			tableName: "deals";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		closedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deals";
 			dataType: "date";
@@ -8826,7 +9787,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		amount: PgColumn_ffrhhp37<{
+		amount: PgColumn_ffrhhp38<{
 			name: "amount";
 			tableName: "deals";
 			dataType: "string";
@@ -8843,7 +9804,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		currency: PgColumn_ffrhhp37<{
+		currency: PgColumn_ffrhhp38<{
 			name: "currency";
 			tableName: "deals";
 			dataType: "string";
@@ -8860,7 +9821,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		appearedInImport: PgColumn_ffrhhp37<{
+		appearedInImport: PgColumn_ffrhhp38<{
 			name: "appeared_in_import";
 			tableName: "deals";
 			dataType: "boolean";
@@ -8877,7 +9838,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp37<{
+		createdAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deals";
 			dataType: "date";
@@ -8894,7 +9855,7 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp37<{
+		updatedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deals";
 			dataType: "date";
@@ -8926,11 +9887,11 @@ declare const deals: PgTableWithColumns_a5zn0g37<{
 * import has `erased_at`, is `failed` and is never claimed again; its report rows and then the
 * import row itself are removed in bounded batches (`DEAL_IMPORT_PURGE_BATCH`).
 */
-declare const dealImports: PgTableWithColumns_a5zn0g37<{
+declare const dealImports: PgTableWithColumns_a5zn0g38<{
 	name: "deal_imports";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp37<{
+		id: PgColumn_ffrhhp38<{
 			name: "id";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -8947,7 +9908,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -8964,7 +9925,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp37<{
+		state: PgColumn_ffrhhp38<{
 			name: "state";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -8981,7 +9942,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp37<{
+		failureReason: PgColumn_ffrhhp38<{
 			name: "failure_reason";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -8998,7 +9959,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp37<{
+		uploadedBy: PgColumn_ffrhhp38<{
 			name: "uploaded_by";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -9015,7 +9976,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp37<{
+		objectKey: PgColumn_ffrhhp38<{
 			name: "object_key";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -9032,7 +9993,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sizeBytes: PgColumn_ffrhhp37<{
+		sizeBytes: PgColumn_ffrhhp38<{
 			name: "size_bytes";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -9049,7 +10010,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp37<{
+		attempts: PgColumn_ffrhhp38<{
 			name: "attempts";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -9066,7 +10027,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp37<{
+		nextAttemptAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -9083,7 +10044,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp37<{
+		claimToken: PgColumn_ffrhhp38<{
 			name: "claim_token";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -9100,7 +10061,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rowCount: PgColumn_ffrhhp37<{
+		rowCount: PgColumn_ffrhhp38<{
 			name: "row_count";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -9117,7 +10078,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		appliedCount: PgColumn_ffrhhp37<{
+		appliedCount: PgColumn_ffrhhp38<{
 			name: "applied_count";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -9134,7 +10095,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rejectedCount: PgColumn_ffrhhp37<{
+		rejectedCount: PgColumn_ffrhhp38<{
 			name: "rejected_count";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -9151,7 +10112,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		reportThrough: PgColumn_ffrhhp37<{
+		reportThrough: PgColumn_ffrhhp38<{
 			name: "report_through";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -9168,7 +10129,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectRemovedAt: PgColumn_ffrhhp37<{
+		objectRemovedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -9185,7 +10146,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		erasedAt: PgColumn_ffrhhp37<{
+		erasedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -9202,7 +10163,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp37<{
+		finishedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -9219,7 +10180,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp37<{
+		createdAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -9236,7 +10197,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp37<{
+		updatedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -9266,11 +10227,11 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 * (`deal_import_rows_pkey`, `deal_import_rows_result_idx` for one result). The foreign key to the
 * import is not cascading: rows go in bounded batches before the import row.
 */
-declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
+declare const dealImportRows: PgTableWithColumns_a5zn0g38<{
 	name: "deal_import_rows";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -9287,7 +10248,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		importId: PgColumn_ffrhhp37<{
+		importId: PgColumn_ffrhhp38<{
 			name: "import_id";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -9304,7 +10265,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rowNumber: PgColumn_ffrhhp37<{
+		rowNumber: PgColumn_ffrhhp38<{
 			name: "row_number";
 			tableName: "deal_import_rows";
 			dataType: "number";
@@ -9321,7 +10282,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealId: PgColumn_ffrhhp37<{
+		dealId: PgColumn_ffrhhp38<{
 			name: "deal_id";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -9338,7 +10299,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		result: PgColumn_ffrhhp37<{
+		result: PgColumn_ffrhhp38<{
 			name: "result";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -9355,7 +10316,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		reason: PgColumn_ffrhhp37<{
+		reason: PgColumn_ffrhhp38<{
 			name: "reason";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -9381,11 +10342,11 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
 * of the wording shown. A newer version replaces it (`RIGHTS_CONFIRM`); the wording itself is not
 * here. Whether the stored version is the current one is the service's number to compare.
 */
-declare const rightsConfirmations: PgTableWithColumns_a5zn0g37<{
+declare const rightsConfirmations: PgTableWithColumns_a5zn0g38<{
 	name: "rights_confirmations";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "rights_confirmations";
 			dataType: "string";
@@ -9402,7 +10363,7 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		confirmedBy: PgColumn_ffrhhp37<{
+		confirmedBy: PgColumn_ffrhhp38<{
 			name: "confirmed_by";
 			tableName: "rights_confirmations";
 			dataType: "string";
@@ -9419,7 +10380,7 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		confirmedAt: PgColumn_ffrhhp37<{
+		confirmedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "rights_confirmations";
 			dataType: "date";
@@ -9436,7 +10397,7 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		wordingVersion: PgColumn_ffrhhp37<{
+		wordingVersion: PgColumn_ffrhhp38<{
 			name: "wording_version";
 			tableName: "rights_confirmations";
 			dataType: "number";
@@ -9456,8 +10417,8 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g37<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g39 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp39 } from "drizzle-orm/pg-core";
 /**
 * The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
 * `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
@@ -9522,11 +10483,11 @@ declare const PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_remove
 * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
 * - Quota counts: `organization_usage`, one row, kept by triggers.
 */
-declare const documents: PgTableWithColumns_a5zn0g38<{
+declare const documents: PgTableWithColumns_a5zn0g39<{
 	name: "documents";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp38<{
+		id: PgColumn_ffrhhp39<{
 			name: "id";
 			tableName: "documents";
 			dataType: "string";
@@ -9543,7 +10504,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "documents";
 			dataType: "string";
@@ -9560,7 +10521,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp38<{
+		name: PgColumn_ffrhhp39<{
 			name: "name";
 			tableName: "documents";
 			dataType: "string";
@@ -9577,7 +10538,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp38<{
+		state: PgColumn_ffrhhp39<{
 			name: "state";
 			tableName: "documents";
 			dataType: "string";
@@ -9594,7 +10555,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp38<{
+		contentHash: PgColumn_ffrhhp39<{
 			name: "content_hash";
 			tableName: "documents";
 			dataType: "custom";
@@ -9613,7 +10574,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		sizeBytes: PgColumn_ffrhhp38<{
+		sizeBytes: PgColumn_ffrhhp39<{
 			name: "size_bytes";
 			tableName: "documents";
 			dataType: "number";
@@ -9630,7 +10591,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		declaredType: PgColumn_ffrhhp38<{
+		declaredType: PgColumn_ffrhhp39<{
 			name: "declared_type";
 			tableName: "documents";
 			dataType: "string";
@@ -9647,7 +10608,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		detectedType: PgColumn_ffrhhp38<{
+		detectedType: PgColumn_ffrhhp39<{
 			name: "detected_type";
 			tableName: "documents";
 			dataType: "string";
@@ -9664,7 +10625,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp38<{
+		uploadedBy: PgColumn_ffrhhp39<{
 			name: "uploaded_by";
 			tableName: "documents";
 			dataType: "string";
@@ -9681,7 +10642,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp38<{
+		objectKey: PgColumn_ffrhhp39<{
 			name: "object_key";
 			tableName: "documents";
 			dataType: "string";
@@ -9698,7 +10659,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp38<{
+		failureReason: PgColumn_ffrhhp39<{
 			name: "failure_reason";
 			tableName: "documents";
 			dataType: "string";
@@ -9715,7 +10676,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp38<{
+		pageCount: PgColumn_ffrhhp39<{
 			name: "page_count";
 			tableName: "documents";
 			dataType: "number";
@@ -9732,7 +10693,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp38<{
+		epoch: PgColumn_ffrhhp39<{
 			name: "epoch";
 			tableName: "documents";
 			dataType: "number";
@@ -9749,7 +10710,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletionSeq: PgColumn_ffrhhp38<{
+		deletionSeq: PgColumn_ffrhhp39<{
 			name: "deletion_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -9766,7 +10727,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsRemovedSeq: PgColumn_ffrhhp38<{
+		vectorsRemovedSeq: PgColumn_ffrhhp39<{
 			name: "vectors_removed_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -9783,7 +10744,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp38<{
+		deletedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9800,7 +10761,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedBy: PgColumn_ffrhhp38<{
+		deletedBy: PgColumn_ffrhhp39<{
 			name: "deleted_by";
 			tableName: "documents";
 			dataType: "string";
@@ -9817,7 +10778,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp38<{
+		purgeDueAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9834,7 +10795,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeStartedAt: PgColumn_ffrhhp38<{
+		purgeStartedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9851,7 +10812,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeLeaseUntil: PgColumn_ffrhhp38<{
+		purgeLeaseUntil: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9868,7 +10829,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeAttempts: PgColumn_ffrhhp38<{
+		purgeAttempts: PgColumn_ffrhhp39<{
 			name: "purge_attempts";
 			tableName: "documents";
 			dataType: "number";
@@ -9885,7 +10846,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		restoreBarredAt: PgColumn_ffrhhp38<{
+		restoreBarredAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9902,7 +10863,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9919,7 +10880,7 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9945,11 +10906,11 @@ declare const documents: PgTableWithColumns_a5zn0g38<{
 * own transaction, so it cannot drift from the table; the service role can only read it. A row
 * stays, at zero, once an Organization has had a document.
 */
-declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
+declare const organizationUsage: PgTableWithColumns_a5zn0g39<{
 	name: "organization_usage";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "organization_usage";
 			dataType: "string";
@@ -9966,7 +10927,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentCount: PgColumn_ffrhhp38<{
+		documentCount: PgColumn_ffrhhp39<{
 			name: "document_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -9983,7 +10944,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		byteCount: PgColumn_ffrhhp38<{
+		byteCount: PgColumn_ffrhhp39<{
 			name: "byte_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -10000,7 +10961,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealCount: PgColumn_ffrhhp38<{
+		dealCount: PgColumn_ffrhhp39<{
 			name: "deal_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -10017,7 +10978,41 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		callCount: PgColumn_ffrhhp39<{
+			name: "call_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		recordingByteCount: PgColumn_ffrhhp39<{
+			name: "recording_byte_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "organization_usage";
 			dataType: "date";
@@ -10046,11 +11041,11 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
 * spent job and the give-up statement fails it. One active job per document
 * (`ingestion_jobs_active_document_key`).
 */
-declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
+declare const ingestionJobs: PgTableWithColumns_a5zn0g39<{
 	name: "ingestion_jobs";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp38<{
+		id: PgColumn_ffrhhp39<{
 			name: "id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10067,7 +11062,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10084,7 +11079,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentId: PgColumn_ffrhhp38<{
+		documentId: PgColumn_ffrhhp39<{
 			name: "document_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10101,7 +11096,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp38<{
+		epoch: PgColumn_ffrhhp39<{
 			name: "epoch";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -10118,7 +11113,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp38<{
+		state: PgColumn_ffrhhp39<{
 			name: "state";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10135,7 +11130,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		step: PgColumn_ffrhhp38<{
+		step: PgColumn_ffrhhp39<{
 			name: "step";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10152,7 +11147,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp38<{
+		attempts: PgColumn_ffrhhp39<{
 			name: "attempts";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -10169,7 +11164,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp38<{
+		nextAttemptAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -10186,7 +11181,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp38<{
+		claimToken: PgColumn_ffrhhp39<{
 			name: "claim_token";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10203,7 +11198,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		artifactKey: PgColumn_ffrhhp38<{
+		artifactKey: PgColumn_ffrhhp39<{
 			name: "artifact_key";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10220,7 +11215,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp38<{
+		pageCount: PgColumn_ffrhhp39<{
 			name: "page_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -10237,7 +11232,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunkCount: PgColumn_ffrhhp38<{
+		chunkCount: PgColumn_ffrhhp39<{
 			name: "chunk_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -10254,7 +11249,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunksDone: PgColumn_ffrhhp38<{
+		chunksDone: PgColumn_ffrhhp39<{
 			name: "chunks_done";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -10271,7 +11266,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp38<{
+		failureReason: PgColumn_ffrhhp39<{
 			name: "failure_reason";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -10288,7 +11283,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp38<{
+		finishedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -10305,7 +11300,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -10322,7 +11317,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -10348,11 +11343,11 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 * service role cannot delete the row: changing the model is a deliberate re-index, done by an
 * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
 */
-declare const indexSettings: PgTableWithColumns_a5zn0g38<{
+declare const indexSettings: PgTableWithColumns_a5zn0g39<{
 	name: "index_settings";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "index_settings";
 			dataType: "string";
@@ -10369,7 +11364,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingModel: PgColumn_ffrhhp38<{
+		embeddingModel: PgColumn_ffrhhp39<{
 			name: "embedding_model";
 			tableName: "index_settings";
 			dataType: "string";
@@ -10386,7 +11381,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingDimension: PgColumn_ffrhhp38<{
+		embeddingDimension: PgColumn_ffrhhp39<{
 			name: "embedding_dimension";
 			tableName: "index_settings";
 			dataType: "number";
@@ -10403,7 +11398,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsWrittenAt: PgColumn_ffrhhp38<{
+		vectorsWrittenAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -10420,7 +11415,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -10437,7 +11432,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -10457,17 +11452,20 @@ declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g39 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp39 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g40 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp40 } from "drizzle-orm/pg-core";
 /**
 * The kinds of due work `playbook.organizations_with_work` finds: documents due for purge, ingestion
 * jobs due or with a lapsed lease, deleted documents whose vector cleanup is not recorded, consumed
 * messages old enough to purge, idempotency keys old enough to purge, documents whose purge
 * reached the attempt bound, and Organizations with an upload attempt whose stored objects have not
 * been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`), and Deal imports to
-* apply (`import_apply`, see `dealImports`).
+* apply (`import_apply`, see `dealImports`). Calls add `call_jobs` (transcription, processing and
+* rebuild jobs), `call_purge`, `call_cleanup`, `call_purge_spent` (the Call counterparts of the
+* document kinds) and `outcome_retag` (a Deal whose Outcome changed and whose ready Calls are not
+* all re-tagged).
 */
-declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep", "import_apply"];
+declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep", "import_apply", "call_jobs", "call_purge", "call_cleanup", "call_purge_spent", "outcome_retag"];
 /**
 * One row per kind of work and Organization that may have work from `due_at` on: the registry the
 * discovery function reads, because row-level security hides every tenant table from any role
@@ -10479,28 +11477,28 @@ declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", 
 * privilege on it; the function and the triggers are the only way in. The all-zero global scope
 * appears only for `consumed_purge`.
 */
-declare const playbookWorkHints: PgTableWithColumns_a5zn0g39<{
+declare const playbookWorkHints: PgTableWithColumns_a5zn0g40<{
 	name: "work_hints";
 	schema: "playbook";
 	columns: {
-		kind: PgColumn_ffrhhp39<{
+		kind: PgColumn_ffrhhp40<{
 			name: "kind";
 			tableName: "work_hints";
 			dataType: "string";
 			columnType: "PgText";
-			data: "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "import_apply" | "jobs_due" | "orphan_sweep" | "purge_due" | "purge_spent";
+			data: "call_cleanup" | "call_jobs" | "call_purge" | "call_purge_spent" | "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "import_apply" | "jobs_due" | "orphan_sweep" | "outcome_retag" | "purge_due" | "purge_spent";
 			driverParam: string;
 			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep", "import_apply"];
+			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep", "import_apply", "call_jobs", "call_purge", "call_cleanup", "call_purge_spent", "outcome_retag"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "work_hints";
 			dataType: "string";
@@ -10517,7 +11515,7 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dueAt: PgColumn_ffrhhp39<{
+		dueAt: PgColumn_ffrhhp40<{
 			name: "due_at";
 			tableName: "work_hints";
 			dataType: "date";
@@ -10771,6 +11769,402 @@ declare function findTenantIsolationGaps(db: Pick<Database, "execute">, allowlis
 * @throws An error naming each offending table or role and why.
 */
 declare function assertTenantIsolation(db: Pick<Database, "execute">, allowlist?: readonly string[]): Promise<void>;
+/**
+* The names of the columns of a Call answer, in order: the contract's `Call` fields (the Rep as
+* `rep_by`, `rep_label` and `rep_channel`; `rep` is null exactly when `rep_by` is) plus `rep_seq`,
+* `epoch` and `deletion_seq` for the messages and `not_restorable` for the 410. `in_search` and
+* `deal_outcome` come from the Deal in the same query: `in_search` is true only for a `ready` Call
+* of a `won` Deal whose tag is current (`tagged_outcome_seq >= outcome_seq`), so it is false while
+* a Rep rebuild is pending (the Call is `processing`) and while an Outcome re-tag is pending.
+* The list statements add `cursor_at`.
+*/
+declare const CALL_ROW_FIELDS: readonly ["id", "deal_record_id", "deal_id", "deal_outcome", "in_search", "kind", "file_name", "media_type", "size_bytes", "duration_seconds", "state", "failure_reason", "rep_by", "rep_label", "rep_channel", "speaker_labels", "deleted_at", "purge_due_at", "uploaded_by", "created_at", "updated_at", "rep_seq", "epoch", "deletion_seq", "not_restorable"];
+/**
+* The Organization's Call and Recording-byte counts, from the counter row the `calls` triggers keep.
+* `$1` Organization. A Call in any state counts until it is purged or erased, `deleted` and
+* `awaiting_rep` included; Recording bytes count Recordings only. No row means nothing was ever
+* added. node-postgres returns the bigints as strings.
+*/
+declare const CALL_USAGE2 = "select call_count, recording_byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+/**
+* Add a Call and queue its first job in one write. **Order of the upload transaction:**
+* `IDEMPOTENCY_BEGIN` first, then `QUOTA_LOCK`, then this (the `calls_require_lock` and
+* `deals_require_lock` triggers refuse an insert without the lock). `$1` Organization, `$2` the new
+* `call_…` id, `$3` the customer's deal id (trimmed by the caller), `$4` an id for the Deal if it
+* must be created (`deal_…`), `$5` file name, `$6` media type, `$7` kind (`transcript` or
+* `recording`), `$8` size in bytes, `$9` SHA-256 of the content (32 bytes), `$10` uploader, `$11`
+* object key, `$12` to `$14` the Rep choice (`by`, `label`, `channel`; all null for a Recording that
+* will wait in `awaiting_rep`), `$15` the new job's `cjob_…` id, `$16` the most Calls, `$17` the most
+* Recording bytes in total and `$18` the most Deals the Organization may hold after this one, `$19`
+* the service's **current rights wording version**.
+*
+* One row, whose `result` says what happened, decided in this order and in one statement (so the
+* rights check, the duplicate check, the quota and the insert see one snapshot under the upload
+* lock): `rights_required` (no confirmation at exactly that version: nothing else is read or
+* written); `existing` (the same content is already stored under **this** Deal: the row carries
+* that Call's `id`, `state` and `failure_reason`; restore it with {@link CALL_RESTORE_FOR_UPLOAD} if
+* `deleted`, {@link CALL_REQUEUE} it if `failed`, else answer with it as it is); `other_deal` (the
+* same content under another Deal: refuse, saying nothing of which); `quota_exceeded`; `created`
+* (the Call is `uploaded` with a queued `transcribe` job for a Recording or `process` job for a
+* Transcript, and an unknown deal id has created an open Deal). The hash is unique per Organization
+* among Calls whose purge has not started and that erasure has not barred from restore.
+*/
+declare const CALL_INSERT2 = "with rights as (\\n  select exists (select 1 from playbook.rights_confirmations\\n                 where organization_id = $1 and wording_version = $19::int) as ok),\\ndup as (\\n  select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal\\n  from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id\\n  where c.organization_id = $1 and c.content_hash = $9::bytea\\n    and c.purge_started_at is null and c.restore_barred_at is null),\\ndeal as (\\n  select id from playbook.deals where organization_id = $1 and deal_id = $3::text),\\nusage as (\\n  select call_count, recording_byte_count, deal_count from playbook.organization_usage where organization_id = $1),\\ngate as (\\n  select (select ok from rights) as rights_ok,\\n    not exists (select 1 from dup) as no_dup,\\n    (coalesce((select call_count from usage), 0) < $16::bigint\\n      and ($7::text <> 'recording' or coalesce((select recording_byte_count from usage), 0) + $8::bigint <= $17::bigint)\\n      and (exists (select 1 from deal) or coalesce((select deal_count from usage), 0) < $18::bigint)) as quota_ok),\\ngo as (\\n  select 1 as one from gate where rights_ok and no_dup and quota_ok),\\nmade as (\\n  insert into playbook.deals (id, organization_id, deal_id)\\n  select $4::text, $1, $3::text from go where not exists (select 1 from deal)\\n  returning id),\\nins as (\\n  insert into playbook.calls\\n    (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash,\\n     uploaded_by, object_key, rep_by, rep_label, rep_channel)\\n  select $2::text, $1, coalesce((select id from deal), (select id from made)), $7::text, $5::text, $6::text,\\n    $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text\\n  from go\\n  returning id, state, epoch, rep_seq),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()\\n  from ins)\\nselect 'created' as result, id, state, null::text as failure_reason from ins\\nunion all\\nselect case when same_deal then 'existing' else 'other_deal' end,\\n  case when same_deal then id end, case when same_deal then state end, case when same_deal then failure_reason end\\nfrom dup where (select ok from rights)\\nunion all\\nselect case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null\\nfrom gate where not rights_ok or (no_dup and not quota_ok)";
+/** Read one Call with its Deal's `deal_id`, Outcome and `in_search`. `$1` Organization, `$2` the Call. No row when absent. */
+declare const CALL_GET2 = "select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,\\n  (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,\\n  c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,\\n  c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,\\n  c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,\\n  (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable\\nfrom playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id\\nwhere c.organization_id = $1 and c.id = $2";
+/**
+* List the Calls that are not deleted, newest first, one page by keyset. `$1` Organization, `$2`
+* and `$3` the `cursor_at` (text, never a Date) and `id` of the last row of the previous page
+* (`'infinity'` and `''` first), `$4` the page size (clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}).
+* One query: the Deal's `deal_id`, Outcome and `in_search` are joined, never looked up per row. On
+* `calls_list_idx`, read backwards.
+*/
+declare const CALL_LIST2: string;
+/**
+* {@link CALL_LIST} for one state (`$5`: any of the seven, `deleted` included, which lists the Calls
+* that can still be restored). On `calls_state_list_idx`.
+*/
+declare const CALL_LIST_BY_STATE2: string;
+/**
+* {@link CALL_LIST} for one Deal (`$5` the Deal's `deal_…` id), the Calls that are not deleted. On
+* `calls_deal_list_idx`. The Deal's Calls in one state, `deleted` included, are
+* {@link CALL_LIST_BY_DEAL_STATE}: the two are separate statements so each keeps its index under a
+* generic plan.
+*/
+declare const CALL_LIST_BY_DEAL2: string;
+/**
+* {@link CALL_LIST} for one Deal (`$5`) in one state (`$6`, any of the seven; `deleted` lists the
+* Deal's Calls that can still be restored). On `calls_deal_state_list_idx`, whose equality columns
+* are the Organization, the Deal and the state, so the page is read in order with no filter.
+* (`calls_deal_list_idx` stays: it serves {@link CALL_LIST_BY_DEAL}, which spans every state but
+* `deleted` and so needs the Deal's Calls in one `created_at` order.)
+*/
+declare const CALL_LIST_BY_DEAL_STATE2: string;
+/**
+* Soft-delete a Call, as {@link DOCUMENT_SOFT_DELETE} does a document. `$1` Organization, `$2` the
+* Call, `$3` the deleting user, `$4` the retention in milliseconds (raised to one hour). Its queued
+* or running job is cancelled first (job rows before the Call row, the lock order everywhere),
+* `epoch` and `deletion_seq` rise by one and the failure reason is cleared. Returns `id`, `state`,
+* `deletion_seq`, `purge_due_at` and `changed`; deleting a deleted Call writes nothing and returns
+* `changed` false. Publish the `playbook.call_deleted` message with `deletion_seq` only when
+* `changed`. The Call still counts toward the quota until purged.
+*/
+declare const CALL_SOFT_DELETE2 = "with j as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n  returning id),\\nx as (\\n  update playbook.calls\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, state, deletion_seq, purge_due_at)\\nselect id, state, deletion_seq, purge_due_at, true as changed from x\\nunion all\\nselect id, state, deletion_seq, purge_due_at, false from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from x)";
+/**
+* Restore a soft-deleted Call and queue its work. `$1` Organization, `$2` the Call, `$3` the new
+* job's id. Only a `deleted` Call whose purge time has not passed and whose purge has not started,
+* and that erasure has not barred. The state it comes back in is the work that remains:
+* `uploaded` with a `transcribe` job when the Recording was never transcribed; `awaiting_rep` with
+* no job when it was transcribed and has no Rep; otherwise `processing` with a `process` job
+* (the contract's "processing"). It cancels a job left on the deleted Call first and bumps `epoch`.
+* A Call that is not deleted returns its state with `changed` false. No row: gone, its purge has
+* started, or it lost a race (read it, as for a document). Against a purge claim the row lock
+* decides, as for documents.
+*/
+declare const CALL_RESTORE2: string;
+/** The restore for an upload that matches a deleted Call: as {@link CALL_RESTORE} without the purge-time check. */
+declare const CALL_RESTORE_FOR_UPLOAD2: string;
+/**
+* Re-queue a `failed` Call when a same-Deal upload of the same content arrives: only for the three
+* transient reasons (`transcription_failed`, `transcription_timed_out`, `processing_failed`: the
+* contract's `callReuploadRequeues`); it goes back to `uploaded` with a queued `transcribe` job
+* (when there is no kept Transcript) or `process` job. `$1` Organization, `$2` the Call, `$3` the new
+* job's id. Any other Call, a failed one with another reason included, is returned as it is with
+* `changed` false and nothing written, except a deleted one (no row: restore it instead).
+*/
+declare const CALL_REQUEUE2 = "with j as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'\\n                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))\\n  returning id),\\nx as (\\n  update playbook.calls\\n  set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'failed'\\n    and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')\\n    and (select count(*) from j) >= 0\\n  returning organization_id, id, epoch, rep_seq, kind, transcript_key),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,\\n    epoch, rep_seq, clock_timestamp()\\n  from x)\\nselect id, 'uploaded' as state, epoch, true as changed from x\\nunion all\\nselect id, state, epoch, false from playbook.calls\\nwhere organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from x)";
+/**
+* Pick or change a Call's Rep. `$1` Organization, `$2` the Call, `$3` `speaker` or `channel`, `$4`
+* the speaker label (for `speaker`), `$5` the channel (for `channel`), `$6` the new job's id. One
+* row, whose `result` is decided in the statement under the row lock (so two changes queue):
+* `not_changeable` (the contract's `repChangeAllowed` is false: only `ready`, `awaiting_rep`, or
+* `failed` with `rep_label_not_found` or `not_per_side` may change it); `invalid` (the choice does
+* not suit the kind: a Transcript takes a speaker only; or the label is not among the Call's
+* speaker labels; or the channel is not `left` or `right`); `unchanged` (the Call already has this
+* Rep and is not `failed`: nothing is written, whatever its state, so a repeat of a request
+* answers 200 even while the rebuild runs); `changed`. A null or unknown `$3` is `invalid` whatever the state. **Lock order:** the Call's active job rows
+* first (`for update`), then the Call row, the order of every statement that takes both (the
+* claim, the delete, the completion), so a Rep change cannot deadlock with a job claim. A change bumps `rep_seq` by one, cancels
+* the Call's job, moves the Call to `processing` with the failure reason cleared and queues a
+* `rebuild` job carrying the new `rep_seq` in the same write: the Call is out of search until
+* the rebuild finishes ({@link CALL_JOB_COMPLETE} applies only while the stored `rep_seq` still
+* equals the job's, so a later change always wins). Publish `playbook.call_rep_changed` with the
+* returned `rep_seq` only when `result` is `changed`. No row when the Call does not exist.
+*/
+declare const CALL_SET_REP2 = "with jl as (\\n  select id from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n  order by id\\n  for update),\\ncur as (\\n  select * from playbook.calls where organization_id = $1 and id = $2 and (select count(*) from jl) >= 0 for update),\\nv as (\\n  select cur.id, cur.state, cur.rep_seq,\\n    case\\n      when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'\\n      when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text\\n        and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)\\n        and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)\\n        and cur.state <> 'failed' then 'unchanged'\\n      when not (cur.state in ('ready', 'awaiting_rep')\\n                or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))\\n        then 'not_changeable'\\n      when not coalesce(($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))\\n                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right')), false) then 'invalid'\\n      else 'changed'\\n    end as result\\n  from cur),\\nj as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id in (select id from jl)\\n    and exists (select 1 from v where result = 'changed')\\n  returning id),\\nu as (\\n  update playbook.calls c\\n  set rep_by = $3::text, rep_label = case when $3::text = 'speaker' then $4::text end,\\n      rep_channel = case when $3::text = 'channel' then $5::text end,\\n      rep_seq = c.rep_seq + 1, state = 'processing', failure_reason = null, updated_at = clock_timestamp()\\n  from v\\n  where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0\\n  returning c.id, c.rep_seq, c.epoch),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)\\nselect 'changed' as result, id, 'processing'::text as state, rep_seq from u\\nunion all\\nselect result, id, state, rep_seq from v where result <> 'changed'";
+/**
+* Claim due Call jobs as a lease, in a short transaction that commits at once. `$1` Organization,
+* `$2` batch size, `$3` the lease in milliseconds (raised to one second), `$4` one job id or null
+* for any. As {@link INGESTION_JOB_CLAIM} does for documents: each claim counts an attempt and
+* issues a `claim_token` every later statement must present; a job is taken only while its Call is
+* live for it (`transcribe`: `uploaded` or `transcribing`; `process`: `uploaded` or `processing`;
+* `rebuild`: `processing` with the job's `rep_seq`; always at the job's epoch) and a due job whose
+* Call is not is cancelled in the same statement; the claim moves an `uploaded` Call to
+* `transcribing` or `processing`. A job with all ${CALL_JOB_MAX_ATTEMPTS} attempts used is never
+* claimed ({@link CALL_JOB_GIVE_UP_SPENT} resolves it). Locks: job rows (`skip locked`), then the
+* Call row, the order everywhere. Rows are the claimed jobs with what the worker needs (the Call's
+* kind, keys, Rep and labels, and `sent_to_vendor_at`); every row carries `cancelled` and `lost`
+* as for documents, and one signal row with a null `id` comes back when neither a job was claimed
+* nor nothing was due. Run it with a short `lock_timeout`; no publish or network call inside the
+* transaction.
+*/
+declare const CALL_JOB_CLAIM2: string;
+/** One row of {@link CALL_JOB_CLAIM}: a claimed job, or (with a null `id`) the signal row. */
+interface CallJobClaimRow {
+	id: string | null;
+	call_id: string | null;
+	job_kind: "transcribe" | "process" | "rebuild" | null;
+	epoch: number | null;
+	rep_seq: number | null;
+	attempts: number | null;
+	claim_token: string | null;
+	call_kind: "transcript" | "recording" | null;
+	media_type: string | null;
+	size_bytes: string | null;
+	object_key: string | null;
+	transcript_key: string | null;
+	rep_by: "speaker" | "channel" | null;
+	rep_label: string | null;
+	rep_channel: "left" | "right" | null;
+	speaker_labels: string[] | null;
+	sent_to_vendor_at: Date | null;
+	cancelled: number;
+	lost: number;
+}
+/** A claimed Call job as {@link claimedCallJobs} returns it: a claim row whose `id` is known to be set. */
+type ClaimedCallJob = CallJobClaimRow & {
+	id: string;
+	call_id: string;
+};
+/** Read the rows of {@link CALL_JOB_CLAIM}: the claimed jobs and the counts it `cancelled` and `lost`; claim again at once when either is above zero. */
+declare function claimedCallJobs(rows: readonly CallJobClaimRow[]): {
+	jobs: ClaimedCallJob[];
+	cancelled: number;
+	lost: number;
+};
+/**
+* Extend a Call job's lease. `$1` Organization, `$2` job, `$3` the claim token, `$4` the new lease
+* in milliseconds. No row: the claim was lost, or the Call is no longer live for the job (deleted,
+* restored under a new epoch, its Rep changed again): stop and write nothing more.
+*/
+declare const CALL_JOB_HEARTBEAT2: string;
+/**
+* Give a failed attempt back for a later one: the job returns to `queued` with the delay (cut to one
+* hour; the service jitters it). `$1` Organization, `$2` job, `$3` the claim token, `$4` the delay in
+* milliseconds. No row: the claim was lost.
+*/
+declare const CALL_JOB_RETRY2 = "update playbook.call_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
+/**
+* Record that the Recording is about to be sent to the vendor, before the request is made, so a
+* purge or erasure knows a vendor copy may exist and waits for {@link CALL_VENDOR_REMOVED}. `$1`
+* Organization, `$2` job, `$3` the claim token. **Every send counts**: it adds one to
+* `vendor_send_seq`, refreshes `sent_to_vendor_at` and clears `vendor_removed_at`, so a copy sent
+* again after an earlier one was confirmed gone needs its own confirmation. Returns `id` and the
+* new `vendor_send_seq`: the service keeps its vendor reference for that send under this number,
+* and **sends a client reference derived from the Call id and this number** (for example
+* `<call id>:<n>`), so every counted send can be found and deleted at the vendor even when the
+* service crashed after the vendor accepted it and before it stored the vendor's id; a
+* confirmation for number `n` means every copy with reference 1 to `n` is gone. That needs the
+* vendor to support a client reference or a lookup, which is unverified for AssemblyAI and belongs
+* to the transcriber adapter ticket. No row: the claim was lost or the Call is not live.
+*/
+declare const CALL_SENT_TO_VENDOR2: string;
+/**
+* Record what a step learned and extend the lease. `$1` Organization, `$2` job, `$3` the claim
+* token, `$4` the object key of the Transcript a Recording produced (kept and reused), `$5` the
+* Recording's duration in seconds, `$6` the speaker labels as a text array (at most 20, unique: more
+* is `too_many_speakers`, which the service fails with {@link CALL_JOB_FAIL} instead), `$7` the lease
+* in milliseconds. A null leaves that value as it is. No row: the claim was lost or the Call is not
+* live. The table refuses a duration over 3 hours (the service fails `too_long` instead).
+*/
+declare const CALL_JOB_RECORD2: string;
+/**
+* End a `transcribe` job: the Transcript is stored (and recorded with {@link CALL_JOB_RECORD}).
+* `$1` Organization, `$2` job, `$3` the claim token, `$4` the id of the `process` job to queue. The
+* Call goes to `awaiting_rep` when it has no Rep (no job; `playbook.call_rep_changed` follows the
+* pick) and to `processing` with a queued `process` job when it has (publish
+* `playbook.call_transcribed`). One row with the Call's new `state`, or none when the claim was lost,
+* the Call is not `transcribing` at the job's epoch, or no Transcript is recorded.
+*/
+declare const CALL_JOB_TRANSCRIBED2 = "with j as (\\n  update playbook.call_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind = 'transcribe'\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id\\n                and x.state = 'transcribing' and x.epoch = call_jobs.epoch and x.transcript_key is not null)\\n  returning call_id, epoch),\\nc as (\\n  update playbook.calls\\n  set state = case when rep_by is null then 'awaiting_rep' else 'processing' end, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'\\n  returning id, state, epoch, rep_seq),\\nq as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')\\nselect id, state from c";
+/**
+* Finish a `process` or `rebuild` job and make the Call `ready`. `$1` Organization, `$2` job, `$3`
+* the claim token, `$4` the Deal's `outcome_seq` the Moments were tagged with (read by the worker
+* before it built them). It applies only while the Call is `processing` at the job's epoch, has a
+* Rep (and, for a speaker, a label among its labels: else the service fails it with
+* `rep_label_not_found`), and for a `rebuild` only while the stored `rep_seq` equals the job's. It
+* **locks the Deal row** (`for no key update`, the mode of an Outcome change and of
+* {@link DEAL_RETAG_LOCK}, which conflicts with neither the foreign-key `KEY SHARE` of an upload
+* nor a reader) **before the Call is written**, because the Call update reads that locked row and
+* so waits for it, and reads `outcome_seq` from the locked, newest row, never from the statement's
+* snapshot. (Postgres does not order the data-modifying parts of a statement textually, so the
+* lock is not promised to come before the job row's; it need not: no statement that holds a Deal
+* row waits for a job or Call row, so either order is safe.) It records the tag (never above that sequence) and, when the tag is behind it, lowers
+* the Deal's `retag_through` in the same write. Because the re-tag's lock and an Outcome change
+* queue on the same row, a completion that is open while the Outcome moves holds the change (and
+* so the re-tag's `DONE`) back until it commits, and a completion that waits behind them tags
+* against the newer sequence: a Call can never become `ready` with a stale tag unseen. The mode is
+* `no key update`, not `share`, because two completions that held `share` and then both lowered
+* `retag_through` would deadlock on the upgrade; this way they queue instead, for the length of
+* one statement. Keep the transaction of an Outcome change short for the same reason. No row: the
+* claim was lost or a guard failed.
+*/
+declare const CALL_JOB_COMPLETE2 = "with dk as (\\n  select d.id, d.outcome_seq from playbook.deals d\\n  where d.organization_id = $1\\n    and d.id = (select x.deal_record_id from playbook.calls x join playbook.call_jobs y\\n                  on y.organization_id = x.organization_id and y.call_id = x.id\\n                where y.organization_id = $1 and y.id = $2)\\n  for no key update),\\nj as (\\n  update playbook.call_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id\\n                and x.state = 'processing' and x.epoch = call_jobs.epoch\\n                and (call_jobs.kind = 'process' or x.rep_seq = call_jobs.rep_seq)\\n                and x.rep_by is not null and (x.rep_by <> 'speaker' or x.rep_label = any(x.speaker_labels)))\\n  returning call_id, epoch),\\nc as (\\n  update playbook.calls c\\n  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dk.outcome_seq)), updated_at = clock_timestamp()\\n  from j, dk\\n  where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'\\n    and dk.id = c.deal_record_id\\n  returning c.id, c.deal_record_id, c.tagged_outcome_seq),\\ndl as (\\n  update playbook.deals d\\n  set retag_through = least(d.retag_through, c.tagged_outcome_seq)\\n  from c, dk\\n  where d.organization_id = $1 and d.id = c.deal_record_id and dk.id = d.id and c.tagged_outcome_seq < dk.outcome_seq\\n  returning d.id)\\nselect id from c";
+/**
+* End a Call job as failed with a reason, and the Call with it. `$1` Organization, `$2` job, `$3`
+* the claim token, `$4` the reason (one of the ten; the table rejects any other). `too_many_speakers`
+* also clears the labels (the contract lists none for it). A Call that failed with
+* `rep_label_not_found` or `not_per_side` can be fixed by {@link CALL_SET_REP}. No row: the claim was lost.
+*/
+declare const CALL_JOB_FAIL2: string;
+/**
+* Fail spent jobs, one bounded batch: active jobs that used every attempt and whose lease ended, as
+* `failed` with `processing_failed`, and their Calls too (the safety net behind the service's own
+* limit). `$1` Organization, `$2` batch size. Skips rows another transaction holds.
+*/
+declare const CALL_JOB_GIVE_UP_SPENT2: string;
+/**
+* Begin the vector cleanup queued for one Call deletion, as {@link DOCUMENT_CLEANUP_BEGIN} does.
+* `$1` Organization, `$2` Call, `$3` the `deletion_seq` the message carried. A row means the
+* cleanup still applies; `clear` is false while a worker may still hold a lease on the Call.
+*/
+declare const CALL_CLEANUP_BEGIN2 = "select c.id, c.epoch,\\n  not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = c.organization_id and j.call_id = c.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.calls c\\nwhere c.organization_id = $1 and c.id = $2 and c.state = 'deleted' and c.deletion_seq = $3::int";
+/**
+* One page of the deleted Calls whose vector cleanup is pending ({@link CALL_PENDING_CLEANUP_PREDICATE}),
+* oldest deletion first. `$1` Organization, `$2` and `$3` the cursor (`deleted_at::text`, `id`;
+* `'-infinity'` and `''` first), `$4` the page size. Rows: `id`, `epoch`, `deletion_seq`,
+* `deleted_at` and `cursor_at` (the text of `deleted_at`). On `calls_cleanup_idx`.
+*/
+declare const CALL_LIST_PENDING_CLEANUP2: string;
+/** Record that the cleanup of one deletion finished: `$1` Organization, `$2` Call, `$3` the `deletion_seq`. No row: restored or deleted again since. */
+declare const CALL_CLEANUP_DONE2 = "update playbook.calls\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+/**
+* Record that the vendor confirmed it deleted its copy of a Recording. `$1` Organization, `$2` Call,
+* `$3` the `vendor_send_seq` of the send whose copy is gone (the purge claim and the erase rows
+* carry the current one). Only for a `deleted` Call whose latest send is that number, so a late
+* confirmation of an earlier copy confirms nothing about a later one; idempotent. **No row while a
+* job of the Call still holds a live lease** (`running`, or `cancelled` with `next_attempt_at` in
+* the future, as delete and erasure leave it): a worker that already recorded the send may still be
+* mid-request, so a confirmation taken now could be made before its copy lands, which would be a
+* false statement. Retry after the lease. {@link CALL_PURGE_COMPLETE} waits for both.
+*/
+declare const CALL_VENDOR_REMOVED2 = "update playbook.calls\\nset vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int\\n  and sent_to_vendor_at is not null\\n  and not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = $1 and j.call_id = $2\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())\\nreturning id";
+/**
+* Claim Calls due for purge as a lease, as {@link DOCUMENT_PURGE_CLAIM}. `$1` Organization, `$2`
+* batch size, `$3` the lease in milliseconds. Rows carry what the service must remove outside any
+* transaction: `object_key` (the original), `transcript_key` (the kept Transcript), `kind`,
+* `sent_to_vendor_at`, `vendor_send_seq` and `vendor_removed_at` (remove the vendor's copy and record it
+* with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
+* when they differ). The service also removes every artefact under the Call's id prefix. **A claim
+* means the purge can finish**: a Call is not handed out while a job of it is `running`, or
+* `cancelled` with its lease unexpired (delete and erasure cancel a job but keep its lease), the
+* state in which {@link CALL_VENDOR_REMOVED} and {@link CALL_PURGE_COMPLETE} refuse, so a service
+* that retries during the wait spends none of the {@link CALL_PURGE_MAX_ATTEMPTS} attempts. Erasure
+* reaches the purge only through this claim and inherits that.
+*/
+declare const CALL_PURGE_CLAIM2: string;
+/**
+* Finish a Call purge: remove the row (its jobs go by cascade and the counts fall in the same
+* transaction). `$1` Organization, `$2` Call. Only for a `deleted` Call whose purge was claimed, whose
+* current deletion's cleanup is recorded and whose vendor copy, if one was made, is recorded removed,
+* and with no live job lease: a `running` job, or a `cancelled` one (delete and erasure cancel a job
+* but keep its lease) whose `next_attempt_at` has not passed, may still have a request in flight,
+* as {@link CALL_CLEANUP_BEGIN} also treats it. Locks the Call's job rows first (the lock order everywhere).
+*/
+declare const CALL_PURGE_COMPLETE2 = "with jl as (\\n  select state, next_attempt_at from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2\\n  for update)\\ndelete from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and (sent_to_vendor_at is null or vendor_removed_at is not null)\\n  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
+/** List the Calls whose purge reached the attempt bound, one page by id: `$1` Organization, `$2` last id (`''` first), `$3` page size. On `calls_spent_purge_idx`. */
+declare const CALL_LIST_SPENT_PURGES2: string;
+/** Give one spent Call purge another round: `$1` Organization, `$2` Call. The Call is barred from restore for good. Idempotent. */
+declare const CALL_PURGE_RESET2 = "update playbook.calls\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
+/**
+* One batch of an erasure of Calls: bar the Organization's Calls from restore and make them due
+* for purge at once, as {@link DOCUMENT_ERASE_BATCH} does documents. **Run it, and let the purge
+* remove every Call, before {@link DEAL_ERASE_BATCH}**: a Deal a Call refers to cannot be deleted.
+* `$1` Organization, `$2` batch size, `$3` the actor (an internal call has no user: `usr_` and 32
+* zeros). Rows: `id`, `epoch`, `deletion_seq`, `changed` (publish the cleanup with that sequence),
+* and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at`, `vendor_send_seq` so the service can remove the
+* objects and the vendor copy at once; the purge claim returns them again. Lock order: job rows,
+* then Call rows, each in id order. Repeat until no row comes back. An upload still streaming has
+* no Call yet: its key is an upload attempt, so the orphan sweep removes its parts and object.
+*/
+declare const CALL_ERASE_BATCH2: string;
+/**
+* One page of the Deals that need an Outcome re-tag (`retag_through < outcome_seq`, on
+* `deals_retag_idx`): `$1` Organization, `$2` the last Deal id of the previous page (`''` first),
+* `$3` the page size (clamped). Rows: `id`, `outcome`, `outcome_seq`, `retag_through`.
+*/
+declare const DEAL_LIST_PENDING_RETAG2: string;
+/**
+* One bounded batch of a Deal's `ready` Calls whose tag is behind the Deal's Outcome sequence:
+* `$1` Organization, `$2` the Deal, `$3` the last Call id of the previous batch (`''` first), `$4` the
+* batch size (clamped). Rows carry the Call `id`, the Deal's current `outcome` and `outcome_seq`:
+* re-tag the Call's Moments in the index with that Outcome, then record it with {@link CALL_RETAGGED}.
+* One statement reads the batch plus the keyset rows it skips: the keyset on `calls_retag_idx`
+* moves forward, so all the batches of one re-tag read the Deal's ready Calls once (bounded by
+* the quota, never by the Organization), and the job is idempotent (it reads the Outcome from the database, so a batch
+* repeated after a change does the newer work).
+*/
+declare const DEAL_RETAG_BATCH2: string;
+/**
+* Record that Calls' Moments carry an Outcome sequence: `$1` Organization, `$2` the Call ids (an
+* array; the first 500 are used), `$3` the sequence the batch row carried. A Call's tag only goes
+* up and never above its Deal's current sequence. Rows are the Calls updated.
+*/
+declare const CALL_RETAGGED2 = "update playbook.calls c\\nset tagged_outcome_seq = $3::int, updated_at = clock_timestamp()\\nfrom playbook.deals d\\nwhere c.organization_id = $1 and c.id = any(($2::text[])[1:500]) and c.state = 'ready'\\n  and c.tagged_outcome_seq < $3::int\\n  and d.organization_id = $1 and d.id = c.deal_record_id and $3::int <= d.outcome_seq\\nreturning c.id";
+/**
+* Take the Deal row before finishing its re-tag: `$1` Organization, `$2` the Deal. **Run it and
+* {@link DEAL_RETAG_DONE} in one transaction, as two statements.** The second runs with a new
+* snapshot after this lock is granted, so it sees every Call that became `ready` with a stale tag
+* (their transaction also takes this row, see {@link CALL_JOB_COMPLETE}) before it decides.
+*/
+declare const DEAL_RETAG_LOCK2 = "select id, outcome, outcome_seq, retag_through\nfrom playbook.deals\nwhere organization_id = $1 and id = $2\nfor no key update";
+/**
+* Finish a Deal's re-tag: `$1` Organization, `$2` the Deal, `$3` the `outcome_seq` the batches
+* carried. It sets `retag_through` to it only if it is above the stored one and not above the Deal's
+* sequence and no `ready` Call of the Deal is still tagged below it (one indexed read of the Deal's
+* ready Calls, once per re-tag, short-circuiting on the first stale one). No row means more work
+* remains (another Call, or a newer Outcome): list and batch again. Hint: a lowered marker notes the
+* `outcome_retag` work again by trigger.
+*/
+declare const DEAL_RETAG_DONE2 = "update playbook.deals d\\nset retag_through = $3::int\\nwhere d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3::int <= d.outcome_seq\\n  and not exists (\\n    select 1 from playbook.calls c\\n    where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)\\nreturning d.id, d.retag_through, d.outcome_seq";
+/** Every Call statement above by name, for the README check and the integration tests. */
+declare const CALL_STATEMENTS: {
+	readonly CALL_USAGE2: "select call_count, recording_byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+	readonly CALL_INSERT2: "with rights as (\\n  select exists (select 1 from playbook.rights_confirmations\\n                 where organization_id = $1 and wording_version = $19::int) as ok),\\ndup as (\\n  select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal\\n  from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id\\n  where c.organization_id = $1 and c.content_hash = $9::bytea\\n    and c.purge_started_at is null and c.restore_barred_at is null),\\ndeal as (\\n  select id from playbook.deals where organization_id = $1 and deal_id = $3::text),\\nusage as (\\n  select call_count, recording_byte_count, deal_count from playbook.organization_usage where organization_id = $1),\\ngate as (\\n  select (select ok from rights) as rights_ok,\\n    not exists (select 1 from dup) as no_dup,\\n    (coalesce((select call_count from usage), 0) < $16::bigint\\n      and ($7::text <> 'recording' or coalesce((select recording_byte_count from usage), 0) + $8::bigint <= $17::bigint)\\n      and (exists (select 1 from deal) or coalesce((select deal_count from usage), 0) < $18::bigint)) as quota_ok),\\ngo as (\\n  select 1 as one from gate where rights_ok and no_dup and quota_ok),\\nmade as (\\n  insert into playbook.deals (id, organization_id, deal_id)\\n  select $4::text, $1, $3::text from go where not exists (select 1 from deal)\\n  returning id),\\nins as (\\n  insert into playbook.calls\\n    (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash,\\n     uploaded_by, object_key, rep_by, rep_label, rep_channel)\\n  select $2::text, $1, coalesce((select id from deal), (select id from made)), $7::text, $5::text, $6::text,\\n    $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text\\n  from go\\n  returning id, state, epoch, rep_seq),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()\\n  from ins)\\nselect 'created' as result, id, state, null::text as failure_reason from ins\\nunion all\\nselect case when same_deal then 'existing' else 'other_deal' end,\\n  case when same_deal then id end, case when same_deal then state end, case when same_deal then failure_reason end\\nfrom dup where (select ok from rights)\\nunion all\\nselect case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null\\nfrom gate where not rights_ok or (no_dup and not quota_ok)";
+	readonly CALL_GET2: "select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,\\n  (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,\\n  c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,\\n  c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,\\n  c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,\\n  (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable\\nfrom playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id\\nwhere c.organization_id = $1 and c.id = $2";
+	readonly CALL_LIST2: string;
+	readonly CALL_LIST_BY_STATE2: string;
+	readonly CALL_LIST_BY_DEAL2: string;
+	readonly CALL_LIST_BY_DEAL_STATE2: string;
+	readonly CALL_SOFT_DELETE2: "with j as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n  returning id),\\nx as (\\n  update playbook.calls\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, state, deletion_seq, purge_due_at)\\nselect id, state, deletion_seq, purge_due_at, true as changed from x\\nunion all\\nselect id, state, deletion_seq, purge_due_at, false from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from x)";
+	readonly CALL_RESTORE2: string;
+	readonly CALL_RESTORE_FOR_UPLOAD2: string;
+	readonly CALL_REQUEUE2: "with j as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'\\n                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))\\n  returning id),\\nx as (\\n  update playbook.calls\\n  set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'failed'\\n    and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')\\n    and (select count(*) from j) >= 0\\n  returning organization_id, id, epoch, rep_seq, kind, transcript_key),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,\\n    epoch, rep_seq, clock_timestamp()\\n  from x)\\nselect id, 'uploaded' as state, epoch, true as changed from x\\nunion all\\nselect id, state, epoch, false from playbook.calls\\nwhere organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from x)";
+	readonly CALL_SET_REP2: "with jl as (\\n  select id from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n  order by id\\n  for update),\\ncur as (\\n  select * from playbook.calls where organization_id = $1 and id = $2 and (select count(*) from jl) >= 0 for update),\\nv as (\\n  select cur.id, cur.state, cur.rep_seq,\\n    case\\n      when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'\\n      when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text\\n        and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)\\n        and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)\\n        and cur.state <> 'failed' then 'unchanged'\\n      when not (cur.state in ('ready', 'awaiting_rep')\\n                or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))\\n        then 'not_changeable'\\n      when not coalesce(($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))\\n                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right')), false) then 'invalid'\\n      else 'changed'\\n    end as result\\n  from cur),\\nj as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id in (select id from jl)\\n    and exists (select 1 from v where result = 'changed')\\n  returning id),\\nu as (\\n  update playbook.calls c\\n  set rep_by = $3::text, rep_label = case when $3::text = 'speaker' then $4::text end,\\n      rep_channel = case when $3::text = 'channel' then $5::text end,\\n      rep_seq = c.rep_seq + 1, state = 'processing', failure_reason = null, updated_at = clock_timestamp()\\n  from v\\n  where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0\\n  returning c.id, c.rep_seq, c.epoch),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)\\nselect 'changed' as result, id, 'processing'::text as state, rep_seq from u\\nunion all\\nselect result, id, state, rep_seq from v where result <> 'changed'";
+	readonly CALL_JOB_CLAIM2: string;
+	readonly CALL_JOB_HEARTBEAT2: string;
+	readonly CALL_JOB_RETRY2: "update playbook.call_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
+	readonly CALL_SENT_TO_VENDOR2: string;
+	readonly CALL_JOB_RECORD2: string;
+	readonly CALL_JOB_TRANSCRIBED2: "with j as (\\n  update playbook.call_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind = 'transcribe'\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id\\n                and x.state = 'transcribing' and x.epoch = call_jobs.epoch and x.transcript_key is not null)\\n  returning call_id, epoch),\\nc as (\\n  update playbook.calls\\n  set state = case when rep_by is null then 'awaiting_rep' else 'processing' end, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'\\n  returning id, state, epoch, rep_seq),\\nq as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')\\nselect id, state from c";
+	readonly CALL_JOB_COMPLETE2: "with dk as (\\n  select d.id, d.outcome_seq from playbook.deals d\\n  where d.organization_id = $1\\n    and d.id = (select x.deal_record_id from playbook.calls x join playbook.call_jobs y\\n                  on y.organization_id = x.organization_id and y.call_id = x.id\\n                where y.organization_id = $1 and y.id = $2)\\n  for no key update),\\nj as (\\n  update playbook.call_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id\\n                and x.state = 'processing' and x.epoch = call_jobs.epoch\\n                and (call_jobs.kind = 'process' or x.rep_seq = call_jobs.rep_seq)\\n                and x.rep_by is not null and (x.rep_by <> 'speaker' or x.rep_label = any(x.speaker_labels)))\\n  returning call_id, epoch),\\nc as (\\n  update playbook.calls c\\n  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dk.outcome_seq)), updated_at = clock_timestamp()\\n  from j, dk\\n  where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'\\n    and dk.id = c.deal_record_id\\n  returning c.id, c.deal_record_id, c.tagged_outcome_seq),\\ndl as (\\n  update playbook.deals d\\n  set retag_through = least(d.retag_through, c.tagged_outcome_seq)\\n  from c, dk\\n  where d.organization_id = $1 and d.id = c.deal_record_id and dk.id = d.id and c.tagged_outcome_seq < dk.outcome_seq\\n  returning d.id)\\nselect id from c";
+	readonly CALL_JOB_FAIL2: string;
+	readonly CALL_JOB_GIVE_UP_SPENT2: string;
+	readonly CALL_CLEANUP_BEGIN2: "select c.id, c.epoch,\\n  not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = c.organization_id and j.call_id = c.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.calls c\\nwhere c.organization_id = $1 and c.id = $2 and c.state = 'deleted' and c.deletion_seq = $3::int";
+	readonly CALL_LIST_PENDING_CLEANUP2: string;
+	readonly CALL_CLEANUP_DONE2: "update playbook.calls\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+	readonly CALL_VENDOR_REMOVED2: "update playbook.calls\\nset vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int\\n  and sent_to_vendor_at is not null\\n  and not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = $1 and j.call_id = $2\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())\\nreturning id";
+	readonly CALL_PURGE_CLAIM2: string;
+	readonly CALL_PURGE_COMPLETE2: "with jl as (\\n  select state, next_attempt_at from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2\\n  for update)\\ndelete from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and (sent_to_vendor_at is null or vendor_removed_at is not null)\\n  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
+	readonly CALL_LIST_SPENT_PURGES2: string;
+	readonly CALL_PURGE_RESET2: "update playbook.calls\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
+	readonly CALL_ERASE_BATCH2: string;
+	readonly DEAL_LIST_PENDING_RETAG2: string;
+	readonly DEAL_RETAG_BATCH2: string;
+	readonly CALL_RETAGGED2: "update playbook.calls c\\nset tagged_outcome_seq = $3::int, updated_at = clock_timestamp()\\nfrom playbook.deals d\\nwhere c.organization_id = $1 and c.id = any(($2::text[])[1:500]) and c.state = 'ready'\\n  and c.tagged_outcome_seq < $3::int\\n  and d.organization_id = $1 and d.id = c.deal_record_id and $3::int <= d.outcome_seq\\nreturning c.id";
+	readonly DEAL_RETAG_LOCK2: "select id, outcome, outcome_seq, retag_through\nfrom playbook.deals\nwhere organization_id = $1 and id = $2\nfor no key update";
+	readonly DEAL_RETAG_DONE2: "update playbook.deals d\\nset retag_through = $3::int\\nwhere d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3::int <= d.outcome_seq\\n  and not exists (\\n    select 1 from playbook.calls c\\n    where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)\\nreturning d.id, d.retag_through, d.outcome_seq";
+};
 /**
 * The least soft-delete retention, in milliseconds, {@link DOCUMENT_SOFT_DELETE} stores: one hour.
 * A smaller, null or negative value passed in is raised to it, so a bug cannot make a mistaken
@@ -11366,13 +12760,13 @@ declare const ORGANIZATION_REMOVE_REST = "select playbook.remove_organization_re
 * Whether an Organization is fully removed: the answer of the internal remove-all route. `$1`
 * Organization. One row: `no_documents`, `no_settings`, `no_usage`, `no_messages` (the
 * Organization's own consumed messages), `no_deals`, `no_imports` (a Deal import row, whose report
-* rows cannot exist without it), `no_rights` (the rights confirmation) and `removed`, true when all
-* seven hold. Idempotency keys
+* rows cannot exist without it), `no_rights` (the rights confirmation), `no_calls` (a Call row, whose jobs cannot exist without it) and `removed`, true when all
+* eight hold. Idempotency keys
 * are not part of it (the remove-all call's own key stays until it ages out). Run it inside the
 * Organization's scope; in any other scope it returns no row, because the tenant tables would
 * otherwise look empty and answer "removed" for an Organization the caller cannot see.
 */
-declare const ORGANIZATION_REMOVAL_STATUS = "select\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\n  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,\n  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,\n  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,\n  (not exists (select 1 from playbook.documents where organization_id = $1)\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)\n    and not exists (select 1 from playbook.deals where organization_id = $1)\n    and not exists (select 1 from playbook.deal_imports where organization_id = $1)\n    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
+declare const ORGANIZATION_REMOVAL_STATUS = "select\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\n  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,\n  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,\n  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,\n  not exists (select 1 from playbook.calls where organization_id = $1) as no_calls,\n  (not exists (select 1 from playbook.documents where organization_id = $1)\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)\n    and not exists (select 1 from playbook.deals where organization_id = $1)\n    and not exists (select 1 from playbook.deal_imports where organization_id = $1)\n    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)\n    and not exists (select 1 from playbook.calls where organization_id = $1)) as removed\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
 /**
 * List the documents whose purge reached the attempt bound, one page, for a person to look at. `$1`
 * Organization, `$2` the last id of the previous page (`''` for the first), `$3` the page size,
@@ -11486,7 +12880,7 @@ declare const DEAL_LIST_BY_IMPORT_FLAG: string;
 * answer is the Deal's state after the call with `changed`; no row when the Deal does not exist.
 * Publish the Outcome-changed message with the returned `outcome_seq` when `changed`.
 */
-declare const DEAL_SET_OUTCOME = "with cur as (\n  select * from playbook.deals where organization_id = $1 and id = $2 for update),\nu as (\n  update playbook.deals d\n  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,\n      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()\n  from cur\n  where d.organization_id = $1 and d.id = cur.id\n    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))\n  returning d.*)\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u\nunion all\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)";
+declare const DEAL_SET_OUTCOME = "with cur as (\n  select * from playbook.deals where organization_id = $1 and id = $2 for no key update),\nu as (\n  update playbook.deals d\n  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,\n      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()\n  from cur\n  where d.organization_id = $1 and d.id = cur.id\n    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))\n  returning d.*)\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u\nunion all\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)";
 /** The Deal count of an Organization, kept by a trigger: the quota check reads this one row. */
 declare const DEAL_USAGE = "select deal_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
 /**
@@ -11655,6 +13049,41 @@ declare const RIGHTS_GET = "select confirmed_by, confirmed_at, wording_version\n
 declare const RIGHTS_CONFIRM = "with up as (\n  insert into playbook.rights_confirmations as r (organization_id, confirmed_by, confirmed_at, wording_version)\n  values ($1, $2::text, clock_timestamp(), $3::int)\n  on conflict (organization_id) do update\n    set confirmed_by = excluded.confirmed_by, confirmed_at = excluded.confirmed_at, wording_version = excluded.wording_version\n    where r.wording_version < excluded.wording_version\n  returning confirmed_by, confirmed_at, wording_version)\nselect confirmed_by, confirmed_at, wording_version, true as recorded from up\nunion all\nselect confirmed_by, confirmed_at, wording_version, false\nfrom playbook.rights_confirmations\nwhere organization_id = $1 and not exists (select 1 from up)";
 /** Every statement above by name, for the README check and the integration tests. */
 declare const PLAYBOOK_STATEMENTS: {
+	readonly CALL_USAGE: "select call_count, recording_byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+	readonly CALL_INSERT: "with rights as (\\n  select exists (select 1 from playbook.rights_confirmations\\n                 where organization_id = $1 and wording_version = $19::int) as ok),\\ndup as (\\n  select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal\\n  from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id\\n  where c.organization_id = $1 and c.content_hash = $9::bytea\\n    and c.purge_started_at is null and c.restore_barred_at is null),\\ndeal as (\\n  select id from playbook.deals where organization_id = $1 and deal_id = $3::text),\\nusage as (\\n  select call_count, recording_byte_count, deal_count from playbook.organization_usage where organization_id = $1),\\ngate as (\\n  select (select ok from rights) as rights_ok,\\n    not exists (select 1 from dup) as no_dup,\\n    (coalesce((select call_count from usage), 0) < $16::bigint\\n      and ($7::text <> 'recording' or coalesce((select recording_byte_count from usage), 0) + $8::bigint <= $17::bigint)\\n      and (exists (select 1 from deal) or coalesce((select deal_count from usage), 0) < $18::bigint)) as quota_ok),\\ngo as (\\n  select 1 as one from gate where rights_ok and no_dup and quota_ok),\\nmade as (\\n  insert into playbook.deals (id, organization_id, deal_id)\\n  select $4::text, $1, $3::text from go where not exists (select 1 from deal)\\n  returning id),\\nins as (\\n  insert into playbook.calls\\n    (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash,\\n     uploaded_by, object_key, rep_by, rep_label, rep_channel)\\n  select $2::text, $1, coalesce((select id from deal), (select id from made)), $7::text, $5::text, $6::text,\\n    $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text\\n  from go\\n  returning id, state, epoch, rep_seq),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()\\n  from ins)\\nselect 'created' as result, id, state, null::text as failure_reason from ins\\nunion all\\nselect case when same_deal then 'existing' else 'other_deal' end,\\n  case when same_deal then id end, case when same_deal then state end, case when same_deal then failure_reason end\\nfrom dup where (select ok from rights)\\nunion all\\nselect case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null\\nfrom gate where not rights_ok or (no_dup and not quota_ok)";
+	readonly CALL_GET: "select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,\\n  (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,\\n  c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,\\n  c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,\\n  c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,\\n  (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable\\nfrom playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id\\nwhere c.organization_id = $1 and c.id = $2";
+	readonly CALL_LIST: string;
+	readonly CALL_LIST_BY_STATE: string;
+	readonly CALL_LIST_BY_DEAL: string;
+	readonly CALL_LIST_BY_DEAL_STATE: string;
+	readonly CALL_SOFT_DELETE: "with j as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),\\n      next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n  returning id),\\nx as (\\n  update playbook.calls\\n  set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,\\n      deleted_at = clock_timestamp(), deleted_by = $3,\\n      purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),\\n      failure_reason = null, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0\\n  returning id, state, deletion_seq, purge_due_at)\\nselect id, state, deletion_seq, purge_due_at, true as changed from x\\nunion all\\nselect id, state, deletion_seq, purge_due_at, false from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from x)";
+	readonly CALL_RESTORE: string;
+	readonly CALL_RESTORE_FOR_UPLOAD: string;
+	readonly CALL_REQUEUE: "with j as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'\\n                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))\\n  returning id),\\nx as (\\n  update playbook.calls\\n  set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and state = 'failed'\\n    and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')\\n    and (select count(*) from j) >= 0\\n  returning organization_id, id, epoch, rep_seq, kind, transcript_key),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,\\n    epoch, rep_seq, clock_timestamp()\\n  from x)\\nselect id, 'uploaded' as state, epoch, true as changed from x\\nunion all\\nselect id, state, epoch, false from playbook.calls\\nwhere organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from x)";
+	readonly CALL_SET_REP: "with jl as (\\n  select id from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2 and state in ('queued', 'running')\\n  order by id\\n  for update),\\ncur as (\\n  select * from playbook.calls where organization_id = $1 and id = $2 and (select count(*) from jl) >= 0 for update),\\nv as (\\n  select cur.id, cur.state, cur.rep_seq,\\n    case\\n      when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'\\n      when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text\\n        and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)\\n        and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)\\n        and cur.state <> 'failed' then 'unchanged'\\n      when not (cur.state in ('ready', 'awaiting_rep')\\n                or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))\\n        then 'not_changeable'\\n      when not coalesce(($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))\\n                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right')), false) then 'invalid'\\n      else 'changed'\\n    end as result\\n  from cur),\\nj as (\\n  update playbook.call_jobs\\n  set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id in (select id from jl)\\n    and exists (select 1 from v where result = 'changed')\\n  returning id),\\nu as (\\n  update playbook.calls c\\n  set rep_by = $3::text, rep_label = case when $3::text = 'speaker' then $4::text end,\\n      rep_channel = case when $3::text = 'channel' then $5::text end,\\n      rep_seq = c.rep_seq + 1, state = 'processing', failure_reason = null, updated_at = clock_timestamp()\\n  from v\\n  where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0\\n  returning c.id, c.rep_seq, c.epoch),\\nqueued as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)\\nselect 'changed' as result, id, 'processing'::text as state, rep_seq from u\\nunion all\\nselect result, id, state, rep_seq from v where result <> 'changed'";
+	readonly CALL_JOB_CLAIM: string;
+	readonly CALL_JOB_HEARTBEAT: string;
+	readonly CALL_JOB_RETRY: "update playbook.call_jobs\\nset state = 'queued', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'\\nreturning id, attempts";
+	readonly CALL_SENT_TO_VENDOR: string;
+	readonly CALL_JOB_RECORD: string;
+	readonly CALL_JOB_TRANSCRIBED: "with j as (\\n  update playbook.call_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind = 'transcribe'\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id\\n                and x.state = 'transcribing' and x.epoch = call_jobs.epoch and x.transcript_key is not null)\\n  returning call_id, epoch),\\nc as (\\n  update playbook.calls\\n  set state = case when rep_by is null then 'awaiting_rep' else 'processing' end, updated_at = clock_timestamp()\\n  where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'\\n  returning id, state, epoch, rep_seq),\\nq as (\\n  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)\\n  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')\\nselect id, state from c";
+	readonly CALL_JOB_COMPLETE: "with dk as (\\n  select d.id, d.outcome_seq from playbook.deals d\\n  where d.organization_id = $1\\n    and d.id = (select x.deal_record_id from playbook.calls x join playbook.call_jobs y\\n                  on y.organization_id = x.organization_id and y.call_id = x.id\\n                where y.organization_id = $1 and y.id = $2)\\n  for no key update),\\nj as (\\n  update playbook.call_jobs\\n  set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()\\n  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')\\n    and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id\\n                and x.state = 'processing' and x.epoch = call_jobs.epoch\\n                and (call_jobs.kind = 'process' or x.rep_seq = call_jobs.rep_seq)\\n                and x.rep_by is not null and (x.rep_by <> 'speaker' or x.rep_label = any(x.speaker_labels)))\\n  returning call_id, epoch),\\nc as (\\n  update playbook.calls c\\n  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dk.outcome_seq)), updated_at = clock_timestamp()\\n  from j, dk\\n  where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'\\n    and dk.id = c.deal_record_id\\n  returning c.id, c.deal_record_id, c.tagged_outcome_seq),\\ndl as (\\n  update playbook.deals d\\n  set retag_through = least(d.retag_through, c.tagged_outcome_seq)\\n  from c, dk\\n  where d.organization_id = $1 and d.id = c.deal_record_id and dk.id = d.id and c.tagged_outcome_seq < dk.outcome_seq\\n  returning d.id)\\nselect id from c";
+	readonly CALL_JOB_FAIL: string;
+	readonly CALL_JOB_GIVE_UP_SPENT: string;
+	readonly CALL_CLEANUP_BEGIN: "select c.id, c.epoch,\\n  not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = c.organization_id and j.call_id = c.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.calls c\\nwhere c.organization_id = $1 and c.id = $2 and c.state = 'deleted' and c.deletion_seq = $3::int";
+	readonly CALL_LIST_PENDING_CLEANUP: string;
+	readonly CALL_CLEANUP_DONE: "update playbook.calls\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+	readonly CALL_VENDOR_REMOVED: "update playbook.calls\\nset vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int\\n  and sent_to_vendor_at is not null\\n  and not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = $1 and j.call_id = $2\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())\\nreturning id";
+	readonly CALL_PURGE_CLAIM: string;
+	readonly CALL_PURGE_COMPLETE: "with jl as (\\n  select state, next_attempt_at from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2\\n  for update)\\ndelete from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and (sent_to_vendor_at is null or vendor_removed_at is not null)\\n  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
+	readonly CALL_LIST_SPENT_PURGES: string;
+	readonly CALL_PURGE_RESET: "update playbook.calls\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
+	readonly CALL_ERASE_BATCH: string;
+	readonly DEAL_LIST_PENDING_RETAG: string;
+	readonly DEAL_RETAG_BATCH: string;
+	readonly CALL_RETAGGED: "update playbook.calls c\\nset tagged_outcome_seq = $3::int, updated_at = clock_timestamp()\\nfrom playbook.deals d\\nwhere c.organization_id = $1 and c.id = any(($2::text[])[1:500]) and c.state = 'ready'\\n  and c.tagged_outcome_seq < $3::int\\n  and d.organization_id = $1 and d.id = c.deal_record_id and $3::int <= d.outcome_seq\\nreturning c.id";
+	readonly DEAL_RETAG_LOCK: "select id, outcome, outcome_seq, retag_through\nfrom playbook.deals\nwhere organization_id = $1 and id = $2\nfor no key update";
+	readonly DEAL_RETAG_DONE: "update playbook.deals d\\nset retag_through = $3::int\\nwhere d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3::int <= d.outcome_seq\\n  and not exists (\\n    select 1 from playbook.calls c\\n    where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)\\nreturning d.id, d.retag_through, d.outcome_seq";
 	readonly QUOTA_LOCK: "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
 	readonly QUOTA_USAGE: "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
 	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
@@ -11692,7 +13121,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly IDEMPOTENCY_PURGE: string;
 	readonly DOCUMENT_ERASE_BATCH: string;
 	readonly ORGANIZATION_REMOVE_REST: "select playbook.remove_organization_rest($1::text, $2::text) as removed";
-	readonly ORGANIZATION_REMOVAL_STATUS: "select\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\n  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,\n  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,\n  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,\n  (not exists (select 1 from playbook.documents where organization_id = $1)\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)\n    and not exists (select 1 from playbook.deals where organization_id = $1)\n    and not exists (select 1 from playbook.deal_imports where organization_id = $1)\n    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
+	readonly ORGANIZATION_REMOVAL_STATUS: "select\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\n  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,\n  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,\n  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,\n  not exists (select 1 from playbook.calls where organization_id = $1) as no_calls,\n  (not exists (select 1 from playbook.documents where organization_id = $1)\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)\n    and not exists (select 1 from playbook.deals where organization_id = $1)\n    and not exists (select 1 from playbook.deal_imports where organization_id = $1)\n    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)\n    and not exists (select 1 from playbook.calls where organization_id = $1)) as removed\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
 	readonly DOCUMENT_LIST_SPENT_PURGES: string;
 	readonly DOCUMENT_PURGE_RESET: "update playbook.documents\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
 	readonly ORPHAN_SWEEP_DONE: "select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)";
@@ -11701,7 +13130,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly DEAL_LIST: string;
 	readonly DEAL_LIST_BY_OUTCOME: string;
 	readonly DEAL_LIST_BY_IMPORT_FLAG: string;
-	readonly DEAL_SET_OUTCOME: "with cur as (\n  select * from playbook.deals where organization_id = $1 and id = $2 for update),\nu as (\n  update playbook.deals d\n  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,\n      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()\n  from cur\n  where d.organization_id = $1 and d.id = cur.id\n    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))\n  returning d.*)\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u\nunion all\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)";
+	readonly DEAL_SET_OUTCOME: "with cur as (\n  select * from playbook.deals where organization_id = $1 and id = $2 for no key update),\nu as (\n  update playbook.deals d\n  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,\n      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()\n  from cur\n  where d.organization_id = $1 and d.id = cur.id\n    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))\n  returning d.*)\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u\nunion all\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)";
 	readonly DEAL_USAGE: "select deal_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
 	readonly DEAL_IMPORT_INSERT: "insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)\\nvalues ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())\\nreturning id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at";
 	readonly DEAL_IMPORT_GET: "select id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at\\nfrom playbook.deal_imports\\nwhere organization_id = $1 and id = $2 and erased_at is null";
@@ -11760,4 +13189,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CallJobClaimRow, ClaimedCallJob, ClaimedIngestionJob, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimedCallJobs, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, repChangeAllowed, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
