@@ -9151,6 +9151,23 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		reportThrough: PgColumn_ffrhhp37<{
+			name: "report_through";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 		objectRemovedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "deal_imports";
@@ -11444,7 +11461,8 @@ declare const DEAL_GET = "select id, deal_id, name, outcome, outcome_seq, closed
 declare const DEAL_BY_DEAL_ID = "select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at\nfrom playbook.deals\nwhere organization_id = $1 and deal_id = $2::text";
 /**
 * List the Deals, newest first, one page by keyset. `$1` Organization, `$2` and `$3` the
-* `(created_at, id)` of the last row of the previous page (`'infinity'` and `''` for the first),
+* `cursor_at` (text, never a Date) and `id` of the last row of the previous page (`'infinity'` and
+* `''` for the first). Each row carries `cursor_at`, the text of `created_at` to pass back,
 * `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. On `deals_list_idx`, read
 * backwards.
 */
@@ -11483,8 +11501,8 @@ declare const DEAL_IMPORT_INSERT = "insert into playbook.deal_imports (id, organ
 /** Read one Deal import. `$1` Organization, `$2` the `dimp_…` id. No row when absent or erased. */
 declare const DEAL_IMPORT_GET = "select id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at\\nfrom playbook.deal_imports\\nwhere organization_id = $1 and id = $2 and erased_at is null";
 /**
-* List the Deal imports, newest first, by keyset: `$1` Organization, `$2` and `$3` the cursor
-* (`'infinity'` and `''` first), `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}.
+* List the Deal imports, newest first, by keyset: `$1` Organization, `$2` and `$3` the cursor (the
+* last row's `cursor_at`, a text, never a Date, and `id`; `'infinity'` and `''` first), `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}.
 * On `deal_imports_list_idx`.
 */
 declare const DEAL_IMPORT_LIST: string;
@@ -11495,8 +11513,8 @@ declare const DEAL_IMPORT_LIST: string;
 * `processing` ones whose lease lapsed, never an erased one and never one at the attempt bound
 * ({@link DEAL_IMPORT_GIVE_UP_SPENT} fails those), skipping rows another transaction holds. Each
 * row carries the `claim_token` that fences every later write and `last_row_number`, the highest
-* report row already recorded (null for none): rows of the CSV at or below it need not be sent
-* again, though a repeat is harmless.
+* report row recorded (null for none). The report is always contiguous from row 2: send the next
+* batch from the row after it. Rows at or below it are never read again.
 */
 declare const DEAL_IMPORT_CLAIM: string;
 /**
@@ -11520,7 +11538,23 @@ declare const DEAL_IMPORT_RETRY = "update playbook.deal_imports\\nset state = 'u
 * `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` as the contract's
 * `checkDealImportRow` produced it: `reason` is its rejection or null, `deal_id` is null only for
 * `invalid_deal_id` and `wrong_column_count`, a blank cell is null. **Run {@link QUOTA_LOCK} first
-* in the same transaction**, so the Deal count and the existing Deals are read after the lock.
+* in the same transaction** (the statement refuses without it), so the Deal count and the existing
+* Deals are read after the lock.
+*
+* **Order.** The report is contiguous from row 2 (the header is row 1): the import row keeps
+* `report_through`, the highest row number in it, and a check ties `applied_count + rejected_count`
+* to `report_through - 1`. The statement reads only the rows numbered `report_through + 1`,
+* `report_through + 2` and so on without a gap (a row at or below `report_through` is skipped, so a
+* batch resent after a lost answer changes nothing; a row after a gap is not taken) and the answer's
+* `taken` says how many it took and `through` the new `report_through`: send the next batch from
+* the row after it. A row is therefore judged only after every row before it was judged, which makes
+* "the first row of a deal id wins" exact. Every row it takes is decided in the same statement: it
+* locks the Deals the batch names (`for update`, in id order, which reads the newest committed version
+* after waiting for a concurrent Outcome change), so no row is left undecided; a Deal that
+* another transaction decided meanwhile is `outcome_already_decided`. Nothing else inserts a Deal
+* without the upload lock, so the insert has no conflict to lose (a conflict, like an undecided
+* row, aborts the statement and records nothing). The statement raises
+* `playbook.upload_lock` when the transaction does not hold the lock.
 *
 * Rules, per row in row order: a deal id seen earlier in the file (this batch or an earlier one) is
 * `duplicate_in_file`, whatever else is wrong with the repeat; the row's own `reason` is kept; a
@@ -11529,25 +11563,24 @@ declare const DEAL_IMPORT_RETRY = "update playbook.deal_imports\\nset state = 'u
 * currency and name when the cell is not blank; a blank cell never clears a value; the Outcome
 * sequence rises when the Outcome or closing time changes); an unknown deal id creates an open or
 * decided Deal (`appeared_in_import` true) unless the count would pass `$5` (`deal_limit_reached`;
-* a later row that would create one is refused too). A row that is already in the report is skipped,
-* so a batch sent again after a lost answer changes nothing. A row whose effect could not be
-* decided (a Deal changed by another transaction meanwhile) is left out of the report and sent
-* again by the next batch; {@link DEAL_IMPORT_FINISH} refuses to complete an import until every row
-* is in the report. No row at all when the claim token does not hold.
+* a later row that would create one is refused too). No row at all when the claim token does not hold. The Outcome sequence
+* is limited by `DEAL_MAX_SEQ` (the column is a 32-bit integer; a Deal whose sequence is at the
+* ceiling cannot take another Outcome change, and the write fails rather than wraps).
 *
-* The answer: one `summary` row (`taken`, `applied`, `rejected`) and one `outcome_changed` row per
-* Deal whose Outcome sequence rose (`deal_record_id`, `outcome_seq`): publish the Outcome-changed
-* message for each.
+* The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`) and one
+* `outcome_changed` row per Deal this statement moved (`deal_record_id`, `outcome_seq`, read from the
+* locked row the import changed, so a portal change made meanwhile never makes a second message):
+* publish the Outcome-changed message for each.
 */
 declare const DEAL_IMPORT_APPLY: string;
 /**
-* Finish an import whose rows are all applied: `$1` Organization, `$2` the import, `$3` the claim
-* token, `$4` the number of data rows in the CSV. It completes only if the report holds exactly
-* that many rows (`applied_count + rejected_count = $4`), else returns no row: send the missing
-* rows. **Remove the stored CSV first**; this records that it is gone (`object_removed_at`). The
+* Finish an import whose rows are all reported: `$1` Organization, `$2` the import, `$3` the claim
+* token, `$4` the number of data rows in the CSV. It completes only if the report is contiguous
+* through the last row (`report_through = $4 + 1`, and the table check ties the counts to it), else
+* returns no row: send the rows after `report_through`. **Remove the stored CSV first**; this records that it is gone (`object_removed_at`). The
 * row has the three counts of the contract's import.
 */
-declare const DEAL_IMPORT_FINISH = "update playbook.deal_imports\\nset state = 'completed', claim_token = null, row_count = applied_count + rejected_count,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\n  and applied_count + rejected_count = $4::int\\nreturning id, row_count, applied_count, rejected_count";
+declare const DEAL_IMPORT_FINISH = "update playbook.deal_imports\\nset state = 'completed', claim_token = null, row_count = applied_count + rejected_count,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\n  and report_through = $4::int + 1\\nreturning id, row_count, applied_count, rejected_count";
 /**
 * End a claimed import as failed with a reason: `$1` Organization, `$2` the import, `$3` the claim
 * token, `$4` the reason (`too_many_rows`, `unreadable` or `processing_failed`). Rows already
@@ -11668,7 +11701,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly DEAL_IMPORT_HEARTBEAT: string;
 	readonly DEAL_IMPORT_RETRY: "update playbook.deal_imports\\nset state = 'uploaded', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\nreturning id, attempts";
 	readonly DEAL_IMPORT_APPLY: string;
-	readonly DEAL_IMPORT_FINISH: "update playbook.deal_imports\\nset state = 'completed', claim_token = null, row_count = applied_count + rejected_count,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\n  and applied_count + rejected_count = $4::int\\nreturning id, row_count, applied_count, rejected_count";
+	readonly DEAL_IMPORT_FINISH: "update playbook.deal_imports\\nset state = 'completed', claim_token = null, row_count = applied_count + rejected_count,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\n  and report_through = $4::int + 1\\nreturning id, row_count, applied_count, rejected_count";
 	readonly DEAL_IMPORT_FAIL: "update playbook.deal_imports\\nset state = 'failed', failure_reason = $4::text, claim_token = null,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\nreturning id";
 	readonly DEAL_IMPORT_GIVE_UP_SPENT: string;
 	readonly DEAL_IMPORT_OBJECT_REMOVED: "update playbook.deal_imports\\nset object_removed_at = coalesce(object_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and (erased_at is not null or state = 'failed')\\nreturning id";

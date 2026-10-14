@@ -31,6 +31,7 @@ CREATE TABLE "playbook"."deal_imports" (
 	"row_count" integer,
 	"applied_count" integer DEFAULT 0 NOT NULL,
 	"rejected_count" integer DEFAULT 0 NOT NULL,
+	"report_through" integer DEFAULT 1 NOT NULL,
 	"object_removed_at" timestamp with time zone,
 	"erased_at" timestamp with time zone,
 	"finished_at" timestamp with time zone,
@@ -49,6 +50,8 @@ CREATE TABLE "playbook"."deal_imports" (
 	CONSTRAINT "deal_imports_counts_range" CHECK ("playbook"."deal_imports"."applied_count" between 0 and 50000
         and "playbook"."deal_imports"."rejected_count" between 0 and 50000
         and "playbook"."deal_imports"."applied_count" + "playbook"."deal_imports"."rejected_count" <= 50000),
+	CONSTRAINT "deal_imports_report_contiguous" CHECK ("playbook"."deal_imports"."report_through" between 1 and 50001
+        and "playbook"."deal_imports"."applied_count" + "playbook"."deal_imports"."rejected_count" = "playbook"."deal_imports"."report_through" - 1),
 	CONSTRAINT "deal_imports_row_count_matches_state" CHECK (("playbook"."deal_imports"."state" = 'completed') = ("playbook"."deal_imports"."row_count" is not null)
         and ("playbook"."deal_imports"."row_count" is null or "playbook"."deal_imports"."row_count" = "playbook"."deal_imports"."applied_count" + "playbook"."deal_imports"."rejected_count")),
 	CONSTRAINT "deal_imports_claim_only_while_processing" CHECK ("playbook"."deal_imports"."claim_token" is null or "playbook"."deal_imports"."state" = 'processing'),
@@ -158,7 +161,7 @@ GRANT UPDATE ("name", "outcome", "outcome_seq", "closed_at", "amount", "currency
 -- whose stored CSV is recorded removed (a restrictive policy, ANDed with the tenant policy).
 REVOKE UPDATE ON "playbook"."deal_imports" FROM closeline_playbook;
 --> statement-breakpoint
-GRANT UPDATE ("state", "failure_reason", "attempts", "next_attempt_at", "claim_token", "row_count", "applied_count", "rejected_count", "object_removed_at", "erased_at", "finished_at", "updated_at") ON "playbook"."deal_imports" TO closeline_playbook;
+GRANT UPDATE ("state", "failure_reason", "attempts", "next_attempt_at", "claim_token", "row_count", "applied_count", "rejected_count", "report_through", "object_removed_at", "erased_at", "finished_at", "updated_at") ON "playbook"."deal_imports" TO closeline_playbook;
 --> statement-breakpoint
 CREATE POLICY "deal_imports_erased_only" ON "playbook"."deal_imports" AS RESTRICTIVE FOR DELETE TO PUBLIC USING ("erased_at" IS NOT NULL AND "object_removed_at" IS NOT NULL);
 --> statement-breakpoint
@@ -442,5 +445,25 @@ $$;
 REVOKE ALL ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text), "playbook"."erase_deals"(text, integer) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION "playbook"."organizations_with_work"(text, text, integer), "playbook"."remove_organization_rest"(text, text), "playbook"."erase_deals"(text, integer) TO closeline_playbook;
+--> statement-breakpoint
+-- The apply statement refuses to run unless this transaction holds the Organization upload lock,
+-- so the Deals it reads cannot change under it (every Deal insert holds that lock).
+CREATE FUNCTION "playbook"."require_upload_lock"(p_organization_id text) RETURNS boolean LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_locks l
+    WHERE l.locktype = 'advisory' AND l.pid = pg_catalog.pg_backend_pid() AND l.granted AND l.objsubid = 1
+      AND ((l.classid::bigint << 32) | l.objid::bigint) = pg_catalog.hashtextextended(p_organization_id, 0)
+  ) THEN
+    RAISE EXCEPTION 'playbook.upload_lock: the Organization upload lock is not held' USING ERRCODE = 'object_not_in_prerequisite_state';
+  END IF;
+  RETURN true;
+END
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION "playbook"."require_upload_lock"(text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION "playbook"."require_upload_lock"(text) TO closeline_playbook;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION "playbook"."track_deal_usage"(), "playbook"."refuse_deal_change"(), "playbook"."note_import_work"() FROM PUBLIC;

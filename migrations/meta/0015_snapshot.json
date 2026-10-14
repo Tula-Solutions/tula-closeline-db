@@ -1,5 +1,5 @@
 {
-  "id": "0b64bb00-1968-4259-a749-c3ddd3648e4e",
+  "id": "fa4e54d1-dd3c-49a9-891d-b250d71cba4e",
   "prevId": "7f383502-4927-4c61-b887-d58d46974b88",
   "version": "7",
   "dialect": "postgresql",
@@ -7470,6 +7470,13 @@
           "notNull": true,
           "default": 0
         },
+        "report_through": {
+          "name": "report_through",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "object_removed_at": {
           "name": "object_removed_at",
           "type": "timestamp with time zone",
@@ -7628,6 +7635,10 @@
         "deal_imports_counts_range": {
           "name": "deal_imports_counts_range",
           "value": "\"playbook\".\"deal_imports\".\"applied_count\" between 0 and 50000\n        and \"playbook\".\"deal_imports\".\"rejected_count\" between 0 and 50000\n        and \"playbook\".\"deal_imports\".\"applied_count\" + \"playbook\".\"deal_imports\".\"rejected_count\" <= 50000"
+        },
+        "deal_imports_report_contiguous": {
+          "name": "deal_imports_report_contiguous",
+          "value": "\"playbook\".\"deal_imports\".\"report_through\" between 1 and 50001\n        and \"playbook\".\"deal_imports\".\"applied_count\" + \"playbook\".\"deal_imports\".\"rejected_count\" = \"playbook\".\"deal_imports\".\"report_through\" - 1"
         },
         "deal_imports_row_count_matches_state": {
           "name": "deal_imports_row_count_matches_state",

@@ -160,6 +160,7 @@ describe('sales history, part one', () => {
       taken: number
       applied: number
       rejected: number
+      through: number
     }
   const reportOf = async (org: string, id: string) =>
     (await q(org, DEAL_IMPORT_ROWS_LIST, [org, id, 0, 100])).rows.map((r) => [
@@ -292,11 +293,7 @@ describe('sales history, part one', () => {
       const first = (await q(org, DEAL_LIST, [org, 'infinity', '', 3])).rows
       expect(first.length).toBe(3)
       const last = first[2]
-      // The cursor carries the database's own text form: a JS Date would drop the microseconds.
-      const text = (
-        await q(org, 'select created_at::text as t from playbook.deals where id = $1', [last.id])
-      ).rows[0].t
-      const rest = (await q(org, DEAL_LIST, [org, text, last.id, 50])).rows
+      const rest = (await q(org, DEAL_LIST, [org, last.cursor_at, last.id, 50])).rows
       expect(first.length + rest.length).toBe(4)
       expect(new Set([...first, ...rest].map((r) => r.id)).size).toBe(4)
       expect((await q(org, DEAL_LIST_BY_OUTCOME, [org, 'infinity', '', 50, 'won'])).rowCount).toBe(
@@ -304,6 +301,47 @@ describe('sales history, part one', () => {
       )
       const never = (await q(org, DEAL_LIST_BY_IMPORT_FLAG, [org, 'infinity', '', 50, false])).rows
       expect(never.map((r) => r.deal_id)).toEqual(['typo'])
+    })
+    test('Deals created by one statement share a created_at, and paging by the cursor text skips and repeats none', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      await apply(org, id, job.claim_token, [
+        row(2, 'T-1'),
+        row(3, 'T-2'),
+        row(4, 'T-3'),
+        row(5, 'T-4'),
+      ])
+      const stamps = await q(
+        org,
+        'select count(distinct created_at)::int as n from playbook.deals',
+        []
+      )
+      expect(stamps.rows[0].n).toBe(1)
+      const seen: string[] = []
+      let cursor: [string, string] = ['infinity', '']
+      for (let pages = 0; pages < 10; pages++) {
+        const page = (await q(org, DEAL_LIST, [org, cursor[0], cursor[1], 2])).rows
+        if (page.length === 0) {
+          break
+        }
+        expect(typeof page[0].cursor_at).toBe('string')
+        seen.push(...page.map((r) => r.id as string))
+        const last = page[page.length - 1]
+        cursor = [last.cursor_at, last.id]
+      }
+      expect(seen.length).toBe(4)
+      expect(new Set(seen).size).toBe(4)
+      // The other two lists and the import list carry the same cursor text.
+      for (const [text, extra] of [
+        [DEAL_LIST_BY_OUTCOME, 'open'],
+        [DEAL_LIST_BY_IMPORT_FLAG, true],
+      ] as const) {
+        const page = (await q(org, text, [org, 'infinity', '', 2, extra])).rows
+        expect(typeof page[0].cursor_at).toBe('string')
+      }
+      const imports = (await q(org, DEAL_IMPORT_LIST, [org, 'infinity', '', 10])).rows
+      expect(typeof imports[0].cursor_at).toBe('string')
     })
   })
 
@@ -596,6 +634,156 @@ describe('sales history, part one', () => {
       const [x, y] = await Promise.all([claim(org), claim(org)])
       expect(x.length + y.length).toBe(2)
       expect(new Set([...x, ...y].map((r) => r.id)).size).toBe(2)
+    })
+  })
+
+  describe('import order and contention', () => {
+    const tokensOf = async (org: string) =>
+      (
+        await q(
+          org,
+          `select id, claim_token from playbook.deal_imports where state = 'processing'`,
+          []
+        )
+      ).rows as { id: string; claim_token: string }[]
+
+    test('a row that meets a concurrent Outcome change is decided in the same statement, a later repeat is a duplicate, and the import completes', async () => {
+      const org = newOrg()
+      const seed = await addImport(org)
+      const [seedJob] = await claim(org)
+      await apply(org, seed, seedJob.claim_token, [row(2, 'X')])
+      const x = (await q(org, DEAL_BY_DEAL_ID, [org, 'X'])).rows[0]
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      const [portal, importer] = [await open(org), await open(org)]
+      try {
+        await portal.client.query(DEAL_SET_OUTCOME, [org, x.id, 'won', null, false])
+        await importer.client.query(QUOTA_LOCK, [org])
+        const waiting = importer.client.query(DEAL_IMPORT_APPLY, [
+          org,
+          id,
+          job.claim_token,
+          JSON.stringify([row(2, 'F'), row(3, 'X', { outcome: 'lost' })]),
+          100,
+          500,
+        ])
+        await untilBlocked(importer.pid)
+        await portal.client.query('commit')
+        const result = await waiting
+        expect(summary(result.rows)).toMatchObject({
+          taken: 2,
+          applied: 1,
+          rejected: 1,
+          through: 3,
+        })
+        // The portal's change is not the import's: no second Outcome-changed message.
+        expect(result.rows.filter((r) => r.kind === 'outcome_changed')).toEqual([])
+        await importer.client.query('commit')
+      } finally {
+        await finish(portal, importer)
+      }
+      expect(await reportOf(org, id)).toEqual([
+        [2, 'F', 'applied', null],
+        [3, 'X', 'rejected', 'outcome_already_decided'],
+      ])
+      expect((await q(org, DEAL_GET, [org, x.id])).rows[0]).toMatchObject({
+        outcome: 'won',
+        outcome_seq: 1,
+      })
+      // A repeat sent past a gap is not taken: it cannot be judged before the rows before it.
+      expect(summary((await apply(org, id, job.claim_token, [row(5, 'X')])).rows)).toMatchObject({
+        taken: 0,
+        through: 3,
+      })
+      const next = summary(
+        (await apply(org, id, job.claim_token, [row(4, 'G'), row(5, 'X'), row(7, 'X')])).rows
+      )
+      expect(next).toMatchObject({ taken: 2, through: 5 })
+      expect((await reportOf(org, id)).slice(2)).toEqual([
+        [4, 'G', 'applied', null],
+        [5, 'X', 'rejected', 'duplicate_in_file'],
+      ])
+      // Finish counts the contiguous report: a CSV of six data rows is not done at five.
+      expect((await q(org, DEAL_IMPORT_FINISH, [org, id, job.claim_token, 6])).rowCount).toBe(0)
+      expect(
+        (await q(org, DEAL_IMPORT_FINISH, [org, id, job.claim_token, 4])).rows[0]
+      ).toMatchObject({ row_count: 4, applied_count: 2, rejected_count: 2 })
+    })
+
+    test('a first row sent late is judged first: rows after a gap are not taken, and the report stays contiguous', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      expect(
+        summary((await apply(org, id, job.claim_token, [row(3, 'R'), row(4, 'S')])).rows)
+      ).toMatchObject({ taken: 0, through: 1 })
+      expect(await reportOf(org, id)).toEqual([])
+      expect(
+        summary((await apply(org, id, job.claim_token, [row(2, 'R'), row(3, 'R')])).rows)
+      ).toMatchObject({ taken: 2, applied: 1, rejected: 1, through: 3 })
+      expect(await reportOf(org, id)).toEqual([
+        [2, 'R', 'applied', null],
+        [3, 'R', 'rejected', 'duplicate_in_file'],
+      ])
+      expect((await q(org, DEAL_IMPORT_FINISH, [org, id, job.claim_token, 2])).rowCount).toBe(1)
+    })
+
+    test('the apply refuses unless this transaction holds the upload lock; a lock held by another transaction does not count', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      const withoutLock = () =>
+        inOrg(org, (c) =>
+          c.query(DEAL_IMPORT_APPLY, [
+            org,
+            id,
+            job.claim_token,
+            JSON.stringify([row(2, 'L')]),
+            100,
+            500,
+          ])
+        ).then(
+          () => '',
+          (error: Error) => error.message
+        )
+      expect(await withoutLock()).toContain('playbook.upload_lock')
+      const holder = await open(org)
+      try {
+        await holder.client.query(QUOTA_LOCK, [org])
+        expect(await withoutLock()).toContain('playbook.upload_lock')
+      } finally {
+        await finish(holder)
+      }
+      expect(await reportOf(org, id)).toEqual([])
+      expect((await q(org, DEAL_BY_DEAL_ID, [org, 'L'])).rowCount).toBe(0)
+      // With the lock it applies.
+      expect(summary((await apply(org, id, job.claim_token, [row(2, 'L')])).rows)).toMatchObject({
+        applied: 1,
+      })
+    })
+
+    test('two imports at once, repeating a deal id across them, keep the Deal count exact, and erasure brings it to zero', async () => {
+      const org = newOrg()
+      const [a, b] = [await addImport(org), await addImport(org)]
+      await claim(org)
+      const tokens = await tokensOf(org)
+      const tokenOf = (id: string) => tokens.find((r) => r.id === id)?.claim_token as string
+      const results = await Promise.all([
+        apply(org, a, tokenOf(a), [row(2, 'D1'), row(3, 'D2')]),
+        apply(org, b, tokenOf(b), [row(2, 'D2'), row(3, 'D3')]),
+      ])
+      expect(results.map((r) => summary(r.rows).applied)).toEqual([2, 2])
+      // The repeat of D2 across two imports is no duplicate in either file: each file's first D2 wins.
+      expect((await reportOf(org, a)).every((r) => r[2] === 'applied')).toBe(true)
+      expect((await reportOf(org, b)).every((r) => r[2] === 'applied')).toBe(true)
+      expect((await q(org, 'select count(*)::int as n from playbook.deals', [])).rows[0].n).toBe(3)
+      expect(Number((await q(org, DEAL_USAGE, [org])).rows[0].deal_count)).toBe(3)
+      for (let steps = 0; steps < 10; steps++) {
+        if ((await q(org, DEAL_ERASE_BATCH, [org, 2])).rows[0].deleted === 0) {
+          break
+        }
+      }
+      expect(Number((await q(org, DEAL_USAGE, [org])).rows[0].deal_count)).toBe(0)
     })
   })
 

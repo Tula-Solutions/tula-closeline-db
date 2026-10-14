@@ -22,7 +22,7 @@ import {
   DEAL_IMPORT_APPLY_BATCH2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-m4tdeaba.js";
+} from "./shared/chunk-ajf8j9gq.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -964,6 +964,7 @@ function discoveredOrganizations(rows) {
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null };
 }
 var DEAL_COLUMNS = `id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at`;
+var DEAL_LIST_COLUMNS = `${DEAL_COLUMNS}, created_at::text as cursor_at`;
 var DEAL_ROW_FIELDS = [
   "id",
   "deal_id",
@@ -983,17 +984,17 @@ where organization_id = $1 and id = $2`;
 var DEAL_BY_DEAL_ID = `select ${DEAL_COLUMNS}
 from playbook.deals
 where organization_id = $1 and deal_id = $2::text`;
-var DEAL_LIST = `select ${DEAL_COLUMNS}
+var DEAL_LIST = `select ${DEAL_LIST_COLUMNS}
 from playbook.deals
 where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
-var DEAL_LIST_BY_OUTCOME = `select ${DEAL_COLUMNS}
+var DEAL_LIST_BY_OUTCOME = `select ${DEAL_LIST_COLUMNS}
 from playbook.deals
 where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
-var DEAL_LIST_BY_IMPORT_FLAG = `select ${DEAL_COLUMNS}
+var DEAL_LIST_BY_IMPORT_FLAG = `select ${DEAL_LIST_COLUMNS}
 from playbook.deals
 where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
@@ -1025,7 +1026,7 @@ returning ${DEAL_IMPORT_COLUMNS}`;
 var DEAL_IMPORT_GET = `select ${DEAL_IMPORT_COLUMNS}
 from playbook.deal_imports
 where organization_id = $1 and id = $2 and erased_at is null`;
-var DEAL_IMPORT_LIST = `select ${DEAL_IMPORT_COLUMNS}
+var DEAL_IMPORT_LIST = `select ${DEAL_IMPORT_COLUMNS}, created_at::text as cursor_at
 from playbook.deal_imports
 where organization_id = $1 and erased_at is null and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
@@ -1043,7 +1044,7 @@ set state = 'processing', attempts = i.attempts + 1, claim_token = gen_random_uu
 from due
 where i.organization_id = $1 and i.id = due.id
 returning i.id, i.object_key, i.size_bytes, i.attempts, i.claim_token,
-  (select max(r.row_number) from playbook.deal_import_rows r where r.organization_id = $1 and r.import_id = i.id) as last_row_number`;
+  case when i.report_through > 1 then i.report_through end as last_row_number`;
 var DEAL_IMPORT_HEARTBEAT = `update playbook.deal_imports
 set next_attempt_at = clock_timestamp() + ${LEASE("$4")}, updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
@@ -1055,15 +1056,24 @@ set state = 'uploaded', claim_token = null,
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
 returning id, attempts`;
 var DEAL_IMPORT_APPLY = `with imp as (
-  select id from playbook.deal_imports
+  select id, report_through, playbook.require_upload_lock($1) as lock_held from playbook.deal_imports
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
   for update),
-b as (
-  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+sent as (
+  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name,
+    imp.report_through as base, dense_rank() over (order by x.row_number) as rk
   from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)
-  where not exists (select 1 from playbook.deal_import_rows r where r.organization_id = $1 and r.import_id = $2 and r.row_number = x.row_number)
-  order by x.row_number
+  where x.row_number > imp.report_through),
+b as (
+  select row_number, deal_id, reason, outcome, closed_at, amount, currency, name
+  from sent where row_number = base + rk
+  order by row_number
   limit ${CLAMP("$6", DEAL_IMPORT_APPLY_BATCH2)}),
+lk as (
+  select d.id, d.deal_id, d.outcome, d.outcome_seq, d.closed_at from playbook.deals d
+  where d.organization_id = $1 and d.deal_id in (select deal_id from b where deal_id is not null)
+  order by d.id
+  for update),
 ranked as (
   select b.*, row_number() over (partition by b.deal_id order by b.row_number) as nth from b),
 seen as (
@@ -1077,7 +1087,7 @@ cls as (
       when k.reason is not null then k.reason
       when d.id is not null and d.outcome <> 'open' then 'outcome_already_decided'
     end as bad
-  from ranked k left join playbook.deals d on d.organization_id = $1 and d.deal_id = k.deal_id),
+  from ranked k left join lk d on d.deal_id = k.deal_id),
 fin as (
   select c.*,
     case when c.bad is null and c.deal_pk is null
@@ -1099,7 +1109,6 @@ ins as (
   insert into playbook.deals (id, organization_id, deal_id, name, outcome, closed_at, amount, currency, appeared_in_import)
   select 'deal_' || replace(gen_random_uuid()::text, '-', ''), $1, f.deal_id, f.name, f.outcome, f.closed_at, f.amount, f.currency, true
   from fin f where f.final_bad is null and f.deal_pk is null
-  on conflict (organization_id, deal_id) do nothing
   returning deal_id),
 res as (
   select f.row_number, f.deal_id, f.final_bad as reason from fin f where f.final_bad is not null
@@ -1114,21 +1123,23 @@ cnt as (
   update playbook.deal_imports
   set applied_count = applied_count + (select count(*) from rep where result = 'applied'),
       rejected_count = rejected_count + (select count(*) from rep where result = 'rejected'),
+      report_through = report_through + (select count(*) from b),
       updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and exists (select 1 from imp)
-  returning id)
+  returning report_through)
 select 'summary' as kind, null::text as deal_record_id, null::int as outcome_seq,
   (select count(*) from b)::int as taken,
   (select count(*) from rep where result = 'applied')::int as applied,
-  (select count(*) from rep where result = 'rejected')::int as rejected
+  (select count(*) from rep where result = 'rejected')::int as rejected,
+  (select report_through from cnt) as through
 where exists (select 1 from imp)
 union all
-select 'outcome_changed', u.id, u.outcome_seq, null, null, null from upd u where u.bumped`;
+select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null from upd u where u.bumped`;
 var DEAL_IMPORT_FINISH = `update playbook.deal_imports
 set state = 'completed', claim_token = null, row_count = applied_count + rejected_count,
     object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
-  and applied_count + rejected_count = $4::int
+  and report_through = $4::int + 1
 returning id, row_count, applied_count, rejected_count`;
 var DEAL_IMPORT_FAIL = `update playbook.deal_imports
 set state = 'failed', failure_reason = $4::text, claim_token = null,

@@ -13,7 +13,11 @@ import {
   DEAL_IMPORT_CLAIM,
   DEAL_IMPORT_FINISH,
   DEAL_IMPORT_GIVE_UP_SPENT,
+  DEAL_IMPORT_LIST,
   DEAL_IMPORT_PURGE_BATCH,
+  DEAL_LIST,
+  DEAL_LIST_BY_IMPORT_FLAG,
+  DEAL_LIST_BY_OUTCOME,
   DEAL_SET_OUTCOME,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
@@ -600,10 +604,29 @@ describe('sales history, part one', () => {
     expect(DEAL_IMPORT_APPLY).toContain(
       'when f.outcome <> d.outcome or coalesce(f.closed_at, d.closed_at) is distinct from d.closed_at then 1 else 0'
     )
-    // Already reported rows are skipped, so a repeat changes nothing.
+    // Only the contiguous rows after the report are read, so a repeat changes nothing and order holds.
+    expect(DEAL_IMPORT_APPLY).toContain('where x.row_number > imp.report_through')
+    expect(DEAL_IMPORT_APPLY).toContain('from sent where row_number = base + rk')
+    // The Deals the batch names are locked first, so no row is left undecided, and the insert has no
+    // conflict clause that could drop a row.
+    expect(DEAL_IMPORT_APPLY).toMatch(/lk as \(\n[\s\S]*order by d\.id\n\s+for update\)/)
+    expect(DEAL_IMPORT_APPLY).toContain('from ranked k left join lk d')
+    expect(DEAL_IMPORT_APPLY).not.toContain('on conflict')
+    expect(DEAL_IMPORT_APPLY).toContain('playbook.require_upload_lock($1)')
     expect(DEAL_IMPORT_APPLY).toContain(
-      'where not exists (select 1 from playbook.deal_import_rows r'
+      'report_through = report_through + (select count(*) from b)'
     )
+  })
+
+  test('the Deal and import lists return the cursor as text', () => {
+    for (const text of [
+      DEAL_LIST,
+      DEAL_LIST_BY_OUTCOME,
+      DEAL_LIST_BY_IMPORT_FLAG,
+      DEAL_IMPORT_LIST,
+    ]) {
+      expect(text).toContain('created_at::text as cursor_at')
+    }
   })
 
   test('a repeat in the file is judged before the row’s own reason, because the unique index is on the first row', () => {
@@ -625,7 +648,7 @@ describe('sales history, part one', () => {
     expect(DEAL_SET_OUTCOME).toMatch(
       /with cur as \(\n\s+select \* from playbook\.deals[\s\S]*for update\)/
     )
-    expect(DEAL_IMPORT_FINISH).toContain('applied_count + rejected_count = $4::int')
+    expect(DEAL_IMPORT_FINISH).toContain('report_through = $4::int + 1')
   })
 
   test('purge deletes report rows before the import and only an erased one with its CSV removed', () => {

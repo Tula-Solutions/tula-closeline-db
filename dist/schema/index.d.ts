@@ -8968,6 +8968,23 @@ declare const dealImports: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		reportThrough: PgColumn_ffrhhp37<{
+			name: "report_through";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 		objectRemovedAt: PgColumn_ffrhhp37<{
 			name: string;
 			tableName: "deal_imports";

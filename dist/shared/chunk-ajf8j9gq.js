@@ -1552,6 +1552,7 @@ var dealImports2 = playbookSchema2.table("deal_imports", {
   rowCount: integer14("row_count"),
   appliedCount: integer14("applied_count").notNull().default(0),
   rejectedCount: integer14("rejected_count").notNull().default(0),
+  reportThrough: integer14("report_through").notNull().default(1),
   objectRemovedAt: ts3("object_removed_at"),
   erasedAt: ts3("erased_at"),
   finishedAt: ts3("finished_at"),
@@ -1571,6 +1572,8 @@ var dealImports2 = playbookSchema2.table("deal_imports", {
   check17("deal_imports_counts_range", sql22`${t.appliedCount} between 0 and ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2))}
         and ${t.rejectedCount} between 0 and ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2))}
         and ${t.appliedCount} + ${t.rejectedCount} <= ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2))}`),
+  check17("deal_imports_report_contiguous", sql22`${t.reportThrough} between 1 and ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2 + 1))}
+        and ${t.appliedCount} + ${t.rejectedCount} = ${t.reportThrough} - 1`),
   check17("deal_imports_row_count_matches_state", sql22`(${t.state} = 'completed') = (${t.rowCount} is not null)
         and (${t.rowCount} is null or ${t.rowCount} = ${t.appliedCount} + ${t.rejectedCount})`),
   check17("deal_imports_claim_only_while_processing", sql22`${t.claimToken} is null or ${t.state} = 'processing'`),

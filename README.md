@@ -1558,7 +1558,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_LIST`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at
+    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, created_at::text as cursor_at
     from playbook.deals
     where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
@@ -1568,7 +1568,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_LIST_BY_OUTCOME`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at
+    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, created_at::text as cursor_at
     from playbook.deals
     where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
@@ -1578,7 +1578,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_LIST_BY_IMPORT_FLAG`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at
+    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, created_at::text as cursor_at
     from playbook.deals
     where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
@@ -1642,7 +1642,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       case when state = 'completed' then row_count end as row_count,
       case when state = 'completed' then applied_count end as applied_count,
       case when state = 'completed' then rejected_count end as rejected_count,
-      uploaded_by, created_at, updated_at
+      uploaded_by, created_at, updated_at, created_at::text as cursor_at
     from playbook.deal_imports
     where organization_id = $1 and erased_at is null and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
@@ -1665,7 +1665,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     from due
     where i.organization_id = $1 and i.id = due.id
     returning i.id, i.object_key, i.size_bytes, i.attempts, i.claim_token,
-      (select max(r.row_number) from playbook.deal_import_rows r where r.organization_id = $1 and r.import_id = i.id) as last_row_number
+      case when i.report_through > 1 then i.report_through end as last_row_number
     ```
 
     `DEAL_IMPORT_HEARTBEAT`:
@@ -1692,15 +1692,24 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     with imp as (
-      select id from playbook.deal_imports
+      select id, report_through, playbook.require_upload_lock($1) as lock_held from playbook.deal_imports
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
       for update),
-    b as (
-      select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+    sent as (
+      select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name,
+        imp.report_through as base, dense_rank() over (order by x.row_number) as rk
       from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)
-      where not exists (select 1 from playbook.deal_import_rows r where r.organization_id = $1 and r.import_id = $2 and r.row_number = x.row_number)
-      order by x.row_number
+      where x.row_number > imp.report_through),
+    b as (
+      select row_number, deal_id, reason, outcome, closed_at, amount, currency, name
+      from sent where row_number = base + rk
+      order by row_number
       limit least(greatest(coalesce($6::int, 1), 1), 500)),
+    lk as (
+      select d.id, d.deal_id, d.outcome, d.outcome_seq, d.closed_at from playbook.deals d
+      where d.organization_id = $1 and d.deal_id in (select deal_id from b where deal_id is not null)
+      order by d.id
+      for update),
     ranked as (
       select b.*, row_number() over (partition by b.deal_id order by b.row_number) as nth from b),
     seen as (
@@ -1714,7 +1723,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
           when k.reason is not null then k.reason
           when d.id is not null and d.outcome <> 'open' then 'outcome_already_decided'
         end as bad
-      from ranked k left join playbook.deals d on d.organization_id = $1 and d.deal_id = k.deal_id),
+      from ranked k left join lk d on d.deal_id = k.deal_id),
     fin as (
       select c.*,
         case when c.bad is null and c.deal_pk is null
@@ -1736,7 +1745,6 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       insert into playbook.deals (id, organization_id, deal_id, name, outcome, closed_at, amount, currency, appeared_in_import)
       select 'deal_' || replace(gen_random_uuid()::text, '-', ''), $1, f.deal_id, f.name, f.outcome, f.closed_at, f.amount, f.currency, true
       from fin f where f.final_bad is null and f.deal_pk is null
-      on conflict (organization_id, deal_id) do nothing
       returning deal_id),
     res as (
       select f.row_number, f.deal_id, f.final_bad as reason from fin f where f.final_bad is not null
@@ -1751,16 +1759,18 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       update playbook.deal_imports
       set applied_count = applied_count + (select count(*) from rep where result = 'applied'),
           rejected_count = rejected_count + (select count(*) from rep where result = 'rejected'),
+          report_through = report_through + (select count(*) from b),
           updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and exists (select 1 from imp)
-      returning id)
+      returning report_through)
     select 'summary' as kind, null::text as deal_record_id, null::int as outcome_seq,
       (select count(*) from b)::int as taken,
       (select count(*) from rep where result = 'applied')::int as applied,
-      (select count(*) from rep where result = 'rejected')::int as rejected
+      (select count(*) from rep where result = 'rejected')::int as rejected,
+      (select report_through from cnt) as through
     where exists (select 1 from imp)
     union all
-    select 'outcome_changed', u.id, u.outcome_seq, null, null, null from upd u where u.bumped
+    select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null from upd u where u.bumped
     ```
 
     `DEAL_IMPORT_FINISH`:
@@ -1770,7 +1780,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     set state = 'completed', claim_token = null, row_count = applied_count + rejected_count,
         object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()
     where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
-      and applied_count + rejected_count = $4::int
+      and report_through = $4::int + 1
     returning id, row_count, applied_count, rejected_count
     ```
 
@@ -1955,7 +1965,10 @@ that does not raise it by one when (and only when) the Outcome or the closing ti
 lowers it, so a re-tag job that carries it compares it as the cleanup compares `deletion_seq`.
 `DEAL_SET_OUTCOME` locks the row, so two changes queue and each sees the other's; a repeat changes nothing
 and returns `changed` false (publish nothing). The lists are keyset on `(created_at, id)`, newest first,
-each on its own index; the first page passes `'infinity'` and any id. No Deal is created here by a Call:
+each on its own index; the first page passes `'infinity'` and any id. **Every list row carries `cursor_at`, the text of
+`created_at`: pass that back as the next page's cursor, never a JavaScript Date**, which drops the microseconds
+(Deals created by one statement share a `created_at`, and a truncated cursor skips rows at a page boundary).
+`DEAL_IMPORT_LIST` does the same. No Deal is created here by a Call:
 the Call upload statement of the next migration does, for an unknown deal id, under the upload lock.
 
 **Imports.** The upload route runs `IDEMPOTENCY_BEGIN` and then `DEAL_IMPORT_INSERT` in one transaction.
@@ -1968,21 +1981,34 @@ steps, and an import has none of them. The lease is the same (`next_attempt_at`,
 `_GIVE_UP_SPENT` mirror the job statements and fence on the token. The work hint kind is `import_apply`.
 
 `DEAL_IMPORT_APPLY` applies one bounded batch (at most `DEAL_IMPORT_APPLY_BATCH`, 500, rows) and records
-the report in one statement. **Run `QUOTA_LOCK` first in the same transaction**, so the Deal count and the
-existing Deals are read after the lock; two imports of one Organization then apply one at a time and a
-Deal created by one is seen by the other. The rules, per row in row order: a deal id seen earlier in the
-file is `duplicate_in_file`, whatever else is wrong with the repeat (the unique index
-`deal_import_rows_first_key` makes that true even if two batches race); the row's own rejection from the
-contract's `checkDealImportRow` is kept; a `won` or `lost` Deal is `outcome_already_decided`, even for a
-row that says the same; an `open` Deal takes the row (the Outcome, and the closing time, amount, currency
-and name when the cell is not blank: **a blank cell never clears a value**); an unknown deal id creates a
-Deal with `appeared_in_import` true unless the Organization would pass its limit (`deal_limit_reached`).
-A row already in the report is skipped, so a batch sent again after a lost answer changes nothing. A row
-whose effect could not be decided because another transaction changed the Deal meanwhile is left out of
-the report; `DEAL_IMPORT_FINISH` takes the CSV's row count and refuses until the report holds exactly
-that many rows, so the service sends the missing ones again. The answer is one `summary` row and one
-`outcome_changed` row per Deal whose sequence rose: publish the Outcome-changed message for each. The
-report is read by row number (`DEAL_IMPORT_ROWS_LIST`, `_BY_RESULT` on its own index).
+the report in one statement. **Run `QUOTA_LOCK` first in the same transaction**: the statement refuses
+(`playbook.upload_lock`, no customer text) when the transaction does not hold the Organization upload lock
+(it checks `pg_locks` for the transaction's own advisory lock; a session-level lock on the same key would
+also pass). Two imports of one Organization then apply one at a time and every Deal insert, which holds the
+same lock, is seen.
+
+**Order.** The report is always contiguous from row 2 (row 1 is the header): the import row keeps
+`report_through`, the highest row number in the report, and a check ties `applied_count + rejected_count`
+to `report_through - 1`. The statement reads only the rows numbered `report_through + 1`, `+ 2` and so on
+without a gap (rows at or below it are skipped, so a batch sent again after a lost answer changes nothing;
+rows after a gap are not taken), and `taken` and `through` in the answer say what it took. So a row is
+judged only after every row before it, which makes "the first row of a deal id wins" exact. **No row is ever
+left undecided:** the statement locks the Deals the batch names (`for update`, in id order), which reads the
+newest committed version after waiting for a concurrent Outcome change, and decides every row it takes from
+that (a Deal decided meanwhile gives `outcome_already_decided`). A row that could not be decided would break
+the check above and abort the statement with nothing recorded. `DEAL_IMPORT_FINISH` takes the CSV's row
+count and completes only when `report_through` is that count plus one.
+
+The rules, per row in row order: a deal id seen earlier in the file is `duplicate_in_file`, whatever else
+is wrong with the repeat; the row's own rejection from the contract's `checkDealImportRow` is kept; a `won`
+or `lost` Deal is `outcome_already_decided`, even for a row that says the same; an `open` Deal takes the row
+(the Outcome, and the closing time, amount, currency and name when the cell is not blank: **a blank cell
+never clears a value**); an unknown deal id creates a Deal with `appeared_in_import` true unless the
+Organization would pass its limit (`deal_limit_reached`). The answer is one `summary` row and one
+`outcome_changed` row per Deal this statement moved, read from the locked row it changed (a portal change
+made meanwhile never makes a second message): publish the Outcome-changed message for each. `outcome_seq`
+is a 32-bit integer capped at `DEAL_MAX_SEQ`; a Deal at the ceiling cannot take another change (the write
+fails). The report is read by row number (`DEAL_IMPORT_ROWS_LIST`, `_BY_RESULT` on its own index).
 
 **The rights confirmation.** `RIGHTS_CONFIRM` stores it once per Organization: a higher wording version
 replaces the stored one, the same version keeps the first confirmation (its member and time), a lower one

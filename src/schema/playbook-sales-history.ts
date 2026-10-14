@@ -165,6 +165,7 @@ export const dealImports = playbookSchema.table(
     rowCount: integer('row_count'),
     appliedCount: integer('applied_count').notNull().default(0),
     rejectedCount: integer('rejected_count').notNull().default(0),
+    reportThrough: integer('report_through').notNull().default(1),
     objectRemovedAt: ts('object_removed_at'),
     erasedAt: ts('erased_at'),
     finishedAt: ts('finished_at'),
@@ -199,6 +200,11 @@ export const dealImports = playbookSchema.table(
       sql`${t.appliedCount} between 0 and ${sql.raw(String(DEAL_IMPORT_MAX_ROWS))}
         and ${t.rejectedCount} between 0 and ${sql.raw(String(DEAL_IMPORT_MAX_ROWS))}
         and ${t.appliedCount} + ${t.rejectedCount} <= ${sql.raw(String(DEAL_IMPORT_MAX_ROWS))}`
+    ),
+    check(
+      'deal_imports_report_contiguous',
+      sql`${t.reportThrough} between 1 and ${sql.raw(String(DEAL_IMPORT_MAX_ROWS + 1))}
+        and ${t.appliedCount} + ${t.rejectedCount} = ${t.reportThrough} - 1`
     ),
     check(
       'deal_imports_row_count_matches_state',
