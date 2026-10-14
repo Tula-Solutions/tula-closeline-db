@@ -50,6 +50,7 @@ import {
   INGESTION_JOB_GIVE_UP_SPENT,
   INGESTION_JOB_HEARTBEAT,
   type IngestionJobClaimRow,
+  MAX_DOCUMENT_SEARCH_STATE_IDS,
   ORGANIZATION_REMOVAL_STATUS,
   ORGANIZATION_REMOVE_REST,
   ORGANIZATIONS_WITH_WORK,
@@ -765,5 +766,18 @@ describe('the closing date statements take and give a date (0020)', () => {
     expect(PLAYBOOK_STATEMENTS.DEAL_SET_OUTCOME).not.toContain('$4::timestamptz')
     expect(PLAYBOOK_STATEMENTS.DEAL_IMPORT_APPLY).toContain('closed_at date')
     expect(PLAYBOOK_STATEMENTS.DEAL_IMPORT_APPLY).not.toContain('closed_at timestamptz')
+  })
+})
+
+describe('DOCUMENT_SEARCH_STATE (v0.22.0)', () => {
+  test('it is scoped to the Organization, capped by one constant and returns metadata only', () => {
+    const text = PLAYBOOK_STATEMENTS.DOCUMENT_SEARCH_STATE
+    expect(MAX_DOCUMENT_SEARCH_STATE_IDS).toBe(100)
+    expect(text).toContain('organization_id = $1')
+    expect(text).toContain(`($2::text[])[1:${MAX_DOCUMENT_SEARCH_STATE_IDS}]`)
+    expect(text.split('\n')[0]).toBe('select id, name, state, epoch')
+    for (const column of ['object_key', 'content_hash', 'uploaded_by', 'failure_reason']) {
+      expect(text).not.toContain(column)
+    }
   })
 })
