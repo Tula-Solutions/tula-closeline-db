@@ -16,6 +16,7 @@ import {
   DEAL_IMPORT_APPLY_BATCH,
   DEAL_IMPORT_MAX_ATTEMPTS,
   DEAL_IMPORT_MAX_ROWS,
+  MAX_QUEUED_DEAL_IMPORTS,
 } from './schema/playbook-sales-history'
 import {
   DOCUMENT_PURGE_MAX_ATTEMPTS,
@@ -1128,15 +1129,26 @@ export function discoveredOrganizations(rows: readonly WorkDiscoveryRow[]): {
  * cursor id (a finite `created_at` is below infinity whatever the id).
  */
 
-/** The columns a Deal answer carries. */
-const DEAL_COLUMNS = `id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at`
+/**
+ * The Deal's live Calls (not `deleted`), counted per row. A correlated subquery on the outer row's
+ * Organization and Deal, so it reads the Calls through `calls_deal_list_idx` (Organization, Deal;
+ * partial on `state <> 'deleted'`): work proportional to the Deal's own Calls, only for the rows
+ * returned (one, or a page). `int`, so the driver returns a number.
+ */
+const CALL_COUNT = (outer: string) => `(select count(*)::int from playbook.calls cc
+  where cc.organization_id = ${outer}.organization_id and cc.deal_record_id = ${outer}.id and cc.state <> 'deleted') as call_count`
+
+/** The columns a Deal answer carries (the source is aliased `d`, or a CTE named `source`). */
+const DEAL_COLUMNS_OF = (outer: string) =>
+  `${outer}.id, ${outer}.deal_id, ${outer}.name, ${outer}.outcome, ${outer}.outcome_seq, ${outer}.closed_at, ${outer}.amount, ${outer}.currency, ${outer}.appeared_in_import, ${outer}.created_at, ${outer}.updated_at, ${CALL_COUNT(outer)}`
+const DEAL_COLUMNS = DEAL_COLUMNS_OF('d')
 
 /**
  * The list statements add `cursor_at`, the database's own text form of `created_at`. The next
  * page's `$2` is that text, never a JavaScript Date, which drops the microseconds: Deals created by
  * one statement share a `created_at`, and a truncated cursor would skip rows at a page boundary.
  */
-const DEAL_LIST_COLUMNS = `${DEAL_COLUMNS}, created_at::text as cursor_at`
+const DEAL_LIST_COLUMNS = `${DEAL_COLUMNS}, d.created_at::text as cursor_at`
 
 /** The names of the columns of a Deal answer, for the service's row type. */
 export const DEAL_ROW_FIELDS = [
@@ -1151,14 +1163,15 @@ export const DEAL_ROW_FIELDS = [
   'appeared_in_import',
   'created_at',
   'updated_at',
+  'call_count',
 ] as const
 
 /**
  * Read one Deal by its opaque id. `$1` Organization, `$2` the `deal_…` id. No row when absent. The
- * Deal's Calls are not counted here: a later statement counts them.
+ * `call_count` is the Deal's live Calls (see the list statements).
  */
 export const DEAL_GET = `select ${DEAL_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and id = $2`
 
 /**
@@ -1167,7 +1180,7 @@ where organization_id = $1 and id = $2`
  * (`deals_deal_id_key`, one index read). No row when none has that id.
  */
 export const DEAL_BY_DEAL_ID = `select ${DEAL_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and deal_id = $2::text`
 
 /**
@@ -1179,14 +1192,14 @@ where organization_id = $1 and deal_id = $2::text`
  * backwards.
  */
 export const DEAL_LIST = `select ${DEAL_LIST_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
 
 /** {@link DEAL_LIST} for one Outcome (`$5`: `won`, `lost` or `open`), on `deals_outcome_list_idx`. */
 export const DEAL_LIST_BY_OUTCOME = `select ${DEAL_LIST_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
@@ -1197,7 +1210,7 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * shows.
  */
 export const DEAL_LIST_BY_IMPORT_FLAG = `select ${DEAL_LIST_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
@@ -1222,9 +1235,9 @@ u as (
   where d.organization_id = $1 and d.id = cur.id
     and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
   returning d.*)
-select ${DEAL_COLUMNS}, true as changed from u
+select ${DEAL_COLUMNS_OF('u')}, true as changed from u
 union all
-select ${DEAL_COLUMNS}, false from cur where not exists (select 1 from u)`
+select ${DEAL_COLUMNS_OF('cur')}, false from cur where not exists (select 1 from u)`
 
 /** The Deal count of an Organization, kept by a trigger: the quota check reads this one row. */
 export const DEAL_USAGE = `select deal_count
@@ -1239,17 +1252,22 @@ const DEAL_IMPORT_COLUMNS = `id, state, failure_reason,
   uploaded_by, created_at, updated_at`
 
 /**
- * Record an uploaded CSV as a Deal import and queue its job. `$1` Organization, `$2` the new
- * `dimp_…` id, `$3` the uploader, `$4` the object key the CSV was stored under, `$5` its size in
- * bytes (1 to 10 MiB). Run it in the transaction of the upload's idempotency key
- * ({@link IDEMPOTENCY_BEGIN} first, then this): the key insert is what lets the orphan sweep see a
- * CSV whose outcome was unknown. It takes no upload lock and no row shared with another import of
- * the Organization, so two imports uploading at once do not wait for each other. The trigger notes
- * the `import_apply` hint.
+ * Record an uploaded CSV as a Deal import and queue its job, unless the Organization already has
+ * {@link MAX_QUEUED_DEAL_IMPORTS} unfinished imports. `$1` Organization, `$2` the new `dimp_…` id,
+ * `$3` the uploader, `$4` the object key the CSV was stored under, `$5` its size in bytes (1 to 10
+ * MiB). One call to `playbook.insert_deal_import`, which takes an advisory lock on the Organization's
+ * import cap, **then** counts the imports in `uploaded` or `processing` and inserts, as separate
+ * statements inside the function, so each sees the commits that the lock waited for (a single SQL
+ * statement could not: its snapshot is taken before the wait). One row, `result`: `created`, with
+ * the import's columns, or `busy`, with those columns null and **nothing stored** (the service
+ * removes the CSV it already stored and answers `409`). Run it in the transaction of the upload's
+ * idempotency key ({@link IDEMPOTENCY_BEGIN} first, then this): the key insert is what lets the
+ * orphan sweep see a CSV whose outcome was unknown. The lock is held to the end of the transaction
+ * and is the Organization's alone (it is not {@link QUOTA_LOCK}): two imports of one Organization
+ * uploading at once queue, and imports of other Organizations never wait. The trigger notes the
+ * `import_apply` hint.
  */
-export const DEAL_IMPORT_INSERT = `insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)
-values ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())
-returning ${DEAL_IMPORT_COLUMNS}`
+export const DEAL_IMPORT_INSERT = `select * from playbook.insert_deal_import($1::text, $2::text, $3::text, $4::text, $5::bigint, ${MAX_QUEUED_DEAL_IMPORTS})`
 
 /** Read one Deal import. `$1` Organization, `$2` the `dimp_…` id. No row when absent or erased. */
 export const DEAL_IMPORT_GET = `select ${DEAL_IMPORT_COLUMNS}
@@ -1322,7 +1340,7 @@ returning id, attempts`
  * taken and the answer's `taken` says how many). Each element is
  * `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` as the contract's
  * `checkDealImportRow` produced it: `reason` is its rejection or null, `deal_id` is null only for
- * `invalid_deal_id` and `wrong_column_count`, a blank cell is null. **Run {@link QUOTA_LOCK} first
+ * `invalid_deal_id`, `wrong_column_count` and `blank_row` (a row with no cells), a blank cell is null. **Run {@link QUOTA_LOCK} first
  * in the same transaction** (the statement refuses without it), so the Deal count and the existing
  * Deals are read after the lock.
  *

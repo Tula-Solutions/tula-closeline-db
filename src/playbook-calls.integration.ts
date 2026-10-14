@@ -45,6 +45,9 @@ import {
   DEAL_BY_DEAL_ID,
   DEAL_ERASE_BATCH,
   DEAL_GET,
+  DEAL_LIST,
+  DEAL_LIST_BY_IMPORT_FLAG,
+  DEAL_LIST_BY_OUTCOME,
   DEAL_SET_OUTCOME,
   ORGANIZATION_REMOVAL_STATUS,
   ORGANIZATION_REMOVE_REST,
@@ -1825,6 +1828,127 @@ describe('sales history, part two: Calls', () => {
       expect(message).toContain('playbook.call_vendor_send')
       expect(message).not.toContain(idOf)
       expect(message).not.toContain('replaced')
+    })
+  })
+  describe('the Deal call count (0019)', () => {
+    type DealRow = { id: string; deal_id: string; call_count: number }
+    const countsOf = async (org: string, dealId: string) => {
+      const byDealId = (await q(org, DEAL_BY_DEAL_ID, [org, dealId])).rows[0] as DealRow
+      const one = (await q(org, DEAL_GET, [org, byDealId.id])).rows[0] as DealRow
+      const inList = async (text: string, extra: unknown[]) =>
+        ((await q(org, text, [org, 'infinity', '', 50, ...extra])).rows as DealRow[]).find(
+          (r) => r.deal_id === dealId
+        )
+      return {
+        byDealId: byDealId.call_count,
+        get: one.call_count,
+        list: (await inList(DEAL_LIST, []))?.call_count,
+        byOutcome: (await inList(DEAL_LIST_BY_OUTCOME, ['open']))?.call_count,
+        byFlag: (await inList(DEAL_LIST_BY_IMPORT_FLAG, [false]))?.call_count,
+        id: byDealId.id,
+      }
+    }
+
+    test('it counts the Deal’s Calls that are not deleted, in every statement that returns a Deal', async () => {
+      const org = await newConfirmedOrg()
+      const kept = [
+        await mustAdd(org, upload({ dealId: 'D-CC' })),
+        await mustAdd(org, upload({ dealId: 'D-CC' })),
+      ]
+      const gone = await mustAdd(org, upload({ dealId: 'D-CC' }))
+      expect(kept).toHaveLength(2)
+      expect((await countsOf(org, 'D-CC')).get).toBe(3)
+      await q(org, CALL_SOFT_DELETE, [org, gone.id, newUser(), 0])
+      const counts = await countsOf(org, 'D-CC')
+      expect(counts).toMatchObject({ byDealId: 2, get: 2, list: 2, byOutcome: 2, byFlag: 2 })
+      const set = (await q(org, DEAL_SET_OUTCOME, [org, counts.id, 'won', null, false])).rows[0]
+      expect(set).toMatchObject({ changed: true, call_count: 2 })
+      // A repeat changes nothing and still counts.
+      expect(
+        (await q(org, DEAL_SET_OUTCOME, [org, counts.id, 'won', null, false])).rows[0]
+      ).toMatchObject({ changed: false, call_count: 2 })
+      // The count is an integer, not a string.
+      expect(typeof set.call_count).toBe('number')
+    })
+
+    test('another Organization’s Deal with the same deal id has its own count', async () => {
+      const a = await newConfirmedOrg()
+      const b = await newConfirmedOrg()
+      await mustAdd(a, upload({ dealId: 'D-SAME' }))
+      await mustAdd(a, upload({ dealId: 'D-SAME' }))
+      await mustAdd(b, upload({ dealId: 'D-SAME' }))
+      expect((await countsOf(a, 'D-SAME')).get).toBe(2)
+      expect((await countsOf(b, 'D-SAME')).get).toBe(1)
+    })
+
+    // The count reads the Calls through an index bound to the Organization and the Deal; it is a
+    // property of the plan (no Seq Scan, no Sort, both columns in the index condition), not an index name.
+    test('the count is an indexed read under a generic plan', async () => {
+      interface Node {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Cond'?: string
+        Plans?: Node[]
+      }
+      const walk = (n: Node): Node[] => [n, ...(n.Plans ?? []).flatMap(walk)]
+      // A realistic spread first: Organizations with many Calls over a few Deals each. With only the
+      // handful of Calls the other tests leave, scanning an Organization's Calls and filtering by Deal
+      // looks as cheap as the Deal index, and the planner may pick it; that plan is proportional to the
+      // Organization's size, which is what the property below forbids.
+      for (let n = 0; n < 4; n++) {
+        const seeded = newOrg()
+        await asOwner(seeded, async (c) => {
+          await c.query(QUOTA_LOCK, [seeded])
+          await c.query(
+            `insert into playbook.deals (id, organization_id, deal_id)
+             select 'deal_' || lpad(to_hex(g), 32, '0'), $1, 'D-' || g from generate_series(1, 30) g`,
+            [seeded]
+          )
+          await c.query(
+            `insert into playbook.calls (id, organization_id, deal_record_id, kind, file_name, media_type,
+               size_bytes, content_hash, state, rep_by, rep_label, speaker_labels, uploaded_by, object_key)
+             select 'call_' || lpad(to_hex(g), 32, '0'), $1, 'deal_' || lpad(to_hex(1 + g % 30), 32, '0'),
+                    'transcript', 'a.txt', 'text/plain', 100, sha256(g::text::bytea), 'uploaded', 'speaker',
+                    'Alice', array['Alice'], $2, $1 || '/' || g
+               from generate_series(1, 600) g`,
+            [seeded, newUser()]
+          )
+        })
+      }
+      for (const table of ['deals', 'calls']) {
+        await owner.query(`analyze playbook.${table}`)
+      }
+      const cases: [string, string, string, string][] = [
+        ['DEAL_GET', DEAL_GET, 'text, text', `'deal_x'`],
+        ['DEAL_BY_DEAL_ID', DEAL_BY_DEAL_ID, 'text, text', `'x'`],
+        ['DEAL_LIST', DEAL_LIST, 'text, timestamptz, text, int', `'infinity', '', 50`],
+      ]
+      for (const [name, text, types, args] of cases) {
+        const org = newOrg()
+        const plan = await inOrg(org, async (c) => {
+          await c.query('set local plan_cache_mode = force_generic_plan')
+          await c.query('set local enable_seqscan = off')
+          await c.query(`prepare plan_probe(${types}) as ${text}`)
+          try {
+            const r = await c.query(
+              `explain (format json, costs off) execute plan_probe('${org}', ${args})`
+            )
+            return r.rows[0]['QUERY PLAN'][0].Plan as Node
+          } finally {
+            await c.query('deallocate plan_probe')
+          }
+        })
+        const nodes = walk(plan)
+        const dump = `${name}: ${JSON.stringify(plan, null, 1)}`
+        const scans = nodes.filter((n) => n['Relation Name'] === 'calls')
+        expect([scans.length > 0, dump]).toEqual([true, dump])
+        expect([scans.some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([false, dump])
+        expect([nodes.some((n) => n['Node Type'] === 'Sort'), dump]).toEqual([false, dump])
+        const cond = scans.map((n) => n['Index Cond'] ?? '').join(' ')
+        if (!/\borganization_id =/.test(cond) || !/\bdeal_record_id =/.test(cond)) {
+          throw new Error(`the count is not bound to the Organization and the Deal in ${dump}`)
+        }
+      }
     })
   })
 })

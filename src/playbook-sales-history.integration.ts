@@ -36,7 +36,7 @@ import {
   RIGHTS_CONFIRM,
   RIGHTS_GET,
 } from './playbook-statements'
-import { DEAL_IMPORT_MAX_ROWS } from './schema/playbook-sales-history'
+import { DEAL_IMPORT_MAX_ROWS, MAX_QUEUED_DEAL_IMPORTS } from './schema/playbook-sales-history'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 // Every test works in Organizations of its own (random ids), so no test sees another's rows.
@@ -540,7 +540,7 @@ describe('sales history, part one', () => {
         ])
       const insert = (tx: { client: PoolClient }, org: string) =>
         tx.client.query(DEAL_IMPORT_INSERT, [org, newImport(), newUser(), `obj-${hex()}`, 10])
-      // A hint already there: neither upload waits for the other (the 2 second lock timeout turns a
+      // A hint already there: neither key insert waits for the other (the 2 second lock timeout turns a
       // hang into an error).
       const early = newOrg()
       await inOrg(early, async (c) => {
@@ -559,8 +559,12 @@ describe('sales history, part one', () => {
         await key(one, early)
         await key(two, early)
         await insert(one, early)
-        await insert(two, early)
+        // The inserts of one Organization queue on the cap check (0019): the second waits for the
+        // first to commit, and the key inserts above did not wait at all.
+        const second = insert(two, early)
+        await untilBlocked(two.pid)
         await one.client.query('commit')
+        await second
         await two.client.query('commit')
       } finally {
         await finish(one, two)
@@ -1319,5 +1323,141 @@ describe('sales history, part one', () => {
         'permission denied'
       )
     }
+  })
+  describe('the cap of unfinished imports and blank rows (0019)', () => {
+    const insertImport = async (org: string) =>
+      (await q(org, DEAL_IMPORT_INSERT, [org, newImport(), newUser(), `obj-${hex()}`, 10])).rows[0]
+    const countOf = async (org: string) =>
+      (
+        await asOwner(org, (c) =>
+          c.query(
+            'select count(*)::int as n from playbook.deal_imports where organization_id = $1',
+            [org]
+          )
+        )
+      ).rows[0].n as number
+
+    test('five unfinished imports are accepted and the sixth answers busy and stores nothing', async () => {
+      const org = newOrg()
+      for (let n = 0; n < MAX_QUEUED_DEAL_IMPORTS; n++) {
+        expect(await insertImport(org)).toMatchObject({ result: 'created', state: 'uploaded' })
+      }
+      const busy = await insertImport(org)
+      expect(busy).toMatchObject({ result: 'busy', id: null })
+      expect(await countOf(org)).toBe(MAX_QUEUED_DEAL_IMPORTS)
+      // Another Organization is not affected.
+      expect(await insertImport(newOrg())).toMatchObject({ result: 'created' })
+    })
+
+    test('a finished import frees a place; a processing one holds it', async () => {
+      const org = newOrg()
+      const ids: string[] = []
+      for (let n = 0; n < MAX_QUEUED_DEAL_IMPORTS; n++) {
+        ids.push((await insertImport(org)).id)
+      }
+      expect(await insertImport(org)).toMatchObject({ result: 'busy' })
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.deal_imports set state = 'failed', failure_reason = 'unreadable', finished_at = now() where id = $1`,
+          [ids[0]]
+        )
+      )
+      expect(await insertImport(org)).toMatchObject({ result: 'created' })
+      expect(await insertImport(org)).toMatchObject({ result: 'busy' })
+    })
+
+    test('a call for another Organization than the transaction’s raises and takes no lock', async () => {
+      const mine = newOrg()
+      const other = newOrg()
+      const tx = await open(mine)
+      try {
+        await tx.client.query('savepoint s')
+        const message = await rejectionOf(
+          tx.client.query(DEAL_IMPORT_INSERT, [other, newImport(), newUser(), 'obj-x', 10])
+        )
+        expect(message).toContain('playbook.insert_deal_import_scope')
+        await tx.client.query('rollback to savepoint s')
+        const locks = await tx.client.query(
+          `select count(*)::int as n from pg_locks where pid = pg_backend_pid() and locktype = 'advisory'`
+        )
+        expect(locks.rows[0].n).toBe(0)
+        // A transaction with no Organization at all is refused the same way.
+        await tx.client.query(`select set_config('app.organization_id', '', true)`)
+        expect(
+          await rejectionOf(
+            tx.client.query(DEAL_IMPORT_INSERT, [mine, newImport(), newUser(), 'obj-y', 10])
+          )
+        ).toContain('playbook.insert_deal_import_scope')
+      } finally {
+        await finish(tx)
+      }
+      expect(await countOf(other)).toBe(0)
+    })
+
+    test('two concurrent inserts at four queued: exactly one wins', async () => {
+      const org = newOrg()
+      for (let n = 0; n < MAX_QUEUED_DEAL_IMPORTS - 1; n++) {
+        await insertImport(org)
+      }
+      const [one, two] = [await open(org), await open(org)]
+      try {
+        await one.client.query(`set local lock_timeout = '5s'`)
+        await two.client.query(`set local lock_timeout = '5s'`)
+        const first = (
+          await one.client.query(DEAL_IMPORT_INSERT, [org, newImport(), newUser(), 'obj-a', 10])
+        ).rows[0]
+        const waiting = two.client.query(DEAL_IMPORT_INSERT, [
+          org,
+          newImport(),
+          newUser(),
+          'obj-b',
+          10,
+        ])
+        await untilBlocked(two.pid)
+        await one.client.query('commit')
+        const second = (await waiting).rows[0]
+        await two.client.query('commit')
+        expect([first.result, second.result].sort()).toEqual(['busy', 'created'])
+        expect(first.result).toBe('created')
+      } finally {
+        await finish(one, two)
+      }
+      expect(await countOf(org)).toBe(MAX_QUEUED_DEAL_IMPORTS)
+    })
+
+    describe('a blank CSV row is reported with no deal id', () => {
+      const report = async (
+        org: string,
+        importId: string,
+        row: number,
+        dealId: string | null,
+        reason: string
+      ) =>
+        asOwner(org, (c) =>
+          c.query(
+            `insert into playbook.deal_import_rows (organization_id, import_id, row_number, deal_id, result, reason)
+             values ($1, $2, $3, $4, 'rejected', $5)`,
+            [org, importId, row, dealId, reason]
+          )
+        )
+
+      test('blank_row with a null deal id is accepted; an unknown reason and a null id with another reason are refused', async () => {
+        const org = newOrg()
+        const importId = (await insertImport(org)).id as string
+        await report(org, importId, 2, null, 'blank_row')
+        expect(await rejectionOf(report(org, importId, 3, 'D-3', 'not_a_reason'))).toContain(
+          'deal_import_rows_reason_known'
+        )
+        expect(await rejectionOf(report(org, importId, 4, null, 'invalid_outcome'))).toContain(
+          'deal_import_rows_deal_id_missing_only_when_unusable'
+        )
+        for (const [row, reason] of [
+          [5, 'invalid_deal_id'],
+          [6, 'wrong_column_count'],
+        ] as const) {
+          await report(org, importId, row, null, reason)
+        }
+      })
+    })
   })
 })
