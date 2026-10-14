@@ -1,3 +1,8 @@
+-- Hand-written, first: the bound of 20 sends is new in this migration, so a Call counted past it (it
+-- cannot happen through the statements, which stop at 20, but nothing enforced it) is capped at 20
+-- before the CHECK below is added; otherwise ADD CONSTRAINT would fail and the deploy with it.
+UPDATE "playbook"."calls" SET "vendor_send_seq" = 20 WHERE "vendor_send_seq" > 20;
+--> statement-breakpoint
 CREATE TABLE "playbook"."call_vendor_sends" (
 	"organization_id" text NOT NULL,
 	"call_id" text NOT NULL,
@@ -14,6 +19,7 @@ CREATE TABLE "playbook"."call_vendor_sends" (
 );
 --> statement-breakpoint
 ALTER TABLE "playbook"."call_vendor_sends" ADD CONSTRAINT "call_vendor_sends_call_fk" FOREIGN KEY ("organization_id","call_id") REFERENCES "playbook"."calls"("organization_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "call_vendor_sends_org_vendor_id_key" ON "playbook"."call_vendor_sends" USING btree ("organization_id","vendor_id") WHERE "playbook"."call_vendor_sends"."vendor_id" is not null;--> statement-breakpoint
 ALTER TABLE "playbook"."calls" ADD CONSTRAINT "calls_vendor_send_seq_max" CHECK ("playbook"."calls"."vendor_send_seq" <= 20);
 --> statement-breakpoint
 
@@ -25,7 +31,7 @@ ALTER TABLE "playbook"."calls" ADD CONSTRAINT "calls_vendor_send_seq_max" CHECK 
 -- Calls that were sent before this migration get one row per counted send, with no id.
 INSERT INTO "playbook"."call_vendor_sends" ("organization_id", "call_id", "seq")
 SELECT c."organization_id", c."id", g.n
-FROM "playbook"."calls" c, generate_series(1, c."vendor_send_seq") AS g(n);
+FROM "playbook"."calls" c, generate_series(1, LEAST(c."vendor_send_seq", 20)) AS g(n);
 --> statement-breakpoint
 
 ALTER TABLE "playbook"."call_vendor_sends" ENABLE ROW LEVEL SECURITY;

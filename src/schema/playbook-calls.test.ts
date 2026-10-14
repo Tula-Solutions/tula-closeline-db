@@ -192,10 +192,19 @@ describe('the Call tables', () => {
     expect(CALL_STATEMENTS.DEAL_RETAG_LOCK).toContain('for no key update')
   })
 
-  test('the vendor sends: a bounded table keyed by Call and sequence, with no index on the id', () => {
+  test('the vendor sends: a bounded table keyed by Call and sequence, with one unique Organization-scoped index on the id', () => {
     const config = getTableConfig(callVendorSends)
     expect(CALL_MAX_VENDOR_SENDS).toBe(20)
-    expect(config.indexes).toEqual([])
+    expect(config.indexes.map((i) => i.config.name)).toEqual([
+      'call_vendor_sends_org_vendor_id_key',
+    ])
+    const index = config.indexes[0]?.config
+    expect(index?.unique).toBe(true)
+    expect(index?.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
+      'organization_id',
+      'vendor_id',
+    ])
+    expect(index?.where).toBeDefined()
     expect(config.primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
       'organization_id',
       'call_id',
@@ -219,6 +228,7 @@ describe('the Call tables', () => {
     expect(text).toContain('cur.vendor_id is null')
     expect(text).toContain(`~ '${CALL_VENDOR_ID_PATTERN}'`)
     expect(text).toContain("'conflict'")
+    expect(text).toContain('not exists (select 1 from taken)')
     expect(text).not.toContain('returning vendor_id')
     expect(CALL_STATEMENTS.CALL_SENT_TO_VENDOR).toContain('insert into playbook.call_vendor_sends')
     for (const name of [

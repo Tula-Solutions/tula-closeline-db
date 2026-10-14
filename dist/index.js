@@ -44,7 +44,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-cr8a81py.js";
+} from "./shared/chunk-9aaq5aqq.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -702,13 +702,15 @@ var CALL_REQUEUE = `with j as (
   set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
     and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'
-                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))
+                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+                and x.vendor_send_seq < 20)
   returning id),
 x as (
   update playbook.calls
   set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and state = 'failed'
     and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+    and vendor_send_seq < 20
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, rep_seq, kind, transcript_key),
 queued as (
@@ -866,11 +868,15 @@ var CALL_VENDOR_ID_RECORD = `with cur as (
   select vendor_id from playbook.call_vendor_sends
   where organization_id = $1 and call_id = $2 and seq = $3::int
   for update),
+taken as (
+  select 1 from playbook.call_vendor_sends t
+  where t.organization_id = $1 and t.vendor_id = $4::text and not (t.call_id = $2 and t.seq = $3::int)),
 u as (
   update playbook.call_vendor_sends s
   set vendor_id = $4::text, recorded_at = clock_timestamp()
   from cur
   where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null
+    and not exists (select 1 from taken)
     and coalesce($4::text ~ '${CALL_VENDOR_ID_PATTERN2}', false)
   returning 1)
 select case

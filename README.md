@@ -2161,13 +2161,15 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
       where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
         and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'
-                    and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))
+                    and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+                    and x.vendor_send_seq < 20)
       returning id),
     x as (
       update playbook.calls
       set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and state = 'failed'
         and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+        and vendor_send_seq < 20
         and (select count(*) from j) >= 0
       returning organization_id, id, epoch, rep_seq, kind, transcript_key),
     queued as (
@@ -2498,11 +2500,15 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       select vendor_id from playbook.call_vendor_sends
       where organization_id = $1 and call_id = $2 and seq = $3::int
       for update),
+    taken as (
+      select 1 from playbook.call_vendor_sends t
+      where t.organization_id = $1 and t.vendor_id = $4::text and not (t.call_id = $2 and t.seq = $3::int)),
     u as (
       update playbook.call_vendor_sends s
       set vendor_id = $4::text, recorded_at = clock_timestamp()
       from cur
       where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null
+        and not exists (select 1 from taken)
         and coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false)
       returning 1)
     select case
@@ -3038,16 +3044,23 @@ The transcriber port returns an opaque `vendorId` for each send (1 to 128 charac
 It is a tenant table (forced row-level security, the canonical policy, the zero Organization refused).
 The role inserts a row and sets `vendor_id` once; it cannot delete or change the key (the purge deletes
 the Call and the foreign key cascades, so purge and erasure remove the rows) and a trigger refuses a
-change of a recorded id, with a message that carries no value. **There is no index on `vendor_id`**,
-and no statement returns or logs one except the purge rows below.
+change of a recorded id, with a message that carries no value. **The only index on `vendor_id`** is
+`call_vendor_sends_org_vendor_id_key`: unique, partial (set ids only) and led by the Organization, so
+one vendor copy belongs to one send of one Organization. No statement returns or logs an id except the
+purge rows below.
 
 - `CALL_SENT_TO_VENDOR` (before the request, as before) now also inserts the send's row with no id,
   and answers `sent`. **At most 20 sends per Call over its life**: a transcribe job is attempted at
   most 20 times and each attempt sends at most once, but a restore starts a new job, so the bound is on
   the Call (`calls_vendor_send_seq_max`, `call_vendor_sends_seq_bounds`). The twenty-first is not
-  counted and the answer has `sent` false: do not send, fail the job.
+  counted and the answer has `sent` false: do not send, fail the job with the reason
+  `transcription_failed`. `CALL_REQUEUE` does not requeue a Call at the bound: a re-upload of it
+  answers the Call unchanged (`changed` false, no job, nothing written), so it cannot loop until its
+  purge. Whether that deserves a dedicated failure reason is a contract question for the owner.
+  A Call counted past 20 before this migration is capped at 20 by it (the backfill is capped too).
 - `CALL_VENDOR_ID_RECORD` (after the vendor accepts) records the id of send `seq`: `recorded`,
-  `unchanged` (the same id again), `conflict` (a different id is never written over a recorded one),
+  `unchanged` (the same id again), `conflict` (a different id is never written over a recorded one,
+  and an id another send of the Organization already holds is not taken twice),
   `invalid` (not of the allowed shape: nothing is written and no constraint error carries the id), and
   no row when the Call has no such counted send. **A late answer is allowed**: the id of any counted send
   is recorded whatever the Call's state and whichever send is current, with no claim, because it names
@@ -3066,6 +3079,11 @@ sequence `CALL_SENT_TO_VENDOR` returned; after the vendor accepts, call `CALL_VE
 vendor's id (a late answer is still recorded). On purge or erasure, delete each listed send at the
 vendor by its `vendor_id` as a hint, and by its client reference when `vendor_id` is null or the hint
 finds nothing; then confirm with `CALL_VENDOR_REMOVED` for the Call's `vendor_send_seq`, which means
-every copy with reference 1 to that number is gone. Never log `error.detail` of these statements.
+every copy with reference 1 to that number is gone. **Confirm a send gone only after a purge claim
+(`CALL_PURGE_CLAIM`) has returned `vendor_sends` that cover every sequence up to `vendor_send_seq`**;
+the erase rows are early hints only. Two records of the same id on two sends that run at the same moment
+can still make Postgres raise SQLSTATE 23505 (the unique index; a lock cannot prevent it under read
+committed snapshots): treat that error on `CALL_VENDOR_ID_RECORD` as `conflict`. Never log
+`error.detail` of these statements; for 23505 it contains the id.
 Listing the vendor's jobs by client reference is the transcriber adapter's job and is unverified for
 AssemblyAI.

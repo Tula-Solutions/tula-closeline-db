@@ -1,5 +1,5 @@
 {
-  "id": "8ebe9fc2-2b2d-4dae-935a-4720090505ed",
+  "id": "264f6813-3195-4b9e-bee5-766e25c569bc",
   "prevId": "be3a8826-2d01-4fbd-a01d-820bedd3a332",
   "version": "7",
   "dialect": "postgresql",
@@ -7192,7 +7192,30 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "call_vendor_sends_org_vendor_id_key": {
+          "name": "call_vendor_sends_org_vendor_id_key",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "vendor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"playbook\".\"call_vendor_sends\".\"vendor_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "call_vendor_sends_call_fk": {
           "name": "call_vendor_sends_call_fk",

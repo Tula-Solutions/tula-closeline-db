@@ -1632,6 +1632,103 @@ describe('sales history, part two: Calls', () => {
       )
     })
 
+    // F1 (round 1 of PR 16). Fails before the change: CALL_REQUEUE queues a job that can only answer sent false.
+    test('at 20 sends a failed Call is not re-queued: the answer is unchanged and no job is created', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      for (let n = 1; n <= 20; n++) {
+        await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      }
+      expect(
+        (await q(org, CALL_JOB_FAIL, [org, job.id, job.claim_token, 'transcription_failed']))
+          .rowCount
+      ).toBe(1)
+      const again = (await q(org, CALL_REQUEUE, [org, rec.id, newCjob()])).rows[0]
+      expect(again).toMatchObject({ state: 'failed', changed: false })
+      const jobs = await asOwner(org, (c) =>
+        c.query(`select state from playbook.call_jobs where call_id = $1 and state = 'queued'`, [
+          rec.id,
+        ])
+      )
+      expect(jobs.rowCount).toBe(0)
+      expect(await get(org, rec.id)).toMatchObject({
+        state: 'failed',
+        failure_reason: 'transcription_failed',
+      })
+    })
+
+    test('below the bound a transient failure is still re-queued', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      await q(org, CALL_JOB_FAIL, [org, job.id, job.claim_token, 'transcription_failed'])
+      expect((await q(org, CALL_REQUEUE, [org, rec.id, newCjob()])).rows[0]).toMatchObject({
+        state: 'uploaded',
+        changed: true,
+      })
+    })
+
+    // F4. Fails before the change: the same id is recorded on two sends.
+    test('the same vendor id cannot be recorded on two sends of one Organization: conflict, with no id in any message', async () => {
+      const org = await newConfirmedOrg()
+      const a = await mustAdd(org, recording())
+      const b = await mustAdd(org, recording({ dealId: 'V-B' }))
+      for (const call of [a, b]) {
+        const job = await claimOf(org, call.id)
+        await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      }
+      expect(await record(org, a.id, 1, idOf)).toEqual({ result: 'recorded' })
+      expect(await record(org, b.id, 1, idOf)).toEqual({ result: 'conflict' })
+      expect((await sendsOf(org, b.id))[0]?.vendor_id).toBeNull()
+      // The table itself refuses it, and the message names no id.
+      const message = await rejectionOf(
+        asOwner(org, (c) =>
+          c.query(
+            `update playbook.call_vendor_sends set vendor_id = $2, recorded_at = clock_timestamp() where call_id = $1`,
+            [b.id, idOf]
+          )
+        )
+      )
+      expect(message).toContain('call_vendor_sends_org_vendor_id_key')
+      // Another Organization may use the same id: the index is scoped by Organization.
+      const other = await newConfirmedOrg()
+      const o = await mustAdd(other, recording())
+      const oj = await claimOf(other, o.id)
+      await q(other, CALL_SENT_TO_VENDOR, [other, oj.id, oj.claim_token])
+      expect(await record(other, o.id, 1, idOf)).toEqual({ result: 'recorded' })
+    })
+
+    test('a purge completes after an open id record on a send of the same Call: it waits for that statement and nothing deadlocks', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await dueNow(org)
+      await lapseJobs(org)
+      const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
+      await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
+      const [recording_, purging] = [await open(org), await open(org)]
+      try {
+        await purging.client.query(`set local lock_timeout = '5s'`)
+        // A late id for the send: its row is locked until this transaction ends.
+        expect(
+          (await recording_.client.query(CALL_VENDOR_ID_RECORD, [org, rec.id, 1, idOf])).rows[0]
+        ).toEqual({ result: 'recorded' })
+        const completing = purging.client.query(CALL_PURGE_COMPLETE, [org, rec.id])
+        await untilBlocked(purging.pid)
+        await recording_.client.query('commit')
+        expect((await completing).rowCount).toBe(1)
+        await purging.client.query('commit')
+      } finally {
+        await finish(recording_, purging)
+      }
+      expect(await sendsOf(org, rec.id)).toEqual([])
+    })
+
     test('a send’s id is not overwritten by the role, and no error carries an id', async () => {
       const org = await newConfirmedOrg()
       const rec = await mustAdd(org, recording())

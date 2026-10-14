@@ -282,20 +282,24 @@ export const CALL_RESTORE_FOR_UPLOAD = RESTORE('')
  * contract's `callReuploadRequeues`); it goes back to `uploaded` with a queued `transcribe` job
  * (when there is no kept Transcript) or `process` job. `$1` Organization, `$2` the Call, `$3` the new
  * job's id. Any other Call, a failed one with another reason included, is returned as it is with
- * `changed` false and nothing written, except a deleted one (no row: restore it instead).
+ * `changed` false and nothing written, except a deleted one (no row: restore it instead). A Call
+ * that has used all its vendor sends (`vendor_send_seq` at the bound of 20) is also returned as it
+ * is: another job could only answer `sent: false` and fail again, so a re-upload does not loop.
  */
 export const CALL_REQUEUE = `with j as (
   update playbook.call_jobs
   set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
     and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'
-                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))
+                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+                and x.vendor_send_seq < 20)
   returning id),
 x as (
   update playbook.calls
   set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and state = 'failed'
     and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+    and vendor_send_seq < 20
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, rep_seq, kind, transcript_key),
 queued as (
@@ -557,7 +561,10 @@ select id, vendor_send_seq, false from live where vendor_send_seq >= ${CALL_MAX_
  * `$3` the send's `vendor_send_seq` (the number {@link CALL_SENT_TO_VENDOR} returned), `$4` the
  * vendor's id (opaque, 1 to 128 characters of `[A-Za-z0-9._:-]`). One row, `result`:
  * `recorded`; `unchanged` (that send already holds this id, so a repeat is safe); `conflict` (it
- * holds a different id, which is **never overwritten**); `invalid` (the id is not of that shape:
+ * holds a different id, which is **never overwritten**, or another send of the Organization holds
+ * this id: the table has a unique Organization-scoped index on it, and a concurrent record of the
+ * same id on two sends can still raise SQLSTATE 23505, which the service treats as `conflict`
+ * and never logs `error.detail`, because it carries the id); `invalid` (the id is not of that shape:
  * nothing is written and no constraint is reached, so no id appears in any error). **No row** when
  * the Call has no such counted send (never sent, or a number above the Call's current one).
  * **A late answer is allowed**: the id of any counted send is recorded whatever the Call's state and
@@ -570,11 +577,15 @@ export const CALL_VENDOR_ID_RECORD = `with cur as (
   select vendor_id from playbook.call_vendor_sends
   where organization_id = $1 and call_id = $2 and seq = $3::int
   for update),
+taken as (
+  select 1 from playbook.call_vendor_sends t
+  where t.organization_id = $1 and t.vendor_id = $4::text and not (t.call_id = $2 and t.seq = $3::int)),
 u as (
   update playbook.call_vendor_sends s
   set vendor_id = $4::text, recorded_at = clock_timestamp()
   from cur
   where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null
+    and not exists (select 1 from taken)
     and coalesce($4::text ~ '${CALL_VENDOR_ID_PATTERN}', false)
   returning 1)
 select case

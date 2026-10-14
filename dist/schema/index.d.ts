@@ -9051,8 +9051,8 @@ declare const callJobs: PgTableWithColumns_a5zn0g34<{
 * {@link CALL_VENDOR_ID_RECORD} sets `vendor_id` after the vendor accepted, once, and never over
 * another id. A send may never get an id (a crash), so the purge works without one: the row stays and
 * the service finds that copy by its client reference. At most {@link CALL_MAX_VENDOR_SENDS} rows per
-* Call. **No index on `vendor_id`**: ids are opaque and only ever read by Call, through the primary
-* key, which is scoped by Organization. Rows go with the Call (the purge deletes it; the key cascades).
+* Call. **The only index on `vendor_id`** is unique, partial (set ids only) and led by the
+* Organization, so no query reaches an id without one: one vendor copy belongs to one send. Rows go with the Call (the purge deletes it; the key cascades).
 */
 declare const callVendorSends: PgTableWithColumns_a5zn0g34<{
 	name: "call_vendor_sends";

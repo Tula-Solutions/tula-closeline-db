@@ -1821,7 +1821,8 @@ var callVendorSends2 = playbookSchema2.table("call_vendor_sends", {
   check15("call_vendor_sends_organization_not_global", notGlobal3),
   check15("call_vendor_sends_seq_bounds", sql20`${t.seq} between 1 and ${sql20.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
   check15("call_vendor_sends_vendor_id_shape", sql20.raw(`"vendor_id" is null or "vendor_id" ~ '${CALL_VENDOR_ID_PATTERN2}'`)),
-  check15("call_vendor_sends_recorded_matches", sql20`(${t.vendorId} is null) = (${t.recordedAt} is null)`)
+  check15("call_vendor_sends_recorded_matches", sql20`(${t.vendorId} is null) = (${t.recordedAt} is null)`),
+  uniqueIndex5("call_vendor_sends_org_vendor_id_key").on(t.organizationId, t.vendorId).where(sql20`${t.vendorId} is not null`)
 ]);
 // src/schema/playbook-consumed.ts
 import { sql as sql21 } from "drizzle-orm";
