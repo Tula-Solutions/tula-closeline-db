@@ -1540,6 +1540,7 @@ var dealImports2 = playbookSchema2.table("deal_imports", {
   check14("deal_imports_erased_is_final", sql19`${t.erasedAt} is null or ${t.state} in ('completed', 'failed')`),
   index25("deal_imports_list_idx").on(t.organizationId, t.createdAt, t.id),
   index25("deal_imports_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql19`${t.state} in ('uploaded', 'processing')`),
+  index25("deal_imports_erased_idx").on(t.organizationId, t.id).where(sql19`${t.erasedAt} is not null`),
   index25("deal_imports_unerased_idx").on(t.organizationId, t.id).where(sql19`${t.erasedAt} is null`)
 ]);
 var dealImportRows2 = playbookSchema2.table("deal_import_rows", {

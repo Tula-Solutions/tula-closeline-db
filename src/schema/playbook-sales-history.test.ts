@@ -104,7 +104,11 @@ describe('the sales-history tables', () => {
   test('an import is a job: a lease, a due index and an unerased index', () => {
     const { indexes } = names(dealImports)
     expect(indexes).toEqual(
-      expect.arrayContaining(['deal_imports_due_idx', 'deal_imports_unerased_idx'])
+      expect.arrayContaining([
+        'deal_imports_due_idx',
+        'deal_imports_unerased_idx',
+        'deal_imports_erased_idx',
+      ])
     )
   })
 

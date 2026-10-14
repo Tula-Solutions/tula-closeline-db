@@ -1534,7 +1534,9 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * heartbeat, apply or finish holds any more) and returns each as `id`, `object_key` and
  * `object_pending`, true when the CSV may still be stored: **remove it, then call
  * {@link DEAL_IMPORT_OBJECT_REMOVED}**. An import that ended normally already recorded its removal.
- * Repeat until no row comes back. Then purge each with {@link DEAL_IMPORT_PURGE_BATCH}.
+ * Repeat until no row comes back. Then purge each with {@link DEAL_IMPORT_PURGE_BATCH}. If the answer
+ * is lost (a crash, a timeout), the ids are not lost: {@link DEAL_IMPORT_LIST_ERASED} names every
+ * erased import not yet purged, and an erasure starts by finishing those.
  */
 export const DEAL_IMPORT_ERASE_BATCH = `with batch as (
   select id from playbook.deal_imports
@@ -1550,6 +1552,22 @@ set state = case when i.state in ('uploaded', 'processing') then 'failed' else i
 from batch
 where i.organization_id = $1 and i.id = batch.id
 returning i.id, i.object_key, (i.object_removed_at is null) as object_pending`
+
+/**
+ * One page of the imports that are erased and not yet purged, by id: `$1` Organization, `$2` the last
+ * id of the previous page (`''` for the first), `$3` the page size (clamped to
+ * 1..{@link DOCUMENT_LIST_MAX_PAGE}). Rows: `id`, `object_key` and `object_pending` (true while the
+ * CSV is not recorded removed). It is how an erasure interrupted after {@link DEAL_IMPORT_ERASE_BATCH}
+ * committed is finished, because every other statement filters `erased_at is null` and
+ * {@link DEAL_IMPORT_PURGE_BATCH} needs the id: **list first, remove each pending CSV and record it
+ * with {@link DEAL_IMPORT_OBJECT_REMOVED}, purge each import, and only then erase more**. On
+ * `deal_imports_erased_idx`.
+ */
+export const DEAL_IMPORT_LIST_ERASED = `select id, object_key, (object_removed_at is null) as object_pending
+from playbook.deal_imports
+where organization_id = $1 and erased_at is not null and id > $2::text
+order by id
+limit ${CLAMP('$3', DOCUMENT_LIST_MAX_PAGE)}`
 
 /**
  * Purge an erased import in bounded steps: `$1` Organization, `$2` the import, `$3` how many report
@@ -1680,6 +1698,7 @@ export const PLAYBOOK_STATEMENTS = {
   DEAL_IMPORT_ROWS_LIST,
   DEAL_IMPORT_ROWS_LIST_BY_RESULT,
   DEAL_IMPORT_ERASE_BATCH,
+  DEAL_IMPORT_LIST_ERASED,
   DEAL_IMPORT_PURGE_BATCH,
   DEAL_ERASE_BATCH,
   RIGHTS_GET,
