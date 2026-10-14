@@ -2015,6 +2015,81 @@ describe('sales history, part two: Calls', () => {
       expect(await stateOf(org, [a.id, a.id, a.id])).toHaveLength(1)
     })
 
+    /** The row must be CALL_GET's, field for field: the one source of the eligibility facts. */
+    const expectSameAsGet = async (org: string, id: string) => {
+      const one = await get(org, id)
+      const rows = await stateOf(org, [id])
+      expect(rows).toEqual([
+        {
+          call_id: one.id,
+          in_search: one.in_search,
+          epoch: one.epoch,
+          rep_seq: one.rep_seq,
+          deal_record_id: one.deal_record_id,
+        },
+      ])
+      return { one, row: rows[0] as State }
+    }
+    /** A ready Call of a won Deal, retagged so that it is in search. */
+    const inSearchCall = async (org: string, dealId: string) => {
+      const call = await makeReady(org, upload({ dealId }))
+      const deal = await dealOf(org, dealId)
+      await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', null, false])
+      const batch = (await q(org, DEAL_RETAG_BATCH, [org, deal.id, '', 10])).rows
+      await q(org, CALL_RETAGGED, [org, batch.map((r) => r.id), batch[0].outcome_seq])
+      expect((await stateOf(org, [call.id]))[0]?.in_search).toBe(true)
+      return call
+    }
+
+    test('a deleted Call is answered, out of search, as CALL_GET answers it', async () => {
+      const org = await newConfirmedOrg()
+      const call = await inSearchCall(org, 'S-DEL')
+      await q(org, CALL_SOFT_DELETE, [org, call.id, newUser(), 0])
+      const { one, row } = await expectSameAsGet(org, call.id)
+      expect(one.state).toBe('deleted')
+      expect(row.in_search).toBe(false)
+    })
+
+    test('a Call in processing after a Rep change is out of search with the new rep_seq, as CALL_GET says', async () => {
+      const org = await newConfirmedOrg()
+      const call = await inSearchCall(org, 'S-REP')
+      const before = (await stateOf(org, [call.id]))[0] as State
+      const changed = await setRep(org, call.id, 'speaker', 'Bob')
+      expect(changed.result).toBe('changed')
+      const { one, row } = await expectSameAsGet(org, call.id)
+      expect(one.state).toBe('processing')
+      expect(row.in_search).toBe(false)
+      expect(row.rep_seq).toBe(before.rep_seq + 1)
+    })
+
+    test('a purge reset leaves the answer as CALL_GET gives it, and a purged Call is not answered', async () => {
+      const org = await newConfirmedOrg()
+      const call = await inSearchCall(org, 'S-PURGE')
+      await q(org, CALL_SOFT_DELETE, [org, call.id, newUser(), 0])
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.calls set purge_due_at = deleted_at, purge_attempts = 20,
+                  purge_started_at = clock_timestamp(), purge_lease_until = clock_timestamp()
+           where id = $1`,
+          [call.id]
+        )
+      )
+      expect((await q(org, CALL_PURGE_RESET, [org, call.id])).rows[0]).toMatchObject({
+        purge_attempts: 0,
+      })
+      const { one, row } = await expectSameAsGet(org, call.id)
+      expect(one.state).toBe('deleted')
+      expect(row.in_search).toBe(false)
+      // Once the purge completes the Call is gone from both.
+      await lapseJobs(org)
+      const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
+      expect(claimed?.id).toBe(call.id)
+      await q(org, CALL_CLEANUP_DONE, [org, call.id, claimed.deletion_seq])
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, call.id])).rowCount).toBe(1)
+      expect((await get(org, call.id)) ?? null).toBeNull()
+      expect(await stateOf(org, [call.id])).toEqual([])
+    })
+
     test('the statement reads at most MAX_SEARCH_STATE_IDS ids: the first 100 are answered, the rest are not', async () => {
       const org = await newConfirmedOrg()
       const real = await mustAdd(org, upload())
@@ -2081,9 +2156,18 @@ describe('sales history, part two: Calls', () => {
       if (scans.length === 0 || scans.some((n) => n['Node Type'] === 'Seq Scan')) {
         throw new Error(`calls is not read through an index in ${dump}`)
       }
-      const cond = scans.map((n) => n['Index Cond'] ?? '').join(' ')
-      if (!/\borganization_id =/.test(cond)) {
-        throw new Error(`the Calls read is not bound to the Organization in ${dump}`)
+      // The read must be bounded by the ids, not only by the Organization: one index condition holds
+      // both, so a plan that scans every Call of the Organization and filters the ids fails.
+      // A Bitmap Heap Scan keeps its condition on the Bitmap Index Scan below it, so look there too.
+      const bounded = scans
+        .flatMap(walk)
+        .some(
+          (n) =>
+            /\borganization_id =/.test(n['Index Cond'] ?? '') &&
+            /\bid = ANY\b/i.test(n['Index Cond'] ?? '')
+        )
+      if (!bounded) {
+        throw new Error(`the Calls read is not bound by the Organization and the ids in ${dump}`)
       }
     })
   })
