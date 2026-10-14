@@ -14,21 +14,29 @@ import {
   CALL_MAX_SEQ,
   CALL_MAX_SPEAKERS,
   CALL_MAX_TRANSCRIPT_BYTES,
+  CALL_MAX_VENDOR_SENDS,
   CALL_MEDIA_TYPES,
   CALL_PURGE_MAX_ATTEMPTS,
   CALL_REP_BY,
   CALL_SPEAKER_LABEL_MAX_BYTES,
   CALL_SPEAKER_LABEL_MAX_LENGTH,
   CALL_STATES,
+  CALL_VENDOR_ID_PATTERN,
   callJobs,
   callReuploadRequeues,
   calls,
+  callVendorSends,
   repChangeAllowed,
 } from './playbook-calls'
 import { WORK_KINDS } from './playbook-work-hints'
 
 const migration = readFileSync(
   new URL('../../migrations/0016_playbook_calls.sql', import.meta.url),
+  'utf8'
+)
+
+const vendorMigration = readFileSync(
+  new URL('../../migrations/0018_call_vendor_sends.sql', import.meta.url),
   'utf8'
 )
 
@@ -182,6 +190,44 @@ describe('the Call tables', () => {
     expect(text).toContain('least($4::int, dk.outcome_seq)')
     expect(text).toContain('c.tagged_outcome_seq < dk.outcome_seq')
     expect(CALL_STATEMENTS.DEAL_RETAG_LOCK).toContain('for no key update')
+  })
+
+  test('the vendor sends: a bounded table keyed by Call and sequence, with no index on the id', () => {
+    const config = getTableConfig(callVendorSends)
+    expect(CALL_MAX_VENDOR_SENDS).toBe(20)
+    expect(config.indexes).toEqual([])
+    expect(config.primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
+      'organization_id',
+      'call_id',
+      'seq',
+    ])
+    expect(config.checks.map((c) => c.name)).toEqual(
+      expect.arrayContaining([
+        'call_vendor_sends_organization_not_global',
+        'call_vendor_sends_seq_bounds',
+        'call_vendor_sends_vendor_id_shape',
+      ])
+    )
+    expect(vendorMigration).toContain('REVOKE UPDATE, DELETE ON "playbook"."call_vendor_sends"')
+    expect(vendorMigration).toContain('GRANT UPDATE ("vendor_id", "recorded_at")')
+    expect(vendorMigration).toContain("CONSTRAINT = 'call_vendor_sends_identity'")
+    expect(vendorMigration).toContain('FORCE ROW LEVEL SECURITY')
+  })
+
+  test('the id statement refuses to overwrite and validates the shape inside the statement', () => {
+    const text = CALL_STATEMENTS.CALL_VENDOR_ID_RECORD
+    expect(text).toContain('cur.vendor_id is null')
+    expect(text).toContain(`~ '${CALL_VENDOR_ID_PATTERN}'`)
+    expect(text).toContain("'conflict'")
+    expect(text).not.toContain('returning vendor_id')
+    expect(CALL_STATEMENTS.CALL_SENT_TO_VENDOR).toContain('insert into playbook.call_vendor_sends')
+    for (const name of [
+      'CALL_PURGE_CLAIM',
+      'CALL_ERASE_BATCH',
+      'CALL_LIST_SPENT_PURGES',
+    ] as const) {
+      expect(CALL_STATEMENTS[name]).toContain('vendor_sends')
+    }
   })
 
   test('one active job per Call, and the job kinds and states', () => {

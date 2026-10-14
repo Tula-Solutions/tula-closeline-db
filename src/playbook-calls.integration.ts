@@ -33,6 +33,7 @@ import {
   CALL_SET_REP,
   CALL_SOFT_DELETE,
   CALL_USAGE,
+  CALL_VENDOR_ID_RECORD,
   CALL_VENDOR_REMOVED,
   claimedCallJobs,
   DEAL_LIST_PENDING_RETAG,
@@ -1353,6 +1354,12 @@ describe('sales history, part two: Calls', () => {
         expect([walk(plan).some((n) => n['Index Name'] === index), dump]).toEqual([true, dump])
         expect([walk(plan).some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([false, dump])
         if (_n === 'CALL_PURGE_CLAIM') {
+          // 0018: the sends of each claimed Call are read through the primary key.
+          const sends = walk(plan).filter((n) => n['Relation Name'] === 'call_vendor_sends')
+          expect([
+            sends.length > 0 && sends.every((n) => n['Index Name'] === 'call_vendor_sends_pkey'),
+            dump,
+          ]).toEqual([true, dump])
           const probes = walk(plan).filter((n) => n['Relation Name'] === 'call_jobs')
           expect([probes.length > 0 && probes.every((n) => n['Index Name']), dump]).toEqual([
             true,
@@ -1456,5 +1463,189 @@ describe('sales history, part two: Calls', () => {
         expect(claimed[0].purge_attempts).toBe(1)
       }
     )
+  })
+
+  describe('vendor ids per send (0018)', () => {
+    const idOf = 'vend_abc.123:def-456'
+    const sendsOf = async (org: string, callId: string) =>
+      (
+        await asOwner(org, (c) =>
+          c.query(
+            'select seq, vendor_id from playbook.call_vendor_sends where call_id = $1 order by seq',
+            [callId]
+          )
+        )
+      ).rows as { seq: number; vendor_id: string | null }[]
+    const record = async (org: string, callId: string, seq: number, id: string | null) =>
+      (await q(org, CALL_VENDOR_ID_RECORD, [org, callId, seq, id])).rows[0] as
+        | { result: string }
+        | undefined
+    const dueNow = (org: string) =>
+      asOwner(org, (c) =>
+        c.query(`update playbook.calls set purge_due_at = deleted_at where state = 'deleted'`)
+      )
+
+    /** A Recording sent twice (a restore between), the second with no stored id; then deleted. */
+    async function twoSends(org: string) {
+      const rec = await mustAdd(org, recording())
+      const first = await claimOf(org, rec.id)
+      expect(
+        (await q(org, CALL_SENT_TO_VENDOR, [org, first.id, first.claim_token])).rows[0]
+      ).toMatchObject({ vendor_send_seq: 1, sent: true })
+      expect(await record(org, rec.id, 1, idOf)).toEqual({ result: 'recorded' })
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await lapseJobs(org)
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
+      expect((await q(org, CALL_RESTORE, [org, rec.id, newCjob()])).rows[0]).toMatchObject({
+        state: 'uploaded',
+      })
+      const second = await claimOf(org, rec.id)
+      expect(
+        (await q(org, CALL_SENT_TO_VENDOR, [org, second.id, second.claim_token])).rows[0]
+      ).toMatchObject({ vendor_send_seq: 2, sent: true })
+      // The service crashed here: no id was stored for send 2.
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await dueNow(org)
+      await lapseJobs(org)
+      return rec
+    }
+
+    // Fails without 0018: there is no table, no id statement and no vendor_sends column.
+    test('two sends, the second without an id: the purge claim lists both, confirmation and purge leave nothing', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await twoSends(org)
+      expect(await sendsOf(org, rec.id)).toEqual([
+        { seq: 1, vendor_id: idOf },
+        { seq: 2, vendor_id: null },
+      ])
+      const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
+      expect(claimed.vendor_sends).toEqual([
+        { seq: 1, vendor_id: idOf },
+        { seq: 2, vendor_id: null },
+      ])
+      expect(claimed.vendor_send_seq).toBe(2)
+      await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
+      // Confirmation stays by sequence: the first send's number does not confirm the second.
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(0)
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 2])).rowCount).toBe(1)
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
+      expect(await sendsOf(org, rec.id)).toEqual([])
+    })
+
+    test('the erase rows and the spent-purge rows list the sends too', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      await record(org, rec.id, 1, idOf)
+      const erased = (await q(org, CALL_ERASE_BATCH, [org, 10, ERASER])).rows[0]
+      expect(erased.vendor_sends).toEqual([{ seq: 1, vendor_id: idOf }])
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.calls set purge_attempts = 20, purge_started_at = clock_timestamp(),
+                  purge_lease_until = clock_timestamp() where id = $1`,
+          [rec.id]
+        )
+      )
+      const spent = (await q(org, CALL_LIST_SPENT_PURGES, [org, '', 10])).rows[0]
+      expect(spent.vendor_sends).toEqual([{ seq: 1, vendor_id: idOf }])
+    })
+
+    test('a Call with no send lists an empty array, and a second Organization sees none of the rows', async () => {
+      const org = await newConfirmedOrg()
+      const none = await mustAdd(org, upload({ dealId: 'V-1' }))
+      await q(org, CALL_SOFT_DELETE, [org, none.id, newUser(), 0])
+      await dueNow(org)
+      await lapseJobs(org)
+      expect((await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0].vendor_sends).toEqual([])
+      const rec = await twoSends(org)
+      const other = await newConfirmedOrg()
+      expect((await q(other, 'select * from playbook.call_vendor_sends', [])).rowCount).toBe(0)
+      expect((await record(other, rec.id, 1, 'x')) ?? null).toBeNull()
+      expect(await sendsOf(org, rec.id)).toHaveLength(2)
+    })
+
+    test('an id is recorded once per send and never over another: a repeat is unchanged, a different id is a conflict', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      expect(await record(org, rec.id, 1, idOf)).toEqual({ result: 'recorded' })
+      expect(await record(org, rec.id, 1, idOf)).toEqual({ result: 'unchanged' })
+      expect(await record(org, rec.id, 1, 'other-id')).toEqual({ result: 'conflict' })
+      expect((await sendsOf(org, rec.id))[0]?.vendor_id).toBe(idOf)
+      // Not a counted send: no row, nothing written.
+      expect((await record(org, rec.id, 2, idOf)) ?? null).toBeNull()
+      expect((await record(org, rec.id, 0, idOf)) ?? null).toBeNull()
+      // Invalid ids are answered, not stored, and never reach a constraint error.
+      for (const bad of ['', 'has space', 'x'.repeat(129), 'slash/bad', null]) {
+        expect(await record(org, rec.id, 1, bad)).toEqual({ result: 'invalid' })
+      }
+    })
+
+    test('a late id for an earlier send is recorded: it names a real copy that must be deleted', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const first = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, first.id, first.claim_token])
+      // The first answer is late: a restore and a second send happen before it arrives.
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await lapseJobs(org)
+      await q(org, CALL_RESTORE, [org, rec.id, newCjob()])
+      const second = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, second.id, second.claim_token])
+      expect(await record(org, rec.id, 1, 'late-first')).toEqual({ result: 'recorded' })
+      expect(await record(org, rec.id, 2, 'second')).toEqual({ result: 'recorded' })
+      expect(await sendsOf(org, rec.id)).toEqual([
+        { seq: 1, vendor_id: 'late-first' },
+        { seq: 2, vendor_id: 'second' },
+      ])
+      // It is allowed in any state of the Call, including deleted.
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      expect(await record(org, rec.id, 1, 'late-first')).toEqual({ result: 'unchanged' })
+    })
+
+    test('at most 20 sends per Call: the twenty-first is not counted and answers sent false', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      for (let n = 1; n <= 20; n++) {
+        expect(
+          (await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])).rows[0]
+        ).toMatchObject({ vendor_send_seq: n, sent: true })
+      }
+      expect(
+        (await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])).rows[0]
+      ).toMatchObject({ vendor_send_seq: 20, sent: false })
+      expect(await sendsOf(org, rec.id)).toHaveLength(20)
+      // The table refuses it too.
+      const message = await rejectionOf(
+        asOwner(org, (c) =>
+          c.query('update playbook.calls set vendor_send_seq = 21 where id = $1', [rec.id])
+        )
+      )
+      expect(message).toContain('calls_vendor_send_seq_max')
+      // A lost claim is still no row.
+      expect((await q(org, CALL_SENT_TO_VENDOR, [org, job.id, crypto.randomUUID()])).rowCount).toBe(
+        0
+      )
+    })
+
+    test('a send’s id is not overwritten by the role, and no error carries an id', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      await record(org, rec.id, 1, idOf)
+      const message = await rejectionOf(
+        q(org, `update playbook.call_vendor_sends set vendor_id = 'replaced' where call_id = $1`, [
+          rec.id,
+        ])
+      )
+      expect(message).toContain('playbook.call_vendor_send')
+      expect(message).not.toContain(idOf)
+      expect(message).not.toContain('replaced')
+    })
   })
 })

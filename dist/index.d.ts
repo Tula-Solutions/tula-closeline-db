@@ -179,7 +179,7 @@ declare const AUTH_STATEMENTS: {
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, calls, consumedMessage, coreSchema, credentials, dealImportRows, dealImports, deals, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, repChangeAllowed, rightsConfirmations, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consumedMessage, coreSchema, credentials, dealImportRows, dealImports, deals, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, repChangeAllowed, rightsConfirmations, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -8307,6 +8307,15 @@ declare const CALL_MAX_SEQ = 2147483647;
 declare const CALL_PURGE_MAX_ATTEMPTS = 20;
 /** The most times a Call job may be claimed: the table's bound, as for ingestion jobs. */
 declare const CALL_JOB_MAX_ATTEMPTS = 20;
+/**
+* The most sends of one Recording to the transcription vendor over the Call's whole life. A transcribe
+* job is claimed at most {@link CALL_JOB_MAX_ATTEMPTS} times and each attempt sends at most once, but a
+* restore starts a new job, so the bound is on the Call itself: the table refuses a twenty-first
+* send, and {@link CALL_SENT_TO_VENDOR} answers `sent` false instead of counting it.
+*/
+declare const CALL_MAX_VENDOR_SENDS = 20;
+/** What a vendor id may look like: opaque, 1 to 128 characters of `[A-Za-z0-9._:-]` (the transcriber port's rule). */
+declare const CALL_VENDOR_ID_PATTERN = "^[A-Za-z0-9._:-]{1,128}$";
 /** The kinds of Call job: transcribe a Recording, build a Call's Moments, rebuild them after a Rep change. */
 declare const CALL_JOB_KINDS: readonly ["transcribe", "process", "rebuild"];
 /** The states of a Call job; `queued` and `running` are active. */
@@ -9208,6 +9217,124 @@ declare const callJobs: PgTableWithColumns_a5zn0g34<{
 			driverParam: string;
 			notNull: true;
 			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* One send of a Recording to the transcription vendor, keyed by Call and `calls.vendor_send_seq`.
+* {@link CALL_SENT_TO_VENDOR} inserts the row (with no id) in the same write that counts the send;
+* {@link CALL_VENDOR_ID_RECORD} sets `vendor_id` after the vendor accepted, once, and never over
+* another id. A send may never get an id (a crash), so the purge works without one: the row stays and
+* the service finds that copy by its client reference. At most {@link CALL_MAX_VENDOR_SENDS} rows per
+* Call. **No index on `vendor_id`**: ids are opaque and only ever read by Call, through the primary
+* key, which is scoped by Organization. Rows go with the Call (the purge deletes it; the key cascades).
+*/
+declare const callVendorSends: PgTableWithColumns_a5zn0g34<{
+	name: "call_vendor_sends";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp34<{
+			name: "organization_id";
+			tableName: "call_vendor_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		callId: PgColumn_ffrhhp34<{
+			name: "call_id";
+			tableName: "call_vendor_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		seq: PgColumn_ffrhhp34<{
+			name: "seq";
+			tableName: "call_vendor_sends";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		vendorId: PgColumn_ffrhhp34<{
+			name: "vendor_id";
+			tableName: "call_vendor_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "call_vendor_sends";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		recordedAt: PgColumn_ffrhhp34<{
+			name: string;
+			tableName: "call_vendor_sends";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
@@ -11966,9 +12093,28 @@ declare const CALL_JOB_RETRY2 = "update playbook.call_jobs\\nset state = 'queued
 * service crashed after the vendor accepted it and before it stored the vendor's id; a
 * confirmation for number `n` means every copy with reference 1 to `n` is gone. That needs the
 * vendor to support a client reference or a lookup, which is unverified for AssemblyAI and belongs
-* to the transcriber adapter ticket. No row: the claim was lost or the Call is not live.
+* to the transcriber adapter ticket. The same write inserts the send's row (`call_vendor_sends`,
+* no id yet): record the vendor's id with {@link CALL_VENDOR_ID_RECORD} after it accepts. **At most
+* {@link CALL_MAX_VENDOR_SENDS} sends per Call over its life** (a restore starts a new job, so the
+* job's attempt limit alone does not bound them): a twenty-first is not counted and the answer has
+* `sent` false; do not send, fail the job. No row: the claim was lost or the Call is not live.
 */
 declare const CALL_SENT_TO_VENDOR2: string;
+/**
+* Record the vendor's id for one send, after the vendor accepted it. `$1` Organization, `$2` Call,
+* `$3` the send's `vendor_send_seq` (the number {@link CALL_SENT_TO_VENDOR} returned), `$4` the
+* vendor's id (opaque, 1 to 128 characters of `[A-Za-z0-9._:-]`). One row, `result`:
+* `recorded`; `unchanged` (that send already holds this id, so a repeat is safe); `conflict` (it
+* holds a different id, which is **never overwritten**); `invalid` (the id is not of that shape:
+* nothing is written and no constraint is reached, so no id appears in any error). **No row** when
+* the Call has no such counted send (never sent, or a number above the Call's current one).
+* **A late answer is allowed**: the id of any counted send is recorded whatever the Call's state and
+* whichever send is the current one, and without a claim, because an answer that arrives after a
+* restore, a newer send or a delete still names a real copy at the vendor that must be deleted. A
+* send that never gets an id keeps its row with a null id; the purge then finds that copy by its
+* client reference. The id is never returned by this statement, logged, or put in an index.
+*/
+declare const CALL_VENDOR_ID_RECORD2 = "with cur as (\\n  select vendor_id from playbook.call_vendor_sends\\n  where organization_id = $1 and call_id = $2 and seq = $3::int\\n  for update),\\nu as (\\n  update playbook.call_vendor_sends s\\n  set vendor_id = $4::text, recorded_at = clock_timestamp()\\n  from cur\\n  where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null\\n    and coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false)\\n  returning 1)\\nselect case\\n  when not coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false) then 'invalid'\\n  when exists (select 1 from u) then 'recorded'\\n  when cur.vendor_id = $4::text then 'unchanged'\\n  else 'conflict' end as result\\nfrom cur";
 /**
 * Record what a step learned and extend the lease. `$1` Organization, `$2` job, `$3` the claim
 * token, `$4` the object key of the Transcript a Recording produced (kept and reused), `$5` the
@@ -12054,7 +12200,10 @@ declare const CALL_VENDOR_REMOVED2 = "update playbook.calls\\nset vendor_removed
 * batch size, `$3` the lease in milliseconds. Rows carry what the service must remove outside any
 * transaction: `object_key` (the original), `transcript_key` (the kept Transcript), `kind`,
 * `sent_to_vendor_at`, `vendor_send_seq` and `vendor_removed_at` (remove the vendor's copy and record it
-* with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
+* with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `vendor_sends` (every counted send as
+* `{ seq, vendor_id }`, `vendor_id` null for a send whose id was never stored: delete that copy by its
+* client reference; the array is complete, at most {@link CALL_MAX_VENDOR_SENDS} long, and `[]` for a Call
+* never sent), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
 * when they differ). The service also removes every artefact under the Call's id prefix. **A claim
 * means the purge can finish**: a Call is not handed out while a job of it is `running`, or
 * `cancelled` with its lease unexpired (delete and erasure cancel a job but keep its lease), the
@@ -12082,7 +12231,10 @@ declare const CALL_PURGE_RESET2 = "update playbook.calls\\nset purge_attempts = 
 * remove every Call, before {@link DEAL_ERASE_BATCH}**: a Deal a Call refers to cannot be deleted.
 * `$1` Organization, `$2` batch size, `$3` the actor (an internal call has no user: `usr_` and 32
 * zeros). Rows: `id`, `epoch`, `deletion_seq`, `changed` (publish the cleanup with that sequence),
-* and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at`, `vendor_send_seq` so the service can remove the
+* and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at`, `vendor_send_seq`, `vendor_sends` (**read in
+* the statement's snapshot, so a send that committed while the statement ran can be in `vendor_send_seq`
+* and not yet in `vendor_sends`: when `vendor_sends` is shorter than `vendor_send_seq`, delete the
+* missing sequences by client reference; the purge claim, run after the lease gate, is exact**) so the service can remove the
 * objects and the vendor copy at once; the purge claim returns them again. Lock order: job rows,
 * then Call rows, each in id order. Repeat until no row comes back. An upload still streaming has
 * no Call yet: its key is an upload attempt, so the orphan sweep removes its parts and object.
@@ -12153,6 +12305,7 @@ declare const CALL_STATEMENTS: {
 	readonly CALL_CLEANUP_BEGIN2: "select c.id, c.epoch,\\n  not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = c.organization_id and j.call_id = c.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.calls c\\nwhere c.organization_id = $1 and c.id = $2 and c.state = 'deleted' and c.deletion_seq = $3::int";
 	readonly CALL_LIST_PENDING_CLEANUP2: string;
 	readonly CALL_CLEANUP_DONE2: "update playbook.calls\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+	readonly CALL_VENDOR_ID_RECORD2: "with cur as (\\n  select vendor_id from playbook.call_vendor_sends\\n  where organization_id = $1 and call_id = $2 and seq = $3::int\\n  for update),\\nu as (\\n  update playbook.call_vendor_sends s\\n  set vendor_id = $4::text, recorded_at = clock_timestamp()\\n  from cur\\n  where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null\\n    and coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false)\\n  returning 1)\\nselect case\\n  when not coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false) then 'invalid'\\n  when exists (select 1 from u) then 'recorded'\\n  when cur.vendor_id = $4::text then 'unchanged'\\n  else 'conflict' end as result\\nfrom cur";
 	readonly CALL_VENDOR_REMOVED2: "update playbook.calls\\nset vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int\\n  and sent_to_vendor_at is not null\\n  and not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = $1 and j.call_id = $2\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())\\nreturning id";
 	readonly CALL_PURGE_CLAIM2: string;
 	readonly CALL_PURGE_COMPLETE2: "with jl as (\\n  select state, next_attempt_at from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2\\n  for update)\\ndelete from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and (sent_to_vendor_at is null or vendor_removed_at is not null)\\n  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
@@ -13086,6 +13239,7 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly CALL_CLEANUP_BEGIN: "select c.id, c.epoch,\\n  not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = c.organization_id and j.call_id = c.id\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear\\nfrom playbook.calls c\\nwhere c.organization_id = $1 and c.id = $2 and c.state = 'deleted' and c.deletion_seq = $3::int";
 	readonly CALL_LIST_PENDING_CLEANUP: string;
 	readonly CALL_CLEANUP_DONE: "update playbook.calls\\nset vectors_removed_seq = $3::int, updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int\\nreturning id";
+	readonly CALL_VENDOR_ID_RECORD: "with cur as (\\n  select vendor_id from playbook.call_vendor_sends\\n  where organization_id = $1 and call_id = $2 and seq = $3::int\\n  for update),\\nu as (\\n  update playbook.call_vendor_sends s\\n  set vendor_id = $4::text, recorded_at = clock_timestamp()\\n  from cur\\n  where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null\\n    and coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false)\\n  returning 1)\\nselect case\\n  when not coalesce($4::text ~ '^[A-Za-z0-9._:-]{1,128}$', false) then 'invalid'\\n  when exists (select 1 from u) then 'recorded'\\n  when cur.vendor_id = $4::text then 'unchanged'\\n  else 'conflict' end as result\\nfrom cur";
 	readonly CALL_VENDOR_REMOVED: "update playbook.calls\\nset vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int\\n  and sent_to_vendor_at is not null\\n  and not exists (\\n    select 1 from playbook.call_jobs j\\n    where j.organization_id = $1 and j.call_id = $2\\n      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())\\nreturning id";
 	readonly CALL_PURGE_CLAIM: string;
 	readonly CALL_PURGE_COMPLETE: "with jl as (\\n  select state, next_attempt_at from playbook.call_jobs\\n  where organization_id = $1 and call_id = $2\\n  for update)\\ndelete from playbook.calls\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null\\n  and vectors_removed_seq = deletion_seq\\n  and (sent_to_vendor_at is null or vendor_removed_at is not null)\\n  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())\\nreturning id, size_bytes";
@@ -13203,4 +13357,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CallJobClaimRow, ClaimedCallJob, ClaimedIngestionJob, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_LIST_ERASED, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimedCallJobs, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, repChangeAllowed, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_ID_PATTERN, CALL_VENDOR_ID_RECORD2 as CALL_VENDOR_ID_RECORD, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CallJobClaimRow, ClaimedCallJob, ClaimedIngestionJob, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_LIST_ERASED, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimedCallJobs, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, repChangeAllowed, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

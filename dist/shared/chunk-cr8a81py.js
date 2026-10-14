@@ -36,6 +36,7 @@ __export(exports_schema, {
   CALL_MAX_SEQ: () => CALL_MAX_SEQ2,
   CALL_MAX_SPEAKERS: () => CALL_MAX_SPEAKERS2,
   CALL_MAX_TRANSCRIPT_BYTES: () => CALL_MAX_TRANSCRIPT_BYTES2,
+  CALL_MAX_VENDOR_SENDS: () => CALL_MAX_VENDOR_SENDS2,
   CALL_MEDIA_TYPES: () => CALL_MEDIA_TYPES2,
   CALL_PENDING_CLEANUP_PREDICATE: () => CALL_PENDING_CLEANUP_PREDICATE2,
   CALL_PURGE_MAX_ATTEMPTS: () => CALL_PURGE_MAX_ATTEMPTS2,
@@ -43,6 +44,7 @@ __export(exports_schema, {
   CALL_SPEAKER_LABEL_MAX_BYTES: () => CALL_SPEAKER_LABEL_MAX_BYTES2,
   CALL_SPEAKER_LABEL_MAX_LENGTH: () => CALL_SPEAKER_LABEL_MAX_LENGTH2,
   CALL_STATES: () => CALL_STATES2,
+  CALL_VENDOR_ID_PATTERN: () => CALL_VENDOR_ID_PATTERN2,
   CONSUMED_MESSAGE_STATES: () => CONSUMED_MESSAGE_STATES2,
   CREDENTIAL_TYPES: () => CREDENTIAL_TYPES2,
   DEAL_ID_MAX_BYTES: () => DEAL_ID_MAX_BYTES2,
@@ -106,6 +108,7 @@ __export(exports_schema, {
   backupCodes: () => backupCodes2,
   callJobs: () => callJobs2,
   callReuploadRequeues: () => callReuploadRequeues2,
+  callVendorSends: () => callVendorSends2,
   calls: () => calls2,
   consumedMessage: () => consumedMessage2,
   coreSchema: () => coreSchema2,
@@ -1630,6 +1633,8 @@ var CALL_SPEAKER_LABEL_MAX_BYTES2 = 256;
 var CALL_MAX_SEQ2 = 2147483647;
 var CALL_PURGE_MAX_ATTEMPTS2 = 20;
 var CALL_JOB_MAX_ATTEMPTS2 = 20;
+var CALL_MAX_VENDOR_SENDS2 = 20;
+var CALL_VENDOR_ID_PATTERN2 = "^[A-Za-z0-9._:-]{1,128}$";
 var CALL_JOB_KINDS2 = ["transcribe", "process", "rebuild"];
 var CALL_JOB_STATES2 = ["queued", "running", "succeeded", "failed", "cancelled"];
 function repChangeAllowed2(state, failureReason) {
@@ -1744,6 +1749,7 @@ var calls2 = playbookSchema2.table("calls", {
   check15("calls_purge_attempts_bounds", sql20`${t.purgeAttempts} between 0 and ${sql20.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
   check15("calls_barred_only_when_deleted", sql20`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`),
   check15("calls_vendor_removal_after_send", sql20`${t.vendorRemovedAt} is null or ${t.sentToVendorAt} is not null`),
+  check15("calls_vendor_send_seq_max", sql20`${t.vendorSendSeq} <= ${sql20.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
   check15("calls_vendor_send_seq_matches", sql20`${t.vendorSendSeq} >= 0 and (${t.sentToVendorAt} is null) = (${t.vendorSendSeq} = 0)`),
   check15("calls_transcript_has_rep", sql20`${t.kind} <> 'transcript' or ${t.repBy} is not null`),
   uniqueIndex5("calls_content_hash_key").on(t.organizationId, t.contentHash).where(sql20`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
@@ -1793,6 +1799,29 @@ var callJobs2 = playbookSchema2.table("call_jobs", {
   index26("call_jobs_call_idx").on(t.organizationId, t.callId),
   uniqueIndex5("call_jobs_active_call_key").on(t.organizationId, t.callId).where(sql20`${t.state} in ('queued', 'running')`),
   index26("call_jobs_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql20`${t.state} in ('queued', 'running')`)
+]);
+var callVendorSends2 = playbookSchema2.table("call_vendor_sends", {
+  organizationId: text35("organization_id").notNull(),
+  callId: text35("call_id").notNull(),
+  seq: integer15("seq").notNull(),
+  vendorId: text35("vendor_id"),
+  createdAt: ts3("created_at").notNull().defaultNow(),
+  recordedAt: ts3("recorded_at")
+}, (t) => [
+  primaryKey6({
+    name: "call_vendor_sends_pkey",
+    columns: [t.organizationId, t.callId, t.seq]
+  }),
+  foreignKey7({
+    name: "call_vendor_sends_call_fk",
+    columns: [t.organizationId, t.callId],
+    foreignColumns: [calls2.organizationId, calls2.id]
+  }).onDelete("cascade"),
+  check15("call_vendor_sends_organization_id_shape", idShape4("organization_id", "org")),
+  check15("call_vendor_sends_organization_not_global", notGlobal3),
+  check15("call_vendor_sends_seq_bounds", sql20`${t.seq} between 1 and ${sql20.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
+  check15("call_vendor_sends_vendor_id_shape", sql20.raw(`"vendor_id" is null or "vendor_id" ~ '${CALL_VENDOR_ID_PATTERN2}'`)),
+  check15("call_vendor_sends_recorded_matches", sql20`(${t.vendorId} is null) = (${t.recordedAt} is null)`)
 ]);
 // src/schema/playbook-consumed.ts
 import { sql as sql21 } from "drizzle-orm";
@@ -1908,4 +1937,4 @@ var playbookWorkHints2 = playbookSchema2.table("work_hints", {
   check19("work_hints_global_only_consumed", sql24`${t.kind} = 'consumed_purge' or ${t.organizationId} <> ${sql24.raw(`'${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)}`),
   index29("work_hints_due_idx").on(t.kind, t.dueAt, t.organizationId)
 ]);
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, CALL_STATES2, CALL_FAILURE_REASONS2, CALL_KINDS2, CALL_MEDIA_TYPES2, CALL_CHANNELS2, CALL_REP_BY2, CALL_MAX_TRANSCRIPT_BYTES2, CALL_MAX_RECORDING_BYTES2, CALL_MAX_RECORDING_SECONDS2, CALL_MAX_SPEAKERS2, CALL_SPEAKER_LABEL_MAX_LENGTH2, CALL_SPEAKER_LABEL_MAX_BYTES2, CALL_MAX_SEQ2, CALL_PURGE_MAX_ATTEMPTS2, CALL_JOB_MAX_ATTEMPTS2, CALL_JOB_KINDS2, CALL_JOB_STATES2, repChangeAllowed2, callReuploadRequeues2, CALL_PENDING_CLEANUP_PREDICATE2, calls2, callJobs2, consumedMessage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, playbookOrphanSweeps2, WORK_KINDS2, playbookWorkHints2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, CALL_STATES2, CALL_FAILURE_REASONS2, CALL_KINDS2, CALL_MEDIA_TYPES2, CALL_CHANNELS2, CALL_REP_BY2, CALL_MAX_TRANSCRIPT_BYTES2, CALL_MAX_RECORDING_BYTES2, CALL_MAX_RECORDING_SECONDS2, CALL_MAX_SPEAKERS2, CALL_SPEAKER_LABEL_MAX_LENGTH2, CALL_SPEAKER_LABEL_MAX_BYTES2, CALL_MAX_SEQ2, CALL_PURGE_MAX_ATTEMPTS2, CALL_JOB_MAX_ATTEMPTS2, CALL_MAX_VENDOR_SENDS2, CALL_VENDOR_ID_PATTERN2, CALL_JOB_KINDS2, CALL_JOB_STATES2, repChangeAllowed2, callReuploadRequeues2, CALL_PENDING_CLEANUP_PREDICATE2, calls2, callJobs2, callVendorSends2, consumedMessage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, playbookOrphanSweeps2, WORK_KINDS2, playbookWorkHints2, exports_schema };
