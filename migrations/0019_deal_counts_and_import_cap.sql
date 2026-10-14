@@ -24,6 +24,15 @@ LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   n integer;
 BEGIN
+  -- Refuse before taking the lock, as the definer functions do: a caller must not hold another
+  -- Organization's cap lock. (The insert would also be refused by row-level security, but only after.)
+  IF p_organization_id IS NULL OR p_organization_id !~ '^org_[0-9a-f]{32}$'
+     OR p_organization_id = 'org_00000000000000000000000000000000' THEN
+    RAISE EXCEPTION 'playbook.insert_deal_import_organization: not an Organization id' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF current_setting('app.organization_id', true) IS DISTINCT FROM p_organization_id THEN
+    RAISE EXCEPTION 'playbook.insert_deal_import_scope: the transaction is not scoped to this Organization' USING ERRCODE = 'insufficient_privilege';
+  END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('playbook.deal_import_cap:' || p_organization_id, 0));
   SELECT count(*) INTO n FROM (
     SELECT 1 FROM "playbook"."deal_imports" i

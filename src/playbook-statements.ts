@@ -1168,7 +1168,7 @@ export const DEAL_ROW_FIELDS = [
 
 /**
  * Read one Deal by its opaque id. `$1` Organization, `$2` the `deal_…` id. No row when absent. The
- * Deal's Calls are not counted here: a later statement counts them.
+ * `call_count` is the Deal's live Calls (see the list statements).
  */
 export const DEAL_GET = `select ${DEAL_COLUMNS}
 from playbook.deals d
@@ -1340,7 +1340,7 @@ returning id, attempts`
  * taken and the answer's `taken` says how many). Each element is
  * `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` as the contract's
  * `checkDealImportRow` produced it: `reason` is its rejection or null, `deal_id` is null only for
- * `invalid_deal_id` and `wrong_column_count`, a blank cell is null. **Run {@link QUOTA_LOCK} first
+ * `invalid_deal_id`, `wrong_column_count` and `blank_row` (a row with no cells), a blank cell is null. **Run {@link QUOTA_LOCK} first
  * in the same transaction** (the statement refuses without it), so the Deal count and the existing
  * Deals are read after the lock.
  *

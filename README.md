@@ -3136,6 +3136,9 @@ columns already exist, so there is no migration.
   purpose: a single SQL statement counts in the snapshot taken before it waited for the lock, so two
   inserts at four would both win. Two inserts of one Organization now queue (the second waits for the
   first to commit; a failed or completed import frees its place); other Organizations never wait.
+  The function refuses first, before it takes the lock, when the transaction is not scoped to the
+  Organization it was given (`app.organization_id`; SQLSTATE `42501`, `playbook.insert_deal_import_scope`),
+  so a caller cannot hold another Organization's cap lock.
   The lock is not `QUOTA_LOCK`, so it cannot deadlock with it. The call is still made in the upload's
   idempotency-key transaction, key first.
 - **`blank_row`** is a new reason for a rejected row (`DEAL_IMPORT_ROW_REASONS`): a CSV row with no

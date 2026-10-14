@@ -1366,6 +1366,34 @@ describe('sales history, part one', () => {
       expect(await insertImport(org)).toMatchObject({ result: 'busy' })
     })
 
+    test('a call for another Organization than the transaction’s raises and takes no lock', async () => {
+      const mine = newOrg()
+      const other = newOrg()
+      const tx = await open(mine)
+      try {
+        await tx.client.query('savepoint s')
+        const message = await rejectionOf(
+          tx.client.query(DEAL_IMPORT_INSERT, [other, newImport(), newUser(), 'obj-x', 10])
+        )
+        expect(message).toContain('playbook.insert_deal_import_scope')
+        await tx.client.query('rollback to savepoint s')
+        const locks = await tx.client.query(
+          `select count(*)::int as n from pg_locks where pid = pg_backend_pid() and locktype = 'advisory'`
+        )
+        expect(locks.rows[0].n).toBe(0)
+        // A transaction with no Organization at all is refused the same way.
+        await tx.client.query(`select set_config('app.organization_id', '', true)`)
+        expect(
+          await rejectionOf(
+            tx.client.query(DEAL_IMPORT_INSERT, [mine, newImport(), newUser(), 'obj-y', 10])
+          )
+        ).toContain('playbook.insert_deal_import_scope')
+      } finally {
+        await finish(tx)
+      }
+      expect(await countOf(other)).toBe(0)
+    })
+
     test('two concurrent inserts at four queued: exactly one wins', async () => {
       const org = newOrg()
       for (let n = 0; n < MAX_QUEUED_DEAL_IMPORTS - 1; n++) {
