@@ -175,14 +175,24 @@ where c.organization_id = $1 and c.state = $5::text and ${KEYSET}
 ${LIST_END}`
 
 /**
- * {@link CALL_LIST} for one Deal (`$5` the Deal's `deal_…` id) and optionally one state (`$6`, null
- * for every Call that is not deleted; `deleted` lists the Deal's deleted ones, without the partial
- * index). On `calls_deal_list_idx`.
+ * {@link CALL_LIST} for one Deal (`$5` the Deal's `deal_…` id), the Calls that are not deleted. On
+ * `calls_deal_list_idx`. The Deal's Calls in one state, `deleted` included, are
+ * {@link CALL_LIST_BY_DEAL_STATE}: the two are separate statements so each keeps its index under a
+ * generic plan.
  */
 export const CALL_LIST_BY_DEAL = `select ${READ_COLUMNS}, c.created_at::text as cursor_at
 ${FROM_CALL}
-where c.organization_id = $1 and c.deal_record_id = $5::text
-  and (($6::text is null and c.state <> 'deleted') or c.state = $6::text) and ${KEYSET}
+where c.organization_id = $1 and c.deal_record_id = $5::text and c.state <> 'deleted' and ${KEYSET}
+${LIST_END}`
+
+/**
+ * {@link CALL_LIST} for one Deal (`$5`) in one state (`$6`, any of the seven; `deleted` lists the
+ * Deal's Calls that can still be restored). On `calls_state_list_idx`, the Deal as a filter: the
+ * Calls in one state of one Organization are the bounded set a Deal's are read from.
+ */
+export const CALL_LIST_BY_DEAL_STATE = `select ${READ_COLUMNS}, c.created_at::text as cursor_at
+${FROM_CALL}
+where c.organization_id = $1 and c.state = $6::text and c.deal_record_id = $5::text and ${KEYSET}
 ${LIST_END}`
 
 /**
@@ -296,7 +306,7 @@ where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (se
  * not suit the kind: a Transcript takes a speaker only; or the label is not among the Call's
  * speaker labels; or the channel is not `left` or `right`); `unchanged` (the Call already has this
  * Rep and is not `failed`: nothing is written, whatever its state, so a repeat of a request
- * answers 200 even while the rebuild runs); `changed`. **Lock order:** the Call's active job rows
+ * answers 200 even while the rebuild runs); `changed`. A null or unknown `$3` is `invalid` whatever the state. **Lock order:** the Call's active job rows
  * first (`for update`), then the Call row, the order of every statement that takes both (the
  * claim, the delete, the completion), so a Rep change cannot deadlock with a job claim. A change bumps `rep_seq` by one, cancels
  * the Call's job, moves the Call to `processing` with the failure reason cleared and queues a
@@ -315,6 +325,7 @@ cur as (
 v as (
   select cur.id, cur.state, cur.rep_seq,
     case
+      when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'
       when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text
         and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)
         and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)
@@ -322,8 +333,8 @@ v as (
       when not (cur.state in ('ready', 'awaiting_rep')
                 or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))
         then 'not_changeable'
-      when not (($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
-                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right'))) then 'invalid'
+      when not coalesce(($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
+                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right')), false) then 'invalid'
       else 'changed'
     end as result
   from cur),
@@ -496,14 +507,21 @@ returning id, attempts`
 /**
  * Record that the Recording is about to be sent to the vendor, before the request is made, so a
  * purge or erasure knows a vendor copy may exist and waits for {@link CALL_VENDOR_REMOVED}. `$1`
- * Organization, `$2` job, `$3` the claim token. No row: the claim was lost or the Call is not live.
+ * Organization, `$2` job, `$3` the claim token. **Every send counts**: it adds one to
+ * `vendor_send_seq`, refreshes `sent_to_vendor_at` and clears `vendor_removed_at`, so a copy sent
+ * again after an earlier one was confirmed gone needs its own confirmation. Returns `id` and the
+ * new `vendor_send_seq`: the service keeps its vendor reference for that send under this number,
+ * and **deletes the vendor's earlier copy (its reference from the previous send) before it
+ * overwrites that reference**, because the row holds a count, not the vendor's ids. No row: the
+ * claim was lost or the Call is not live.
  */
 export const CALL_SENT_TO_VENDOR = `update playbook.calls c
-set sent_to_vendor_at = coalesce(c.sent_to_vendor_at, clock_timestamp()), updated_at = clock_timestamp()
+set sent_to_vendor_at = clock_timestamp(), vendor_send_seq = c.vendor_send_seq + 1,
+    vendor_removed_at = null, updated_at = clock_timestamp()
 from playbook.call_jobs j
 where j.organization_id = $1 and j.id = $2 and j.claim_token = $3::uuid and j.state = 'running'
   and c.organization_id = $1 and c.id = j.call_id and ${LIVE('j', 'c')}
-returning c.id`
+returning c.id, c.vendor_send_seq`
 
 /**
  * Record what a step learned and extend the lease. `$1` Organization, `$2` job, `$3` the claim
@@ -557,12 +575,27 @@ select id, state from c`
  * before it built them). It applies only while the Call is `processing` at the job's epoch, has a
  * Rep (and, for a speaker, a label among its labels: else the service fails it with
  * `rep_label_not_found`), and for a `rebuild` only while the stored `rep_seq` equals the job's. It
- * records the tag (never above the Deal's current sequence), and when that is behind the Deal's it
- * lowers the Deal's `retag_through` in the same write (taking the Deal row, which the re-tag's
- * completion also takes), so the Deal is re-tagged: a Call can never become `ready` with a stale
- * tag unseen. No row: the claim was lost or a guard failed.
+ * **takes the Deal row first, always** (`for no key update`, the mode of an Outcome change and of
+ * {@link DEAL_RETAG_LOCK}, which conflicts with neither the foreign-key `KEY SHARE` of an upload
+ * nor a reader) and reads `outcome_seq` from the locked, newest row, never from the statement's
+ * snapshot. It records the tag (never above that sequence) and, when the tag is behind it, lowers
+ * the Deal's `retag_through` in the same write. Because the re-tag's lock and an Outcome change
+ * queue on the same row, a completion that is open while the Outcome moves holds the change (and
+ * so the re-tag's `DONE`) back until it commits, and a completion that waits behind them tags
+ * against the newer sequence: a Call can never become `ready` with a stale tag unseen. The mode is
+ * `no key update`, not `share`, because two completions that held `share` and then both lowered
+ * `retag_through` would deadlock on the upgrade; this way they queue instead, for the length of
+ * one statement. Keep the transaction of an Outcome change short for the same reason. No row: the
+ * claim was lost or a guard failed.
  */
-export const CALL_JOB_COMPLETE = `with j as (
+export const CALL_JOB_COMPLETE = `with dk as (
+  select d.id, d.outcome_seq from playbook.deals d
+  where d.organization_id = $1
+    and d.id = (select x.deal_record_id from playbook.calls x join playbook.call_jobs y
+                  on y.organization_id = x.organization_id and y.call_id = x.id
+                where y.organization_id = $1 and y.id = $2)
+  for no key update),
+j as (
   update playbook.call_jobs
   set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')
@@ -573,16 +606,16 @@ export const CALL_JOB_COMPLETE = `with j as (
   returning call_id, epoch),
 c as (
   update playbook.calls c
-  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dd.outcome_seq)), updated_at = clock_timestamp()
-  from j, playbook.deals dd
+  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dk.outcome_seq)), updated_at = clock_timestamp()
+  from j, dk
   where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'
-    and dd.organization_id = $1 and dd.id = c.deal_record_id
+    and dk.id = c.deal_record_id
   returning c.id, c.deal_record_id, c.tagged_outcome_seq),
 dl as (
   update playbook.deals d
   set retag_through = least(d.retag_through, c.tagged_outcome_seq)
-  from c
-  where d.organization_id = $1 and d.id = c.deal_record_id and c.tagged_outcome_seq < d.outcome_seq
+  from c, dk
+  where d.organization_id = $1 and d.id = c.deal_record_id and dk.id = d.id and c.tagged_outcome_seq < dk.outcome_seq
   returning d.id)
 select id from c`
 
@@ -669,21 +702,24 @@ where organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = 
 returning id`
 
 /**
- * Record that the vendor confirmed it deleted its copy of a Recording. `$1` Organization, `$2` Call.
- * Only for a `deleted` Call that was sent (`sent_to_vendor_at`); idempotent. {@link CALL_PURGE_COMPLETE}
- * waits for it.
+ * Record that the vendor confirmed it deleted its copy of a Recording. `$1` Organization, `$2` Call,
+ * `$3` the `vendor_send_seq` of the send whose copy is gone (the purge claim and the erase rows
+ * carry the current one). Only for a `deleted` Call whose latest send is that number, so a late
+ * confirmation of an earlier copy confirms nothing about a later one; idempotent.
+ * {@link CALL_PURGE_COMPLETE} waits for it.
  */
 export const CALL_VENDOR_REMOVED = `update playbook.calls
 set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
-where organization_id = $1 and id = $2 and state = 'deleted' and sent_to_vendor_at is not null
+where organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int
+  and sent_to_vendor_at is not null
 returning id`
 
 /**
  * Claim Calls due for purge as a lease, as {@link DOCUMENT_PURGE_CLAIM}. `$1` Organization, `$2`
  * batch size, `$3` the lease in milliseconds. Rows carry what the service must remove outside any
  * transaction: `object_key` (the original), `transcript_key` (the kept Transcript), `kind`,
- * `sent_to_vendor_at` and `vendor_removed_at` (remove the vendor's copy and record it with
- * {@link CALL_VENDOR_REMOVED}), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
+ * `sent_to_vendor_at`, `vendor_send_seq` and `vendor_removed_at` (remove the vendor's copy and record it
+ * with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
  * when they differ). The service also removes every artefact under the Call's id prefix.
  */
 export const CALL_PURGE_CLAIM = `with due as (
@@ -702,7 +738,7 @@ set purge_started_at = coalesce(c.purge_started_at, clock_timestamp()),
 from due
 where c.organization_id = $1 and c.id = due.id
 returning c.id, c.kind, c.object_key, c.transcript_key, c.size_bytes, c.deletion_seq, c.vectors_removed_seq,
-  c.sent_to_vendor_at, c.vendor_removed_at, c.purge_attempts`
+  c.sent_to_vendor_at, c.vendor_send_seq, c.vendor_removed_at, c.purge_attempts`
 
 /**
  * Finish a Call purge: remove the row (its jobs go by cascade and the counts fall in the same
@@ -723,7 +759,7 @@ returning id, size_bytes`
 
 /** List the Calls whose purge reached the attempt bound, one page by id: `$1` Organization, `$2` last id (`''` first), `$3` page size. On `calls_spent_purge_idx`. */
 export const CALL_LIST_SPENT_PURGES = `select id, kind, object_key, transcript_key, deletion_seq, vectors_removed_seq,
-  sent_to_vendor_at, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
+  sent_to_vendor_at, vendor_send_seq, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
 from playbook.calls
 where organization_id = $1 and state = 'deleted' and purge_attempts >= ${CALL_PURGE_MAX_ATTEMPTS}
   and id > $2::text
@@ -743,7 +779,7 @@ returning id, purge_attempts`
  * remove every Call, before {@link DEAL_ERASE_BATCH}**: a Deal a Call refers to cannot be deleted.
  * `$1` Organization, `$2` batch size, `$3` the actor (an internal call has no user: `usr_` and 32
  * zeros). Rows: `id`, `epoch`, `deletion_seq`, `changed` (publish the cleanup with that sequence),
- * and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at` so the service can remove the
+ * and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at`, `vendor_send_seq` so the service can remove the
  * objects and the vendor copy at once; the purge claim returns them again. Lock order: job rows,
  * then Call rows, each in id order. Repeat until no row comes back. An upload still streaming has
  * no Call yet: its key is an upload attempt, so the orphan sweep removes its parts and object.
@@ -783,8 +819,8 @@ x as (
   from cand
   where c.organization_id = $1 and c.id = cand.id and c.id in (select id from cl)
   returning c.id, c.epoch, c.deletion_seq, (c.deletion_seq <> cand.deletion_seq) as changed,
-    c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at)
-select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at from x order by id`
+    c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at, c.vendor_send_seq)
+select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at, vendor_send_seq from x order by id`
 
 /**
  * One page of the Deals that need an Outcome re-tag (`retag_through < outcome_seq`, on
@@ -802,8 +838,9 @@ limit ${BATCH('$3')}`
  * `$1` Organization, `$2` the Deal, `$3` the last Call id of the previous batch (`''` first), `$4` the
  * batch size (clamped). Rows carry the Call `id`, the Deal's current `outcome` and `outcome_seq`:
  * re-tag the Call's Moments in the index with that Outcome, then record it with {@link CALL_RETAGGED}.
- * The work of one statement is the batch, never the Deal's size: the keyset on `calls_retag_idx`
- * moves forward, and the job is idempotent (it reads the Outcome from the database, so a batch
+ * One statement reads the batch plus the keyset rows it skips: the keyset on `calls_retag_idx`
+ * moves forward, so all the batches of one re-tag read the Deal's ready Calls once (bounded by
+ * the quota, never by the Organization), and the job is idempotent (it reads the Outcome from the database, so a batch
  * repeated after a change does the newer work).
  */
 export const DEAL_RETAG_BATCH = `select c.id, d.outcome, d.outcome_seq
@@ -862,6 +899,7 @@ export const CALL_STATEMENTS = {
   CALL_LIST,
   CALL_LIST_BY_STATE,
   CALL_LIST_BY_DEAL,
+  CALL_LIST_BY_DEAL_STATE,
   CALL_SOFT_DELETE,
   CALL_RESTORE,
   CALL_RESTORE_FOR_UPLOAD,

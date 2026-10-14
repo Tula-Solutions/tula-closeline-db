@@ -195,6 +195,8 @@ export const calls = playbookSchema.table(
     vectorsRemovedSeq: integer('vectors_removed_seq'),
     taggedOutcomeSeq: integer('tagged_outcome_seq').notNull().default(0),
     sentToVendorAt: ts('sent_to_vendor_at'),
+    // Counts the sends to the vendor, so each copy needs its own confirmed removal.
+    vendorSendSeq: integer('vendor_send_seq').notNull().default(0),
     vendorRemovedAt: ts('vendor_removed_at'),
     deletedAt: ts('deleted_at'),
     deletedBy: text('deleted_by'),
@@ -314,6 +316,11 @@ export const calls = playbookSchema.table(
       'calls_vendor_removal_after_send',
       sql`${t.vendorRemovedAt} is null or ${t.sentToVendorAt} is not null`
     ),
+    check(
+      'calls_vendor_send_seq_matches',
+      sql`${t.vendorSendSeq} >= 0 and (${t.sentToVendorAt} is null) = (${t.vendorSendSeq} = 0)`
+    ),
+    check('calls_transcript_has_rep', sql`${t.kind} <> 'transcript' or ${t.repBy} is not null`),
     uniqueIndex('calls_content_hash_key')
       .on(t.organizationId, t.contentHash)
       .where(sql`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),

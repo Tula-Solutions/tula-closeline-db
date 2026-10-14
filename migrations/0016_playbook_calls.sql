@@ -63,6 +63,7 @@ CREATE TABLE "playbook"."calls" (
 	"vectors_removed_seq" integer,
 	"tagged_outcome_seq" integer DEFAULT 0 NOT NULL,
 	"sent_to_vendor_at" timestamp with time zone,
+	"vendor_send_seq" integer DEFAULT 0 NOT NULL,
 	"vendor_removed_at" timestamp with time zone,
 	"deleted_at" timestamp with time zone,
 	"deleted_by" text,
@@ -120,7 +121,9 @@ CREATE TABLE "playbook"."calls" (
         and ("playbook"."calls"."purge_started_at" is null) = ("playbook"."calls"."purge_attempts" = 0)),
 	CONSTRAINT "calls_purge_attempts_bounds" CHECK ("playbook"."calls"."purge_attempts" between 0 and 20),
 	CONSTRAINT "calls_barred_only_when_deleted" CHECK ("playbook"."calls"."restore_barred_at" is null or "playbook"."calls"."state" = 'deleted'),
-	CONSTRAINT "calls_vendor_removal_after_send" CHECK ("playbook"."calls"."vendor_removed_at" is null or "playbook"."calls"."sent_to_vendor_at" is not null)
+	CONSTRAINT "calls_vendor_removal_after_send" CHECK ("playbook"."calls"."vendor_removed_at" is null or "playbook"."calls"."sent_to_vendor_at" is not null),
+	CONSTRAINT "calls_vendor_send_seq_matches" CHECK ("playbook"."calls"."vendor_send_seq" >= 0 and ("playbook"."calls"."sent_to_vendor_at" is null) = ("playbook"."calls"."vendor_send_seq" = 0)),
+	CONSTRAINT "calls_transcript_has_rep" CHECK ("playbook"."calls"."kind" <> 'transcript' or "playbook"."calls"."rep_by" is not null)
 );
 --> statement-breakpoint
 ALTER TABLE "playbook"."work_hints" DROP CONSTRAINT "work_hints_kind_known";--> statement-breakpoint
@@ -158,6 +161,8 @@ ALTER TABLE "playbook"."calls" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE POLICY "calls_tenant_isolation" ON "playbook"."calls" AS PERMISSIVE FOR ALL TO PUBLIC USING ("organization_id" = NULLIF(current_setting('app.organization_id', true), '')) WITH CHECK ("organization_id" = NULLIF(current_setting('app.organization_id', true), ''));
 --> statement-breakpoint
+CREATE POLICY "calls_deleted_only" ON "playbook"."calls" AS RESTRICTIVE FOR DELETE TO PUBLIC USING ("state" = 'deleted' AND "purge_started_at" IS NOT NULL);
+--> statement-breakpoint
 ALTER TABLE "playbook"."call_jobs" ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE "playbook"."call_jobs" FORCE ROW LEVEL SECURITY;
@@ -172,7 +177,7 @@ CREATE POLICY "call_jobs_tenant_isolation" ON "playbook"."call_jobs" AS PERMISSI
 -- hash, the uploader, the object key, the creation time) and deletes (a purge removes the row).
 REVOKE UPDATE ON "playbook"."calls" FROM closeline_playbook;
 --> statement-breakpoint
-GRANT UPDATE ("state", "failure_reason", "duration_seconds", "rep_by", "rep_label", "rep_channel", "speaker_labels", "transcript_key", "epoch", "rep_seq", "deletion_seq", "vectors_removed_seq", "tagged_outcome_seq", "sent_to_vendor_at", "vendor_removed_at", "deleted_at", "deleted_by", "purge_due_at", "purge_started_at", "purge_lease_until", "purge_attempts", "restore_barred_at", "updated_at") ON "playbook"."calls" TO closeline_playbook;
+GRANT UPDATE ("state", "failure_reason", "duration_seconds", "rep_by", "rep_label", "rep_channel", "speaker_labels", "transcript_key", "epoch", "rep_seq", "deletion_seq", "vectors_removed_seq", "tagged_outcome_seq", "sent_to_vendor_at", "vendor_send_seq", "vendor_removed_at", "deleted_at", "deleted_by", "purge_due_at", "purge_started_at", "purge_lease_until", "purge_attempts", "restore_barred_at", "updated_at") ON "playbook"."calls" TO closeline_playbook;
 --> statement-breakpoint
 -- call_jobs: the role updates what moves a job along; rows go with their Call (the cascade).
 REVOKE UPDATE, DELETE ON "playbook"."call_jobs" FROM closeline_playbook;

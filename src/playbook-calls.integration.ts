@@ -18,6 +18,7 @@ import {
   CALL_JOB_TRANSCRIBED,
   CALL_LIST,
   CALL_LIST_BY_DEAL,
+  CALL_LIST_BY_DEAL_STATE,
   CALL_LIST_BY_STATE,
   CALL_LIST_PENDING_CLEANUP,
   CALL_LIST_SPENT_PURGES,
@@ -428,7 +429,7 @@ describe('sales history, part two: Calls', () => {
       for (const c of claimed) {
         await q(org, CALL_CLEANUP_DONE, [org, c.id, c.deletion_seq])
         if (c.sent_to_vendor_at) {
-          await q(org, CALL_VENDOR_REMOVED, [org, c.id])
+          await q(org, CALL_VENDOR_REMOVED, [org, c.id, c.vendor_send_seq])
         }
         expect((await q(org, CALL_PURGE_COMPLETE, [org, c.id])).rowCount).toBe(1)
       }
@@ -460,11 +461,10 @@ describe('sales history, part two: Calls', () => {
       expect((await q(org, CALL_LIST_BY_STATE, [org, 'infinity', '', 10, 'ready'])).rowCount).toBe(
         4
       )
+      expect((await q(org, CALL_LIST_BY_DEAL, [org, 'infinity', '', 10, deal.id])).rowCount).toBe(3)
       expect(
-        (await q(org, CALL_LIST_BY_DEAL, [org, 'infinity', '', 10, deal.id, null])).rowCount
-      ).toBe(3)
-      expect(
-        (await q(org, CALL_LIST_BY_DEAL, [org, 'infinity', '', 10, deal.id, 'deleted'])).rowCount
+        (await q(org, CALL_LIST_BY_DEAL_STATE, [org, 'infinity', '', 10, deal.id, 'deleted']))
+          .rowCount
       ).toBe(0)
       expect(await rejectionOf(q(org, CALL_LIST, [org, 'x', '', 10]))).toContain(
         'invalid input syntax'
@@ -758,7 +758,7 @@ describe('sales history, part two: Calls', () => {
           `update playbook.calls set purge_lease_until = clock_timestamp() - interval '1 second'`
         )
       )
-      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id])).rowCount).toBe(1)
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
       expect((await get(org, rec.id)) ?? null).toBeNull()
     })
@@ -822,7 +822,7 @@ describe('sales history, part two: Calls', () => {
         const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows
         for (const c of claimed) {
           await q(org, CALL_CLEANUP_DONE, [org, c.id, c.deletion_seq])
-          await q(org, CALL_VENDOR_REMOVED, [org, c.id])
+          await q(org, CALL_VENDOR_REMOVED, [org, c.id, c.vendor_send_seq])
           await q(org, CALL_PURGE_COMPLETE, [org, c.id])
         }
         if (claimed.length === 0) {
@@ -1003,5 +1003,329 @@ describe('sales history, part two: Calls', () => {
       )
       expect(hints.rows.map((r) => r.kind)).toEqual(['call_cleanup', 'call_jobs', 'call_purge'])
     })
+  })
+
+  describe('review round 1', () => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    const ageAllDeleted = (org: string) =>
+      asOwner(org, (c) =>
+        c.query(`update playbook.calls set purge_due_at = deleted_at where state = 'deleted'`)
+      )
+
+    // F1. Fails on fcea62e: the second send keeps vendor_removed_at, so the purge completes at once.
+    test('F1: a Recording sent again after its first copy was confirmed gone needs a second confirmation', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const first = await claimOf(org, rec.id)
+      expect(
+        (await q(org, CALL_SENT_TO_VENDOR, [org, first.id, first.claim_token])).rows[0]
+      ).toMatchObject({ vendor_send_seq: 1 })
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
+      // Restored before a Transcript exists: back to uploaded with a transcribe job.
+      expect((await q(org, CALL_RESTORE, [org, rec.id, newCjob()])).rows[0]).toMatchObject({
+        state: 'uploaded',
+      })
+      const second = await claimOf(org, rec.id)
+      expect(
+        (await q(org, CALL_SENT_TO_VENDOR, [org, second.id, second.claim_token])).rows[0]
+      ).toMatchObject({ vendor_send_seq: 2 })
+      const again = await asOwner(org, (c) =>
+        c.query('select vendor_removed_at, vendor_send_seq from playbook.calls where id = $1', [
+          rec.id,
+        ])
+      )
+      expect(again.rows[0]).toEqual({ vendor_removed_at: null, vendor_send_seq: 2 })
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await ageAllDeleted(org)
+      expect((await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]).toMatchObject({
+        vendor_send_seq: 2,
+        vendor_removed_at: null,
+      })
+      await q(org, CALL_CLEANUP_DONE, [org, rec.id, 2])
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+      // A late confirmation of the first copy confirms nothing about the second.
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(0)
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 2])).rowCount).toBe(1)
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
+    })
+
+    test('F1: erasure has the same gate: the purge of an erased Call waits for the latest send', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      const erased = (await q(org, CALL_ERASE_BATCH, [org, 10, ERASER])).rows[0]
+      expect(erased).toMatchObject({ id: rec.id, vendor_send_seq: 1 })
+      const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
+      await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+      await q(org, CALL_VENDOR_REMOVED, [org, rec.id, claimed.vendor_send_seq])
+      expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
+    })
+
+    // F2. Fails on fcea62e: the Outcome change and the re-tag finish while the completion is open.
+    test('F2: a completion open at sequence N holds back an Outcome change and its re-tag, and no Call ends stale and unseen', async () => {
+      const org = await newConfirmedOrg()
+      const u = upload()
+      await mustAdd(org, u)
+      const job = await claimOf(org, u.id)
+      await q(org, CALL_JOB_RECORD, [org, job.id, job.claim_token, null, null, ['Alice'], 60_000])
+      const deal = await dealOf(org, 'D-1')
+      const completer = await open(org)
+      let changed = false
+      let change: Promise<void> | undefined
+      try {
+        expect(
+          (await completer.client.query(CALL_JOB_COMPLETE, [org, job.id, job.claim_token, 0]))
+            .rowCount
+        ).toBe(1)
+        change = (async () => {
+          await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', null, false])
+          await inOrg(org, async (c) => {
+            await c.query(DEAL_RETAG_LOCK, [org, deal.id])
+            await c.query(DEAL_RETAG_DONE, [org, deal.id, 1])
+          })
+          changed = true
+        })()
+        await sleep(400)
+        expect(changed).toBe(false)
+        await completer.client.query('commit')
+      } finally {
+        await finish(completer)
+      }
+      await change
+      const row = (
+        await asOwner(org, (c) =>
+          c.query(
+            `select c.tagged_outcome_seq, d.outcome_seq, d.retag_through
+             from playbook.calls c join playbook.deals d on d.id = c.deal_record_id and d.organization_id = c.organization_id
+             where c.id = $1`,
+            [u.id]
+          )
+        )
+      ).rows[0]
+      const stale = row.tagged_outcome_seq < row.outcome_seq
+      const unseen = row.retag_through >= row.outcome_seq
+      expect([stale, unseen]).not.toEqual([true, true])
+      if (stale) {
+        expect(
+          (await q(org, DEAL_RETAG_BATCH, [org, deal.id, '', 10])).rows.map((r) => r.id)
+        ).toEqual([u.id])
+      }
+    })
+
+    test('F2: a completion behind an open Outcome change tags against the new sequence', async () => {
+      const org = await newConfirmedOrg()
+      const u = upload()
+      await mustAdd(org, u)
+      const job = await claimOf(org, u.id)
+      await q(org, CALL_JOB_RECORD, [org, job.id, job.claim_token, null, null, ['Alice'], 60_000])
+      const deal = await dealOf(org, 'D-1')
+      const [portal, worker] = [await open(org), await open(org)]
+      try {
+        await portal.client.query(DEAL_SET_OUTCOME, [org, deal.id, 'won', null, false])
+        const completing = worker.client.query(CALL_JOB_COMPLETE, [org, job.id, job.claim_token, 0])
+        await untilBlocked(worker.pid)
+        await portal.client.query('commit')
+        expect((await completing).rowCount).toBe(1)
+        await worker.client.query('commit')
+      } finally {
+        await finish(portal, worker)
+      }
+      expect((await q(org, DEAL_LIST_PENDING_RETAG, [org, '', 10])).rows).toMatchObject([
+        { id: deal.id },
+      ])
+      expect(
+        (await q(org, DEAL_RETAG_BATCH, [org, deal.id, '', 10])).rows.map((r) => r.id)
+      ).toEqual([u.id])
+    })
+
+    // F3. Fails on fcea62e: the role may delete a ready Call.
+    test('F3: the service role deletes only a Call whose purge has started', async () => {
+      const org = await newConfirmedOrg()
+      const ready = await makeReady(org)
+      const due = await mustAdd(org, upload({ dealId: 'F3-B' }))
+      const gone = await mustAdd(org, upload({ dealId: 'F3-C' }))
+      const del = (id: string) =>
+        q(org, 'delete from playbook.calls where organization_id = $1 and id = $2', [org, id])
+      expect((await del(ready.id)).rowCount).toBe(0)
+      await q(org, CALL_SOFT_DELETE, [org, due.id, newUser(), 0])
+      expect((await del(due.id)).rowCount).toBe(0)
+      await q(org, CALL_SOFT_DELETE, [org, gone.id, newUser(), 0])
+      await ageAllDeleted(org)
+      expect((await q(org, CALL_PURGE_CLAIM, [org, 1, 60_000])).rowCount).toBe(1)
+      const started = (
+        await asOwner(org, (c) =>
+          c.query('select id from playbook.calls where purge_started_at is not null')
+        )
+      ).rows[0].id as string
+      expect((await del(started)).rowCount).toBe(1)
+      expect((await get(org, ready.id)).state).toBe('ready')
+    })
+
+    // F5. Fails on fcea62e: a null choice is applied and strands a ready Call in processing.
+    test('F5: a null or unknown Rep choice is invalid and writes nothing', async () => {
+      const org = await newConfirmedOrg()
+      const u = await makeReady(org)
+      const bad = async (by: string | null) =>
+        (await q(org, CALL_SET_REP, [org, u.id, by, 'Bob', null, newCjob()])).rows[0]
+      expect(await bad(null)).toMatchObject({ result: 'invalid', state: 'ready' })
+      expect(await bad('nobody')).toMatchObject({ result: 'invalid', state: 'ready' })
+      expect(await get(org, u.id)).toMatchObject({ state: 'ready', rep_by: 'speaker', rep_seq: 0 })
+      const rec = await mustAdd(org, recording({ dealId: 'F5-R' }))
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_JOB_RECORD, [
+        org,
+        job.id,
+        job.claim_token,
+        `${org}/t`,
+        60,
+        ['A', 'B'],
+        60_000,
+      ])
+      await q(org, CALL_JOB_TRANSCRIBED, [org, job.id, job.claim_token, newCjob()])
+      expect((await setRepNull(org, rec.id)).result).toBe('invalid')
+      expect(await get(org, rec.id)).toMatchObject({ state: 'awaiting_rep' })
+    })
+    const setRepNull = async (org: string, id: string) =>
+      (await q(org, CALL_SET_REP, [org, id, null, null, null, newCjob()])).rows[0] as {
+        result: string
+      }
+
+    // F6. Fails on fcea62e: a Transcript without a Rep is stored.
+    test('F6: a Transcript without a Rep is refused by the table', async () => {
+      const org = await newConfirmedOrg()
+      expect(
+        await rejectionOf(add(org, upload({ repBy: null, repLabel: null, dealId: 'F6' })))
+      ).toContain('calls_transcript_has_rep')
+      const u = await makeReady(org)
+      expect(
+        await rejectionOf(
+          asOwner(org, (c) =>
+            c.query('update playbook.calls set rep_by = null, state = $2 where id = $1', [
+              u.id,
+              'processing',
+            ])
+          )
+        )
+      ).toContain('calls_transcript_has_rep')
+    })
+
+    interface PlanNode {
+      'Node Type': string
+      'Relation Name'?: string
+      'Index Name'?: string
+      'Scan Direction'?: string
+      Plans?: PlanNode[]
+    }
+    const walk = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(walk)]
+    async function planOf(org: string, text: string, types: string, args: string) {
+      return inOrg(org, async (c) => {
+        await c.query('set local plan_cache_mode = force_generic_plan')
+        await c.query('set local enable_seqscan = off')
+        await c.query(`prepare plan_probe(${types}) as ${text}`)
+        try {
+          const r = await c.query(`explain (format json, costs off) execute plan_probe(${args})`)
+          return r.rows[0]['QUERY PLAN'][0].Plan as PlanNode
+        } finally {
+          await c.query('deallocate plan_probe')
+        }
+      })
+    }
+
+    // F4. CALL_LIST_BY_DEAL_STATE and the split of CALL_LIST_BY_DEAL fail on fcea62e (the one
+    // statement could not use calls_deal_list_idx under a generic plan).
+    test.each([
+      [
+        'CALL_LIST',
+        CALL_LIST,
+        'calls_list_idx',
+        'text, timestamptz, text, int',
+        `'infinity', '', 50`,
+        'Backward',
+      ],
+      [
+        'CALL_LIST_BY_STATE',
+        CALL_LIST_BY_STATE,
+        'calls_state_list_idx',
+        'text, timestamptz, text, int, text',
+        `'infinity', '', 50, 'ready'`,
+        'Backward',
+      ],
+      [
+        'CALL_LIST_BY_DEAL',
+        CALL_LIST_BY_DEAL,
+        'calls_deal_list_idx',
+        'text, timestamptz, text, int, text',
+        `'infinity', '', 50, 'deal_x'`,
+        'Backward',
+      ],
+      [
+        'CALL_LIST_BY_DEAL_STATE',
+        CALL_LIST_BY_DEAL_STATE,
+        'calls_state_list_idx',
+        'text, timestamptz, text, int, text, text',
+        `'infinity', '', 50, 'deal_x', 'deleted'`,
+        'Backward',
+      ],
+      [
+        'CALL_LIST_PENDING_CLEANUP',
+        CALL_LIST_PENDING_CLEANUP,
+        'calls_cleanup_idx',
+        'text, timestamptz, text, int',
+        `'-infinity', '', 50`,
+        'Forward',
+      ],
+      [
+        'CALL_LIST_SPENT_PURGES',
+        CALL_LIST_SPENT_PURGES,
+        'calls_spent_purge_idx',
+        'text, text, int',
+        `'', 50`,
+        'Forward',
+      ],
+      [
+        'DEAL_RETAG_BATCH',
+        DEAL_RETAG_BATCH,
+        'calls_retag_idx',
+        'text, text, text, int',
+        `'deal_x', '', 50`,
+        'Forward',
+      ],
+    ] as const)(
+      'F4: %s uses its index under a generic plan, in order, with no Sort',
+      async (_n, text, index, types, args, direction) => {
+        const org = newOrg()
+        const plan = await planOf(org, text, types, `'${org}', ${args}`)
+        const nodes = walk(plan)
+        const dump = JSON.stringify(plan, null, 1)
+        const scans = nodes.filter((n) => n['Relation Name'] === 'calls')
+        expect([scans.map((n) => n['Index Name']), dump]).toEqual([[index], dump])
+        expect([scans[0]?.['Scan Direction'], dump]).toEqual([direction, dump])
+        expect([nodes.some((n) => n['Node Type'] === 'Sort'), dump]).toEqual([false, dump])
+      }
+    )
+
+    test.each([
+      ['CALL_PURGE_CLAIM', CALL_PURGE_CLAIM, 'calls_purge_idx', 'text, int, int', `10, 60000`],
+      [
+        'DEAL_LIST_PENDING_RETAG',
+        DEAL_LIST_PENDING_RETAG,
+        'deals_retag_idx',
+        'text, text, int',
+        `'', 50`,
+      ],
+    ] as const)(
+      'F4: %s reads through its partial index under a generic plan',
+      async (_n, text, index, types, args) => {
+        const org = newOrg()
+        const plan = await planOf(org, text, types, `'${org}', ${args}`)
+        const dump = JSON.stringify(plan, null, 1)
+        expect([walk(plan).some((n) => n['Index Name'] === index), dump]).toEqual([true, dump])
+        expect([walk(plan).some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([false, dump])
+      }
+    )
   })
 })

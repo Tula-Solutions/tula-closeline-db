@@ -42,7 +42,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-gppqzz5v.js";
+} from "./shared/chunk-j7vy5gdj.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -643,8 +643,11 @@ where c.organization_id = $1 and c.state = $5::text and ${KEYSET}
 ${LIST_END}`;
 var CALL_LIST_BY_DEAL = `select ${READ_COLUMNS}, c.created_at::text as cursor_at
 ${FROM_CALL}
-where c.organization_id = $1 and c.deal_record_id = $5::text
-  and (($6::text is null and c.state <> 'deleted') or c.state = $6::text) and ${KEYSET}
+where c.organization_id = $1 and c.deal_record_id = $5::text and c.state <> 'deleted' and ${KEYSET}
+${LIST_END}`;
+var CALL_LIST_BY_DEAL_STATE = `select ${READ_COLUMNS}, c.created_at::text as cursor_at
+${FROM_CALL}
+where c.organization_id = $1 and c.state = $6::text and c.deal_record_id = $5::text and ${KEYSET}
 ${LIST_END}`;
 var CALL_SOFT_DELETE = `with j as (
   update playbook.call_jobs
@@ -722,6 +725,7 @@ cur as (
 v as (
   select cur.id, cur.state, cur.rep_seq,
     case
+      when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'
       when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text
         and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)
         and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)
@@ -729,8 +733,8 @@ v as (
       when not (cur.state in ('ready', 'awaiting_rep')
                 or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))
         then 'not_changeable'
-      when not (($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
-                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right'))) then 'invalid'
+      when not coalesce(($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
+                or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right')), false) then 'invalid'
       else 'changed'
     end as result
   from cur),
@@ -836,11 +840,12 @@ set state = 'queued', claim_token = null,
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
 returning id, attempts`;
 var CALL_SENT_TO_VENDOR = `update playbook.calls c
-set sent_to_vendor_at = coalesce(c.sent_to_vendor_at, clock_timestamp()), updated_at = clock_timestamp()
+set sent_to_vendor_at = clock_timestamp(), vendor_send_seq = c.vendor_send_seq + 1,
+    vendor_removed_at = null, updated_at = clock_timestamp()
 from playbook.call_jobs j
 where j.organization_id = $1 and j.id = $2 and j.claim_token = $3::uuid and j.state = 'running'
   and c.organization_id = $1 and c.id = j.call_id and ${LIVE("j", "c")}
-returning c.id`;
+returning c.id, c.vendor_send_seq`;
 var CALL_JOB_RECORD = `with j as (
   update playbook.call_jobs
   set next_attempt_at = clock_timestamp() + ${LEASE("$7")}, updated_at = clock_timestamp()
@@ -869,7 +874,14 @@ q as (
   insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
   select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')
 select id, state from c`;
-var CALL_JOB_COMPLETE = `with j as (
+var CALL_JOB_COMPLETE = `with dk as (
+  select d.id, d.outcome_seq from playbook.deals d
+  where d.organization_id = $1
+    and d.id = (select x.deal_record_id from playbook.calls x join playbook.call_jobs y
+                  on y.organization_id = x.organization_id and y.call_id = x.id
+                where y.organization_id = $1 and y.id = $2)
+  for no key update),
+j as (
   update playbook.call_jobs
   set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')
@@ -880,16 +892,16 @@ var CALL_JOB_COMPLETE = `with j as (
   returning call_id, epoch),
 c as (
   update playbook.calls c
-  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dd.outcome_seq)), updated_at = clock_timestamp()
-  from j, playbook.deals dd
+  set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dk.outcome_seq)), updated_at = clock_timestamp()
+  from j, dk
   where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'
-    and dd.organization_id = $1 and dd.id = c.deal_record_id
+    and dk.id = c.deal_record_id
   returning c.id, c.deal_record_id, c.tagged_outcome_seq),
 dl as (
   update playbook.deals d
   set retag_through = least(d.retag_through, c.tagged_outcome_seq)
-  from c
-  where d.organization_id = $1 and d.id = c.deal_record_id and c.tagged_outcome_seq < d.outcome_seq
+  from c, dk
+  where d.organization_id = $1 and d.id = c.deal_record_id and dk.id = d.id and c.tagged_outcome_seq < dk.outcome_seq
   returning d.id)
 select id from c`;
 var CALL_JOB_FAIL = `with j as (
@@ -948,7 +960,8 @@ where organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = 
 returning id`;
 var CALL_VENDOR_REMOVED = `update playbook.calls
 set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
-where organization_id = $1 and id = $2 and state = 'deleted' and sent_to_vendor_at is not null
+where organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int
+  and sent_to_vendor_at is not null
 returning id`;
 var CALL_PURGE_CLAIM = `with due as (
   select id from playbook.calls
@@ -966,7 +979,7 @@ set purge_started_at = coalesce(c.purge_started_at, clock_timestamp()),
 from due
 where c.organization_id = $1 and c.id = due.id
 returning c.id, c.kind, c.object_key, c.transcript_key, c.size_bytes, c.deletion_seq, c.vectors_removed_seq,
-  c.sent_to_vendor_at, c.vendor_removed_at, c.purge_attempts`;
+  c.sent_to_vendor_at, c.vendor_send_seq, c.vendor_removed_at, c.purge_attempts`;
 var CALL_PURGE_COMPLETE = `with jl as (
   select state, next_attempt_at from playbook.call_jobs
   where organization_id = $1 and call_id = $2
@@ -978,7 +991,7 @@ where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_a
   and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
 returning id, size_bytes`;
 var CALL_LIST_SPENT_PURGES = `select id, kind, object_key, transcript_key, deletion_seq, vectors_removed_seq,
-  sent_to_vendor_at, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
+  sent_to_vendor_at, vendor_send_seq, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
 from playbook.calls
 where organization_id = $1 and state = 'deleted' and purge_attempts >= ${CALL_PURGE_MAX_ATTEMPTS2}
   and id > $2::text
@@ -1024,8 +1037,8 @@ x as (
   from cand
   where c.organization_id = $1 and c.id = cand.id and c.id in (select id from cl)
   returning c.id, c.epoch, c.deletion_seq, (c.deletion_seq <> cand.deletion_seq) as changed,
-    c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at)
-select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at from x order by id`;
+    c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at, c.vendor_send_seq)
+select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at, vendor_send_seq from x order by id`;
 var DEAL_LIST_PENDING_RETAG = `select id, outcome, outcome_seq, retag_through
 from playbook.deals
 where organization_id = $1 and retag_through < outcome_seq and id > $2::text
@@ -1063,6 +1076,7 @@ var CALL_STATEMENTS = {
   CALL_LIST,
   CALL_LIST_BY_STATE,
   CALL_LIST_BY_DEAL,
+  CALL_LIST_BY_DEAL_STATE,
   CALL_SOFT_DELETE,
   CALL_RESTORE,
   CALL_RESTORE_FOR_UPLOAD,
@@ -1909,6 +1923,7 @@ export {
   CALL_KINDS2 as CALL_KINDS,
   CALL_LIST,
   CALL_LIST_BY_DEAL,
+  CALL_LIST_BY_DEAL_STATE,
   CALL_LIST_BY_STATE,
   CALL_LIST_PENDING_CLEANUP,
   CALL_LIST_SPENT_PURGES,

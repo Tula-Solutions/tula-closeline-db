@@ -2045,8 +2045,22 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
       (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
     from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
-    where c.organization_id = $1 and c.deal_record_id = $5::text
-      and (($6::text is null and c.state <> 'deleted') or c.state = $6::text) and (c.created_at, c.id) < ($2::timestamptz, $3::text)
+    where c.organization_id = $1 and c.deal_record_id = $5::text and c.state <> 'deleted' and (c.created_at, c.id) < ($2::timestamptz, $3::text)
+    order by c.created_at desc, c.id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `CALL_LIST_BY_DEAL_STATE`:
+
+    ```sql
+    select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
+      (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
+      c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
+      (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
+    from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.state = $6::text and c.deal_record_id = $5::text and (c.created_at, c.id) < ($2::timestamptz, $3::text)
     order by c.created_at desc, c.id desc
     limit least(greatest(coalesce($4::int, 1), 1), 100)
     ```
@@ -2170,6 +2184,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     v as (
       select cur.id, cur.state, cur.rep_seq,
         case
+          when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'
           when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text
             and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)
             and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)
@@ -2177,8 +2192,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
           when not (cur.state in ('ready', 'awaiting_rep')
                     or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))
             then 'not_changeable'
-          when not (($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
-                    or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right'))) then 'invalid'
+          when not coalesce(($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
+                    or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right')), false) then 'invalid'
           else 'changed'
         end as result
       from cur),
@@ -2286,14 +2301,15 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     update playbook.calls c
-    set sent_to_vendor_at = coalesce(c.sent_to_vendor_at, clock_timestamp()), updated_at = clock_timestamp()
+    set sent_to_vendor_at = clock_timestamp(), vendor_send_seq = c.vendor_send_seq + 1,
+        vendor_removed_at = null, updated_at = clock_timestamp()
     from playbook.call_jobs j
     where j.organization_id = $1 and j.id = $2 and j.claim_token = $3::uuid and j.state = 'running'
       and c.organization_id = $1 and c.id = j.call_id and (c.epoch = j.epoch and (
         (j.kind = 'transcribe' and c.state in ('uploaded', 'transcribing'))
         or (j.kind = 'process' and c.state in ('uploaded', 'processing'))
         or (j.kind = 'rebuild' and c.state = 'processing' and c.rep_seq = j.rep_seq)))
-    returning c.id
+    returning c.id, c.vendor_send_seq
     ```
 
     `CALL_JOB_RECORD`:
@@ -2340,7 +2356,14 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `CALL_JOB_COMPLETE`:
 
     ```sql
-    with j as (
+    with dk as (
+      select d.id, d.outcome_seq from playbook.deals d
+      where d.organization_id = $1
+        and d.id = (select x.deal_record_id from playbook.calls x join playbook.call_jobs y
+                      on y.organization_id = x.organization_id and y.call_id = x.id
+                    where y.organization_id = $1 and y.id = $2)
+      for no key update),
+    j as (
       update playbook.call_jobs
       set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')
@@ -2351,16 +2374,16 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       returning call_id, epoch),
     c as (
       update playbook.calls c
-      set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dd.outcome_seq)), updated_at = clock_timestamp()
-      from j, playbook.deals dd
+      set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dk.outcome_seq)), updated_at = clock_timestamp()
+      from j, dk
       where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'
-        and dd.organization_id = $1 and dd.id = c.deal_record_id
+        and dk.id = c.deal_record_id
       returning c.id, c.deal_record_id, c.tagged_outcome_seq),
     dl as (
       update playbook.deals d
       set retag_through = least(d.retag_through, c.tagged_outcome_seq)
-      from c
-      where d.organization_id = $1 and d.id = c.deal_record_id and c.tagged_outcome_seq < d.outcome_seq
+      from c, dk
+      where d.organization_id = $1 and d.id = c.deal_record_id and dk.id = d.id and c.tagged_outcome_seq < dk.outcome_seq
       returning d.id)
     select id from c
     ```
@@ -2452,7 +2475,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     update playbook.calls
     set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
-    where organization_id = $1 and id = $2 and state = 'deleted' and sent_to_vendor_at is not null
+    where organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int
+      and sent_to_vendor_at is not null
     returning id
     ```
 
@@ -2475,7 +2499,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     from due
     where c.organization_id = $1 and c.id = due.id
     returning c.id, c.kind, c.object_key, c.transcript_key, c.size_bytes, c.deletion_seq, c.vectors_removed_seq,
-      c.sent_to_vendor_at, c.vendor_removed_at, c.purge_attempts
+      c.sent_to_vendor_at, c.vendor_send_seq, c.vendor_removed_at, c.purge_attempts
     ```
 
     `CALL_PURGE_COMPLETE`:
@@ -2497,7 +2521,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     select id, kind, object_key, transcript_key, deletion_seq, vectors_removed_seq,
-      sent_to_vendor_at, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
+      sent_to_vendor_at, vendor_send_seq, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
     from playbook.calls
     where organization_id = $1 and state = 'deleted' and purge_attempts >= 20
       and id > $2::text
@@ -2553,8 +2577,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       from cand
       where c.organization_id = $1 and c.id = cand.id and c.id in (select id from cl)
       returning c.id, c.epoch, c.deletion_seq, (c.deletion_seq <> cand.deletion_seq) as changed,
-        c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at)
-    select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at from x order by id
+        c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at, c.vendor_send_seq)
+    select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at, vendor_send_seq from x order by id
     ```
 
     `DEAL_LIST_PENDING_RETAG`:
@@ -2811,9 +2835,17 @@ is found by `DEAL_LIST_PENDING_RETAG` (`retag_through < outcome_seq`, partial in
 `CALL_RETAGGED` after it rewrote the Moments' Outcome), and finishes with two statements in one
 transaction: `DEAL_RETAG_LOCK` takes the Deal row, then `DEAL_RETAG_DONE` sets `retag_through` only
 if no ready Call is stale, reading a fresh snapshot. `CALL_JOB_COMPLETE` takes the same Deal row
-and lowers `retag_through` when it finishes a Call with a stale tag, so a Call that became ready
-while the re-tag finished is never lost. The cost of `DEAL_RETAG_DONE` is one indexed read of the
-Deal's ready Calls, once per re-tag.
+**first and always** (`for no key update`) and reads `outcome_seq` from that locked row, so a
+completion that is open while the Outcome moves holds the change and its re-tag back until it
+commits, and one that waits behind them tags against the newer sequence; a Call can never become
+`ready` with a stale tag unseen. (`for share` would let two completions deadlock when both then
+lower `retag_through`; `no key update` queues them for the length of one statement, so keep an
+Outcome change in a short transaction.) The cost of `DEAL_RETAG_DONE` is one indexed read of the
+Deal's ready Calls, once per re-tag. `DEAL_RETAG_BATCH` reads the Deal's ready Calls from the
+keyset and skips those already tagged: across the batches of one re-tag that is one pass over the
+Deal's Calls (bounded by the quota, never by the Organization), and each batch's own write is its
+`limit`. `calls_retag_idx` does not carry the tag, because a comparison to another table's column
+cannot narrow an index range; the skipped rows cost an index read, not a heap write.
 
 **Delete, restore, purge.** Delete bumps `deletion_seq` once and starts the purge clock; restore (by a
 member or by an upload) returns the Call to `uploaded` and `transcribe` if it was never transcribed,
@@ -2823,7 +2855,8 @@ transcription vendor, the vendor copy confirmed removed (`CALL_SENT_TO_VENDOR`,
 `CALL_VENDOR_REMOVED`) before `CALL_PURGE_COMPLETE` deletes the row. A spent purge shows in
 `CALL_LIST_SPENT_PURGES` and `CALL_PURGE_RESET` bars the Call from restore.
 
-**Lists** (`CALL_LIST`, `CALL_LIST_BY_STATE`, `CALL_LIST_BY_DEAL`, and the pending-cleanup list) page
+**Lists** (`CALL_LIST`, `CALL_LIST_BY_STATE`, `CALL_LIST_BY_DEAL`, `CALL_LIST_BY_DEAL_STATE` and the
+pending-cleanup list; the Deal's list is two statements so each keeps its index under a generic plan) page
 on `cursor_at`, the timestamp as text, so microseconds survive the round trip. A malformed cursor
 fails with SQLSTATE 22007 (`invalid input syntax`); the service maps it to a 400.
 
@@ -2849,10 +2882,34 @@ and Call; an import apply holds the same lock; `DEAL_SET_OUTCOME` locks only the
 upload's foreign key takes `KEY SHARE`, which `NO KEY UPDATE` does not conflict with (so
 `DEAL_SET_OUTCOME` and `DEAL_RETAG_LOCK` lock the Deal `for no key update`, never `for update`, and an
 Outcome change does not hold up an upload). A Rep change and a claim both lock job rows before the
-Call row; a claim skips job rows another transaction holds, so it never waits for an uncommitted Rep
+Call row; a completion locks the Deal row first, and no statement that holds a Deal row (an Outcome
+change, `DEAL_RETAG_LOCK`, an import apply) then waits for a job or Call row, so that order cannot
+close a cycle; a claim skips job rows another transaction holds, so it never waits for an uncommitted Rep
 change, and a Rep change on a Call whose job a claim holds waits for the claim. Erasure locks Calls then Deals. No path takes
 two of these in the other direction, so no cycle forms.
 
-**Service duties.** Take the idempotency key and the upload lock before `CALL_INSERT`; stream objects
+**Vendor copies.** Every `CALL_SENT_TO_VENDOR` adds one to `vendor_send_seq`, refreshes
+`sent_to_vendor_at` and clears `vendor_removed_at`, so a Recording sent again after a restore needs
+its own confirmation; `CALL_VENDOR_REMOVED` takes the sequence of the send it confirms (the purge
+claim and the erase rows return the current one), so a late confirmation of an earlier copy never
+confirms a later one. The row holds a count, not the vendor's ids: the service keeps the vendor
+reference of each send under its number, and **deletes the earlier copy before it overwrites that
+reference**. A Call that erasure (or a delete) reaches is purged only after the latest send is
+confirmed gone.
+
+**Deleting.** `closeline_playbook` may delete a Call only once its purge has started and it is
+`deleted` (`calls_deleted_only`, restrictive); the purge and the erasure both reach that state
+through `CALL_PURGE_CLAIM`, and erasure never deletes a live row. A Transcript Call always has a
+Rep (`calls_transcript_has_rep`), so a restore never produces an `awaiting_rep` Transcript.
+
+**Service duties.** Never log `error.detail` (or the `where` text) of a failed Call statement: a
+check violation puts the whole row in DETAIL, which carries the speaker labels and the file name.
+Log the SQLSTATE and the constraint name. Take the idempotency key and the upload lock before `CALL_INSERT`; stream objects
 only after the key is written; remove objects and the vendor copy before the purge completes; send
-the current rights wording version on every upload; re-tag by batches rather than inline.
+the current rights wording version on every upload; re-tag by batches rather than inline; send a
+Transcript's Rep with its upload.
+
+**Release notes.** v0.15.0 (migration `0016`) also changes `DEAL_SET_OUTCOME`, shipped in v0.14.0:
+it now takes the Deal row `for no key update` instead of `for update`, so an open Outcome change no
+longer holds up a Call upload (the foreign-key `KEY SHARE`). It is a statement change only; there is
+no migration for it.

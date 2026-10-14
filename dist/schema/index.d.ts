@@ -8590,6 +8590,23 @@ declare const calls: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
+		vendorSendSeq: PgColumn_ffrhhp34<{
+			name: "vendor_send_seq";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
 		vendorRemovedAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "calls";

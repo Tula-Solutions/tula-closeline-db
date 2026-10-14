@@ -125,6 +125,8 @@ describe('the Call tables', () => {
       'calls_awaiting_rep_has_none',
       'calls_ready_has_rep',
       'calls_ready_label_listed',
+      'calls_transcript_has_rep',
+      'calls_vendor_send_seq_matches',
       'calls_transcript_states',
       'calls_kind_matches_media_type',
       'calls_speaker_labels_valid',
@@ -141,6 +143,31 @@ describe('the Call tables', () => {
     expect(migration).toContain('cardinality(p_labels) <= 20')
     expect(migration).toContain('count(DISTINCT l)')
     expect(migration).toContain('octet_length(l) > 256')
+  })
+
+  test('the role deletes only a Call whose purge has started, and a null Rep choice is invalid', () => {
+    expect(migration).toContain(
+      `CREATE POLICY "calls_deleted_only" ON "playbook"."calls" AS RESTRICTIVE FOR DELETE TO PUBLIC USING ("state" = 'deleted' AND "purge_started_at" IS NOT NULL)`
+    )
+    expect(CALL_STATEMENTS.CALL_SET_REP).toContain(
+      "when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'"
+    )
+  })
+
+  test('every send to the vendor needs its own confirmation', () => {
+    const sent = CALL_STATEMENTS.CALL_SENT_TO_VENDOR
+    expect(sent).toContain('vendor_send_seq = c.vendor_send_seq + 1')
+    expect(sent).toContain('vendor_removed_at = null')
+    expect(sent).not.toContain('coalesce')
+    expect(CALL_STATEMENTS.CALL_VENDOR_REMOVED).toContain('vendor_send_seq = $3::int')
+  })
+
+  test('a completion locks the Deal row for no key update and reads the sequence from it', () => {
+    const text = CALL_STATEMENTS.CALL_JOB_COMPLETE
+    expect(text).toMatch(/^with dk as \(\n[\s\S]*for no key update\),\nj as/)
+    expect(text).toContain('least($4::int, dk.outcome_seq)')
+    expect(text).toContain('c.tagged_outcome_seq < dk.outcome_seq')
+    expect(CALL_STATEMENTS.DEAL_RETAG_LOCK).toContain('for no key update')
   })
 
   test('one active job per Call, and the job kinds and states', () => {

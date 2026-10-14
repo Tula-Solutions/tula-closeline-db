@@ -1,5 +1,5 @@
 {
-  "id": "57da7b2a-5df8-4396-a405-1e24fb161361",
+  "id": "777c6318-1abc-4a2b-859f-7d3ddfbd690a",
   "prevId": "88987ade-20ff-450a-a3f7-f50ef3d822ce",
   "version": "7",
   "dialect": "postgresql",
@@ -7304,6 +7304,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "vendor_send_seq": {
+          "name": "vendor_send_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "vendor_removed_at": {
           "name": "vendor_removed_at",
           "type": "timestamp with time zone",
@@ -7788,6 +7795,14 @@
         "calls_vendor_removal_after_send": {
           "name": "calls_vendor_removal_after_send",
           "value": "\"playbook\".\"calls\".\"vendor_removed_at\" is null or \"playbook\".\"calls\".\"sent_to_vendor_at\" is not null"
+        },
+        "calls_vendor_send_seq_matches": {
+          "name": "calls_vendor_send_seq_matches",
+          "value": "\"playbook\".\"calls\".\"vendor_send_seq\" >= 0 and (\"playbook\".\"calls\".\"sent_to_vendor_at\" is null) = (\"playbook\".\"calls\".\"vendor_send_seq\" = 0)"
+        },
+        "calls_transcript_has_rep": {
+          "name": "calls_transcript_has_rep",
+          "value": "\"playbook\".\"calls\".\"kind\" <> 'transcript' or \"playbook\".\"calls\".\"rep_by\" is not null"
         }
       },
       "isRLSEnabled": false
