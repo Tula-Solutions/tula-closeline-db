@@ -84,6 +84,15 @@ export const CALL_MAX_SEQ = 2_147_483_647
 export const CALL_PURGE_MAX_ATTEMPTS = 20
 /** The most times a Call job may be claimed: the table's bound, as for ingestion jobs. */
 export const CALL_JOB_MAX_ATTEMPTS = 20
+/**
+ * The most sends of one Recording to the transcription vendor over the Call's whole life. A transcribe
+ * job is claimed at most {@link CALL_JOB_MAX_ATTEMPTS} times and each attempt sends at most once, but a
+ * restore starts a new job, so the bound is on the Call itself: the table refuses a twenty-first
+ * send, and {@link CALL_SENT_TO_VENDOR} answers `sent` false instead of counting it.
+ */
+export const CALL_MAX_VENDOR_SENDS = 20
+/** What a vendor id may look like: opaque, 1 to 128 characters of `[A-Za-z0-9._:-]` (the transcriber port's rule). */
+export const CALL_VENDOR_ID_PATTERN = '^[A-Za-z0-9._:-]{1,128}$'
 /** The kinds of Call job: transcribe a Recording, build a Call's Moments, rebuild them after a Rep change. */
 export const CALL_JOB_KINDS = ['transcribe', 'process', 'rebuild'] as const
 /** The states of a Call job; `queued` and `running` are active. */
@@ -317,6 +326,10 @@ export const calls = playbookSchema.table(
       sql`${t.vendorRemovedAt} is null or ${t.sentToVendorAt} is not null`
     ),
     check(
+      'calls_vendor_send_seq_max',
+      sql`${t.vendorSendSeq} <= ${sql.raw(String(CALL_MAX_VENDOR_SENDS))}`
+    ),
+    check(
       'calls_vendor_send_seq_matches',
       sql`${t.vendorSendSeq} >= 0 and (${t.sentToVendorAt} is null) = (${t.vendorSendSeq} = 0)`
     ),
@@ -432,5 +445,54 @@ export const callJobs = playbookSchema.table(
     index('call_jobs_due_idx')
       .on(t.organizationId, t.nextAttemptAt)
       .where(sql`${t.state} in ('queued', 'running')`),
+  ]
+)
+
+/**
+ * One send of a Recording to the transcription vendor, keyed by Call and `calls.vendor_send_seq`.
+ * {@link CALL_SENT_TO_VENDOR} inserts the row (with no id) in the same write that counts the send;
+ * {@link CALL_VENDOR_ID_RECORD} sets `vendor_id` after the vendor accepted, once, and never over
+ * another id. A send may never get an id (a crash), so the purge works without one: the row stays and
+ * the service finds that copy by its client reference. At most {@link CALL_MAX_VENDOR_SENDS} rows per
+ * Call. **The only index on `vendor_id`** is unique, partial (set ids only) and led by the
+ * Organization, so no query reaches an id without one: one vendor copy belongs to one send. Rows go with the Call (the purge deletes it; the key cascades).
+ */
+export const callVendorSends = playbookSchema.table(
+  'call_vendor_sends',
+  {
+    organizationId: text('organization_id').notNull(),
+    callId: text('call_id').notNull(),
+    seq: integer('seq').notNull(),
+    vendorId: text('vendor_id'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    recordedAt: ts('recorded_at'),
+  },
+  (t) => [
+    primaryKey({
+      name: 'call_vendor_sends_pkey',
+      columns: [t.organizationId, t.callId, t.seq],
+    }),
+    foreignKey({
+      name: 'call_vendor_sends_call_fk',
+      columns: [t.organizationId, t.callId],
+      foreignColumns: [calls.organizationId, calls.id],
+    }).onDelete('cascade'),
+    check('call_vendor_sends_organization_id_shape', idShape('organization_id', 'org')),
+    check('call_vendor_sends_organization_not_global', notGlobal),
+    check(
+      'call_vendor_sends_seq_bounds',
+      sql`${t.seq} between 1 and ${sql.raw(String(CALL_MAX_VENDOR_SENDS))}`
+    ),
+    check(
+      'call_vendor_sends_vendor_id_shape',
+      sql.raw(`"vendor_id" is null or "vendor_id" ~ '${CALL_VENDOR_ID_PATTERN}'`)
+    ),
+    check(
+      'call_vendor_sends_recorded_matches',
+      sql`(${t.vendorId} is null) = (${t.recordedAt} is null)`
+    ),
+    uniqueIndex('call_vendor_sends_org_vendor_id_key')
+      .on(t.organizationId, t.vendorId)
+      .where(sql`${t.vendorId} is not null`),
   ]
 )

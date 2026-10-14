@@ -25,10 +25,11 @@ const idempotencyMigration = read('0011_playbook_idempotency_keys.sql')
 const discoveryMigration = read('0012_playbook_work_discovery.sql')
 const orphanMigration = read('0014_playbook_pending_cleanup_orphans.sql')
 const salesMigration = read('0015_playbook_sales_history.sql')
-const callsMigration = read('0016_playbook_calls.sql')
+const callsMigration = read('0016_playbook_calls.sql') + read('0018_call_vendor_sends.sql')
 
 const NAMES = [
   'call_jobs',
+  'call_vendor_sends',
   'calls',
   'consumed_message',
   'deal_import_rows',
@@ -44,7 +45,7 @@ const NAMES = [
 ]
 
 describe('the playbook schema', () => {
-  test('has the thirteen tenant tables and the work registry, and nothing else', () => {
+  test('has the fourteen tenant tables and the work registry, and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
   })
 

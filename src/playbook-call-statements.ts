@@ -7,8 +7,10 @@ import {
 } from './playbook-sql'
 import {
   CALL_JOB_MAX_ATTEMPTS,
+  CALL_MAX_VENDOR_SENDS,
   CALL_PENDING_CLEANUP_PREDICATE,
   CALL_PURGE_MAX_ATTEMPTS,
+  CALL_VENDOR_ID_PATTERN,
 } from './schema/playbook-calls'
 
 /*
@@ -149,6 +151,13 @@ export const CALL_GET = `select ${READ_COLUMNS}
 ${FROM_CALL}
 where c.organization_id = $1 and c.id = $2`
 
+/** The sends of the Call aliased `alias`, as a JSON array ordered by `seq` (`[]` when none; at most {@link CALL_MAX_VENDOR_SENDS}), read through the primary key. */
+const VENDOR_SENDS = (
+  alias: string
+) => `(select coalesce(jsonb_agg(jsonb_build_object('seq', s.seq, 'vendor_id', s.vendor_id) order by s.seq), '[]'::jsonb)
+   from playbook.call_vendor_sends s
+   where s.organization_id = ${alias}.organization_id and s.call_id = ${alias}.id) as vendor_sends`
+
 const KEYSET = `(c.created_at, c.id) < ($2::timestamptz, $3::text)`
 const LIST_END = `order by c.created_at desc, c.id desc
 limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
@@ -273,20 +282,24 @@ export const CALL_RESTORE_FOR_UPLOAD = RESTORE('')
  * contract's `callReuploadRequeues`); it goes back to `uploaded` with a queued `transcribe` job
  * (when there is no kept Transcript) or `process` job. `$1` Organization, `$2` the Call, `$3` the new
  * job's id. Any other Call, a failed one with another reason included, is returned as it is with
- * `changed` false and nothing written, except a deleted one (no row: restore it instead).
+ * `changed` false and nothing written, except a deleted one (no row: restore it instead). A Call
+ * that has used all its vendor sends (`vendor_send_seq` at the bound of 20) is also returned as it
+ * is: another job could only answer `sent: false` and fail again, so a re-upload does not loop.
  */
 export const CALL_REQUEUE = `with j as (
   update playbook.call_jobs
   set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
   where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
     and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'
-                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))
+                and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+                and x.vendor_send_seq < ${CALL_MAX_VENDOR_SENDS})
   returning id),
 x as (
   update playbook.calls
   set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and state = 'failed'
     and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+    and vendor_send_seq < ${CALL_MAX_VENDOR_SENDS}
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, rep_seq, kind, transcript_key),
 queued as (
@@ -518,15 +531,69 @@ returning id, attempts`
  * service crashed after the vendor accepted it and before it stored the vendor's id; a
  * confirmation for number `n` means every copy with reference 1 to `n` is gone. That needs the
  * vendor to support a client reference or a lookup, which is unverified for AssemblyAI and belongs
- * to the transcriber adapter ticket. No row: the claim was lost or the Call is not live.
+ * to the transcriber adapter ticket. The same write inserts the send's row (`call_vendor_sends`,
+ * no id yet): record the vendor's id with {@link CALL_VENDOR_ID_RECORD} after it accepts. **At most
+ * {@link CALL_MAX_VENDOR_SENDS} sends per Call over its life** (a restore starts a new job, so the
+ * job's attempt limit alone does not bound them): a twenty-first is not counted and the answer has
+ * `sent` false; do not send, fail the job. No row: the claim was lost or the Call is not live.
  */
-export const CALL_SENT_TO_VENDOR = `update playbook.calls c
-set sent_to_vendor_at = clock_timestamp(), vendor_send_seq = c.vendor_send_seq + 1,
-    vendor_removed_at = null, updated_at = clock_timestamp()
-from playbook.call_jobs j
-where j.organization_id = $1 and j.id = $2 and j.claim_token = $3::uuid and j.state = 'running'
-  and c.organization_id = $1 and c.id = j.call_id and ${LIVE('j', 'c')}
-returning c.id, c.vendor_send_seq`
+export const CALL_SENT_TO_VENDOR = `with live as (
+  select c.id, c.vendor_send_seq from playbook.calls c
+  join playbook.call_jobs j on j.organization_id = c.organization_id and j.call_id = c.id
+  where j.organization_id = $1 and j.id = $2 and j.claim_token = $3::uuid and j.state = 'running'
+    and ${LIVE('j', 'c')}),
+u as (
+  update playbook.calls c
+  set sent_to_vendor_at = clock_timestamp(), vendor_send_seq = c.vendor_send_seq + 1,
+      vendor_removed_at = null, updated_at = clock_timestamp()
+  from live
+  where c.organization_id = $1 and c.id = live.id and live.vendor_send_seq < ${CALL_MAX_VENDOR_SENDS}
+  returning c.id, c.vendor_send_seq),
+ins as (
+  insert into playbook.call_vendor_sends (organization_id, call_id, seq)
+  select $1, id, vendor_send_seq from u)
+select id, vendor_send_seq, true as sent from u
+union all
+select id, vendor_send_seq, false from live where vendor_send_seq >= ${CALL_MAX_VENDOR_SENDS}`
+
+/**
+ * Record the vendor's id for one send, after the vendor accepted it. `$1` Organization, `$2` Call,
+ * `$3` the send's `vendor_send_seq` (the number {@link CALL_SENT_TO_VENDOR} returned), `$4` the
+ * vendor's id (opaque, 1 to 128 characters of `[A-Za-z0-9._:-]`). One row, `result`:
+ * `recorded`; `unchanged` (that send already holds this id, so a repeat is safe); `conflict` (it
+ * holds a different id, which is **never overwritten**, or another send of the Organization holds
+ * this id: the table has a unique Organization-scoped index on it, and a concurrent record of the
+ * same id on two sends can still raise SQLSTATE 23505, which the service treats as `conflict`
+ * and never logs `error.detail`, because it carries the id); `invalid` (the id is not of that shape:
+ * nothing is written and no constraint is reached, so no id appears in any error). **No row** when
+ * the Call has no such counted send (never sent, or a number above the Call's current one).
+ * **A late answer is allowed**: the id of any counted send is recorded whatever the Call's state and
+ * whichever send is the current one, and without a claim, because an answer that arrives after a
+ * restore, a newer send or a delete still names a real copy at the vendor that must be deleted. A
+ * send that never gets an id keeps its row with a null id; the purge then finds that copy by its
+ * client reference. The id is never returned by this statement, logged, or put in an index.
+ */
+export const CALL_VENDOR_ID_RECORD = `with cur as (
+  select vendor_id from playbook.call_vendor_sends
+  where organization_id = $1 and call_id = $2 and seq = $3::int
+  for update),
+taken as (
+  select 1 from playbook.call_vendor_sends t
+  where t.organization_id = $1 and t.vendor_id = $4::text and not (t.call_id = $2 and t.seq = $3::int)),
+u as (
+  update playbook.call_vendor_sends s
+  set vendor_id = $4::text, recorded_at = clock_timestamp()
+  from cur
+  where s.organization_id = $1 and s.call_id = $2 and s.seq = $3::int and cur.vendor_id is null
+    and not exists (select 1 from taken)
+    and coalesce($4::text ~ '${CALL_VENDOR_ID_PATTERN}', false)
+  returning 1)
+select case
+  when not coalesce($4::text ~ '${CALL_VENDOR_ID_PATTERN}', false) then 'invalid'
+  when exists (select 1 from u) then 'recorded'
+  when cur.vendor_id = $4::text then 'unchanged'
+  else 'conflict' end as result
+from cur`
 
 /**
  * Record what a step learned and extend the lease. `$1` Organization, `$2` job, `$3` the claim
@@ -734,7 +801,10 @@ returning id`
  * batch size, `$3` the lease in milliseconds. Rows carry what the service must remove outside any
  * transaction: `object_key` (the original), `transcript_key` (the kept Transcript), `kind`,
  * `sent_to_vendor_at`, `vendor_send_seq` and `vendor_removed_at` (remove the vendor's copy and record it
- * with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
+ * with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `vendor_sends` (every counted send as
+ * `{ seq, vendor_id }`, `vendor_id` null for a send whose id was never stored: delete that copy by its
+ * client reference; the array is complete, at most {@link CALL_MAX_VENDOR_SENDS} long, and `[]` for a Call
+ * never sent), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
  * when they differ). The service also removes every artefact under the Call's id prefix. **A claim
  * means the purge can finish**: a Call is not handed out while a job of it is `running`, or
  * `cancelled` with its lease unexpired (delete and erasure cancel a job but keep its lease), the
@@ -762,7 +832,8 @@ set purge_started_at = coalesce(c.purge_started_at, clock_timestamp()),
 from due
 where c.organization_id = $1 and c.id = due.id
 returning c.id, c.kind, c.object_key, c.transcript_key, c.size_bytes, c.deletion_seq, c.vectors_removed_seq,
-  c.sent_to_vendor_at, c.vendor_send_seq, c.vendor_removed_at, c.purge_attempts`
+  c.sent_to_vendor_at, c.vendor_send_seq, c.vendor_removed_at, c.purge_attempts,
+  ${VENDOR_SENDS('c')}`
 
 /**
  * Finish a Call purge: remove the row (its jobs go by cascade and the counts fall in the same
@@ -785,8 +856,9 @@ returning id, size_bytes`
 
 /** List the Calls whose purge reached the attempt bound, one page by id: `$1` Organization, `$2` last id (`''` first), `$3` page size. On `calls_spent_purge_idx`. */
 export const CALL_LIST_SPENT_PURGES = `select id, kind, object_key, transcript_key, deletion_seq, vectors_removed_seq,
-  sent_to_vendor_at, vendor_send_seq, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
-from playbook.calls
+  sent_to_vendor_at, vendor_send_seq, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts,
+  ${VENDOR_SENDS('c')}
+from playbook.calls c
 where organization_id = $1 and state = 'deleted' and purge_attempts >= ${CALL_PURGE_MAX_ATTEMPTS}
   and id > $2::text
 order by id
@@ -805,7 +877,10 @@ returning id, purge_attempts`
  * remove every Call, before {@link DEAL_ERASE_BATCH}**: a Deal a Call refers to cannot be deleted.
  * `$1` Organization, `$2` batch size, `$3` the actor (an internal call has no user: `usr_` and 32
  * zeros). Rows: `id`, `epoch`, `deletion_seq`, `changed` (publish the cleanup with that sequence),
- * and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at`, `vendor_send_seq` so the service can remove the
+ * and `object_key`, `transcript_key`, `kind`, `sent_to_vendor_at`, `vendor_send_seq`, `vendor_sends` (**read in
+ * the statement's snapshot, so a send that committed while the statement ran can be in `vendor_send_seq`
+ * and not yet in `vendor_sends`: when `vendor_sends` is shorter than `vendor_send_seq`, delete the
+ * missing sequences by client reference; the purge claim, run after the lease gate, is exact**) so the service can remove the
  * objects and the vendor copy at once; the purge claim returns them again. Lock order: job rows,
  * then Call rows, each in id order. Repeat until no row comes back. An upload still streaming has
  * no Call yet: its key is an upload attempt, so the orphan sweep removes its parts and object.
@@ -845,8 +920,9 @@ x as (
   from cand
   where c.organization_id = $1 and c.id = cand.id and c.id in (select id from cl)
   returning c.id, c.epoch, c.deletion_seq, (c.deletion_seq <> cand.deletion_seq) as changed,
-    c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at, c.vendor_send_seq)
-select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at, vendor_send_seq from x order by id`
+    c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at, c.vendor_send_seq,
+    ${VENDOR_SENDS('c')})
+select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at, vendor_send_seq, vendor_sends from x order by id`
 
 /**
  * One page of the Deals that need an Outcome re-tag (`retag_through < outcome_seq`, on
@@ -943,6 +1019,7 @@ export const CALL_STATEMENTS = {
   CALL_CLEANUP_BEGIN,
   CALL_LIST_PENDING_CLEANUP,
   CALL_CLEANUP_DONE,
+  CALL_VENDOR_ID_RECORD,
   CALL_VENDOR_REMOVED,
   CALL_PURGE_CLAIM,
   CALL_PURGE_COMPLETE,
