@@ -539,7 +539,14 @@ describe('work discovery, erasure and spent purges', () => {
           await deleteCall(org, call.id, 0, 120, ', vectors_removed_seq = 1')
         },
         finish: async (org) => {
-          await asOwner(org, (c) => c.query('delete from playbook.calls'))
+          // Finish as the real purge does: claim it (purge_started_at), then remove the row.
+          await asOwner(org, async (c) => {
+            await c.query(
+              `update playbook.calls set purge_started_at = clock_timestamp(), purge_attempts = 1
+               where state = 'deleted' and purge_started_at is null`
+            )
+            await c.query('delete from playbook.calls')
+          })
         },
       },
       {
