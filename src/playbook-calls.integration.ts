@@ -1632,6 +1632,29 @@ describe('sales history, part two: Calls', () => {
       )
     })
 
+    test('a claim returns the job’s created_at and the Call’s content hash; a requeued Call’s new job is later than the old send', async () => {
+      const org = await newConfirmedOrg()
+      const u = await mustAdd(org, recording())
+      const first = await claimOf(org, u.id)
+      expect(first.content_hash).toEqual(u.hash)
+      expect(first.job_created_at).toBeInstanceOf(Date)
+      await q(org, CALL_SENT_TO_VENDOR, [org, first.id, first.claim_token])
+      const sentAt = (
+        await asOwner(org, (c) =>
+          c.query('select sent_to_vendor_at from playbook.calls where id = $1', [u.id])
+        )
+      ).rows[0]?.sent_to_vendor_at as Date
+      expect(first.job_created_at.getTime()).toBeLessThanOrEqual(sentAt.getTime())
+      await q(org, CALL_JOB_FAIL, [org, first.id, first.claim_token, 'transcription_failed'])
+      expect((await q(org, CALL_REQUEUE, [org, u.id, newCjob()])).rows[0]).toMatchObject({
+        changed: true,
+      })
+      const second = await claimOf(org, u.id)
+      expect(second.id).not.toBe(first.id)
+      expect(second.content_hash).toEqual(u.hash)
+      expect(second.job_created_at.getTime()).toBeGreaterThan(sentAt.getTime())
+    })
+
     // F1 (round 1 of PR 16). Fails before the change: CALL_REQUEUE queues a job that can only answer sent false.
     test('at 20 sends a failed Call is not re-queued: the answer is unchanged and no job is created', async () => {
       const org = await newConfirmedOrg()

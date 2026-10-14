@@ -12032,7 +12032,8 @@ declare const CALL_SET_REP2 = "with jl as (\\n  select id from playbook.call_job
 * `transcribing` or `processing`. A job with all ${CALL_JOB_MAX_ATTEMPTS} attempts used is never
 * claimed ({@link CALL_JOB_GIVE_UP_SPENT} resolves it). Locks: job rows (`skip locked`), then the
 * Call row, the order everywhere. Rows are the claimed jobs with what the worker needs (the Call's
-* kind, keys, Rep and labels, and `sent_to_vendor_at`); every row carries `cancelled` and `lost`
+* kind, keys, Rep and labels, `sent_to_vendor_at`, the job's own `job_created_at` and the Call's
+* audio `content_hash`: the sha256 as a Buffer, null only on the signal row); every row carries `cancelled` and `lost`
 * as for documents, and one signal row with a null `id` comes back when neither a job was claimed
 * nor nothing was due. Run it with a short `lock_timeout`; no publish or network call inside the
 * transaction.
@@ -12057,6 +12058,8 @@ interface CallJobClaimRow {
 	rep_channel: "left" | "right" | null;
 	speaker_labels: string[] | null;
 	sent_to_vendor_at: Date | null;
+	job_created_at: Date | null;
+	content_hash: Buffer | null;
 	cancelled: number;
 	lost: number;
 }
@@ -12064,6 +12067,8 @@ interface CallJobClaimRow {
 type ClaimedCallJob = CallJobClaimRow & {
 	id: string;
 	call_id: string;
+	job_created_at: Date;
+	content_hash: Buffer;
 };
 /** Read the rows of {@link CALL_JOB_CLAIM}: the claimed jobs and the counts it `cancelled` and `lost`; claim again at once when either is above zero. */
 declare function claimedCallJobs(rows: readonly CallJobClaimRow[]): {
