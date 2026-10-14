@@ -5,9 +5,24 @@ import {
   INGESTION_STEPS2,
   INGESTION_JOB_MAX_ATTEMPTS2,
   PENDING_CLEANUP_PREDICATE2,
+  DEAL_OUTCOMES2,
+  DEAL_IMPORT_STATES2,
+  DEAL_IMPORT_FAILURE_REASONS2,
+  DEAL_IMPORT_ROW_RESULTS2,
+  DEAL_IMPORT_ROW_REASONS2,
+  DEAL_ID_MAX_LENGTH2,
+  DEAL_ID_MAX_BYTES2,
+  DEAL_NAME_MAX_LENGTH2,
+  DEAL_NAME_MAX_BYTES2,
+  DEAL_IMPORT_MAX_ROWS2,
+  DEAL_IMPORT_MAX_BYTES2,
+  DEAL_MAX_SEQ2,
+  RIGHTS_MAX_WORDING_VERSION2,
+  DEAL_IMPORT_MAX_ATTEMPTS2,
+  DEAL_IMPORT_APPLY_BATCH2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-qbc7s65s.js";
+} from "./shared/chunk-m4tdeaba.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -919,10 +934,16 @@ var ORGANIZATION_REMOVAL_STATUS = `select
   not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,
   not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,
   not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,
+  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,
+  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,
+  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,
   (not exists (select 1 from playbook.documents where organization_id = $1)
     and not exists (select 1 from playbook.index_settings where organization_id = $1)
     and not exists (select 1 from playbook.organization_usage where organization_id = $1)
-    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed
+    and not exists (select 1 from playbook.consumed_message where organization_id = $1)
+    and not exists (select 1 from playbook.deals where organization_id = $1)
+    and not exists (select 1 from playbook.deal_imports where organization_id = $1)
+    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed
 where $1::text = nullif(current_setting('app.organization_id', true), '')`;
 var DOCUMENT_LIST_SPENT_PURGES = `select id, name, size_bytes, object_key, deletion_seq, vectors_removed_seq, deleted_at,
   purge_due_at, purge_started_at, purge_lease_until, purge_attempts, restore_barred_at
@@ -942,6 +963,257 @@ function discoveredOrganizations(rows) {
   const organizations = rows.flatMap((row) => row.organization_id === null ? [] : [row.organization_id]);
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null };
 }
+var DEAL_COLUMNS = `id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at`;
+var DEAL_ROW_FIELDS = [
+  "id",
+  "deal_id",
+  "name",
+  "outcome",
+  "outcome_seq",
+  "closed_at",
+  "amount",
+  "currency",
+  "appeared_in_import",
+  "created_at",
+  "updated_at"
+];
+var DEAL_GET = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and id = $2`;
+var DEAL_BY_DEAL_ID = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and deal_id = $2::text`;
+var DEAL_LIST = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DEAL_LIST_BY_OUTCOME = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DEAL_LIST_BY_IMPORT_FLAG = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DEAL_SET_OUTCOME = `with cur as (
+  select * from playbook.deals where organization_id = $1 and id = $2 for update),
+u as (
+  update playbook.deals d
+  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,
+      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()
+  from cur
+  where d.organization_id = $1 and d.id = cur.id
+    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
+  returning d.*)
+select ${DEAL_COLUMNS}, true as changed from u
+union all
+select ${DEAL_COLUMNS}, false from cur where not exists (select 1 from u)`;
+var DEAL_USAGE = `select deal_count
+from playbook.organization_usage
+where organization_id = $1`;
+var DEAL_IMPORT_COLUMNS = `id, state, failure_reason,
+  case when state = 'completed' then row_count end as row_count,
+  case when state = 'completed' then applied_count end as applied_count,
+  case when state = 'completed' then rejected_count end as rejected_count,
+  uploaded_by, created_at, updated_at`;
+var DEAL_IMPORT_INSERT = `insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)
+values ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())
+returning ${DEAL_IMPORT_COLUMNS}`;
+var DEAL_IMPORT_GET = `select ${DEAL_IMPORT_COLUMNS}
+from playbook.deal_imports
+where organization_id = $1 and id = $2 and erased_at is null`;
+var DEAL_IMPORT_LIST = `select ${DEAL_IMPORT_COLUMNS}
+from playbook.deal_imports
+where organization_id = $1 and erased_at is null and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DEAL_IMPORT_CLAIM = `with due as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and state in ('uploaded', 'processing') and erased_at is null
+    and attempts < ${DEAL_IMPORT_MAX_ATTEMPTS2} and next_attempt_at <= clock_timestamp()
+  order by next_attempt_at
+  limit ${BATCH("$2")}
+  for update skip locked)
+update playbook.deal_imports i
+set state = 'processing', attempts = i.attempts + 1, claim_token = gen_random_uuid(),
+    next_attempt_at = clock_timestamp() + ${LEASE("$3")}, updated_at = clock_timestamp()
+from due
+where i.organization_id = $1 and i.id = due.id
+returning i.id, i.object_key, i.size_bytes, i.attempts, i.claim_token,
+  (select max(r.row_number) from playbook.deal_import_rows r where r.organization_id = $1 and r.import_id = i.id) as last_row_number`;
+var DEAL_IMPORT_HEARTBEAT = `update playbook.deal_imports
+set next_attempt_at = clock_timestamp() + ${LEASE("$4")}, updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+returning id`;
+var DEAL_IMPORT_RETRY = `update playbook.deal_imports
+set state = 'uploaded', claim_token = null,
+    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), ${INGESTION_MAX_RETRY_DELAY_MS}) / 1000),
+    updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+returning id, attempts`;
+var DEAL_IMPORT_APPLY = `with imp as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+  for update),
+b as (
+  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)
+  where not exists (select 1 from playbook.deal_import_rows r where r.organization_id = $1 and r.import_id = $2 and r.row_number = x.row_number)
+  order by x.row_number
+  limit ${CLAMP("$6", DEAL_IMPORT_APPLY_BATCH2)}),
+ranked as (
+  select b.*, row_number() over (partition by b.deal_id order by b.row_number) as nth from b),
+seen as (
+  select r.deal_id from playbook.deal_import_rows r
+  where r.organization_id = $1 and r.import_id = $2 and r.reason is distinct from 'duplicate_in_file'
+    and r.deal_id in (select deal_id from b)),
+cls as (
+  select k.*, d.id as deal_pk, d.outcome as cur_outcome, d.outcome_seq as cur_seq, d.closed_at as cur_closed_at,
+    case
+      when k.deal_id is not null and (k.nth > 1 or k.deal_id in (select deal_id from seen)) then 'duplicate_in_file'
+      when k.reason is not null then k.reason
+      when d.id is not null and d.outcome <> 'open' then 'outcome_already_decided'
+    end as bad
+  from ranked k left join playbook.deals d on d.organization_id = $1 and d.deal_id = k.deal_id),
+fin as (
+  select c.*,
+    case when c.bad is null and c.deal_pk is null
+      and coalesce((select deal_count from playbook.organization_usage where organization_id = $1), 0)
+        + count(*) filter (where c.bad is null and c.deal_pk is null) over (order by c.row_number) > $5::bigint
+      then 'deal_limit_reached' else c.bad end as final_bad
+  from cls c),
+upd as (
+  update playbook.deals d
+  set outcome = f.outcome,
+      outcome_seq = d.outcome_seq + (case when f.outcome <> d.outcome or coalesce(f.closed_at, d.closed_at) is distinct from d.closed_at then 1 else 0 end),
+      closed_at = coalesce(f.closed_at, d.closed_at), amount = coalesce(f.amount, d.amount),
+      currency = coalesce(f.currency, d.currency), name = coalesce(f.name, d.name),
+      appeared_in_import = true, updated_at = clock_timestamp()
+  from fin f
+  where d.organization_id = $1 and d.id = f.deal_pk and f.final_bad is null and d.outcome = 'open'
+  returning d.id, d.deal_id, d.outcome_seq, (d.outcome_seq <> f.cur_seq) as bumped),
+ins as (
+  insert into playbook.deals (id, organization_id, deal_id, name, outcome, closed_at, amount, currency, appeared_in_import)
+  select 'deal_' || replace(gen_random_uuid()::text, '-', ''), $1, f.deal_id, f.name, f.outcome, f.closed_at, f.amount, f.currency, true
+  from fin f where f.final_bad is null and f.deal_pk is null
+  on conflict (organization_id, deal_id) do nothing
+  returning deal_id),
+res as (
+  select f.row_number, f.deal_id, f.final_bad as reason from fin f where f.final_bad is not null
+  union all select f.row_number, f.deal_id, null from fin f join upd u on u.id = f.deal_pk where f.final_bad is null
+  union all select f.row_number, f.deal_id, null from fin f join ins i on i.deal_id = f.deal_id where f.final_bad is null and f.deal_pk is null),
+rep as (
+  insert into playbook.deal_import_rows (organization_id, import_id, row_number, deal_id, result, reason)
+  select $1, $2, res.row_number, res.deal_id, case when res.reason is null then 'applied' else 'rejected' end, res.reason
+  from res
+  returning result),
+cnt as (
+  update playbook.deal_imports
+  set applied_count = applied_count + (select count(*) from rep where result = 'applied'),
+      rejected_count = rejected_count + (select count(*) from rep where result = 'rejected'),
+      updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and exists (select 1 from imp)
+  returning id)
+select 'summary' as kind, null::text as deal_record_id, null::int as outcome_seq,
+  (select count(*) from b)::int as taken,
+  (select count(*) from rep where result = 'applied')::int as applied,
+  (select count(*) from rep where result = 'rejected')::int as rejected
+where exists (select 1 from imp)
+union all
+select 'outcome_changed', u.id, u.outcome_seq, null, null, null from upd u where u.bumped`;
+var DEAL_IMPORT_FINISH = `update playbook.deal_imports
+set state = 'completed', claim_token = null, row_count = applied_count + rejected_count,
+    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+  and applied_count + rejected_count = $4::int
+returning id, row_count, applied_count, rejected_count`;
+var DEAL_IMPORT_FAIL = `update playbook.deal_imports
+set state = 'failed', failure_reason = $4::text, claim_token = null,
+    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+returning id`;
+var DEAL_IMPORT_GIVE_UP_SPENT = `with batch as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and state in ('uploaded', 'processing') and erased_at is null
+    and attempts >= ${DEAL_IMPORT_MAX_ATTEMPTS2} and next_attempt_at <= clock_timestamp()
+  order by next_attempt_at
+  limit ${BATCH("$2")}
+  for update skip locked)
+update playbook.deal_imports t
+set state = 'failed', failure_reason = 'processing_failed', claim_token = null,
+    finished_at = clock_timestamp(), updated_at = clock_timestamp()
+from batch
+where t.organization_id = $1 and t.id = batch.id
+returning t.id, t.object_key`;
+var DEAL_IMPORT_OBJECT_REMOVED = `update playbook.deal_imports
+set object_removed_at = coalesce(object_removed_at, clock_timestamp()), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and (erased_at is not null or state = 'failed')
+returning id`;
+var DEAL_IMPORT_ROWS_LIST = `select row_number, deal_id, result, reason
+from playbook.deal_import_rows
+where organization_id = $1 and import_id = $2 and row_number > $3::int
+order by row_number
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DEAL_IMPORT_ROWS_LIST_BY_RESULT = `select row_number, deal_id, result, reason
+from playbook.deal_import_rows
+where organization_id = $1 and import_id = $2 and result = $5::text and row_number > $3::int
+order by row_number
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var DEAL_IMPORT_ERASE_BATCH = `with batch as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and erased_at is null
+  order by id
+  limit ${BATCH("$2")}
+  for update)
+update playbook.deal_imports i
+set state = case when i.state in ('uploaded', 'processing') then 'failed' else i.state end,
+    failure_reason = case when i.state in ('uploaded', 'processing') then 'processing_failed' else i.failure_reason end,
+    finished_at = coalesce(i.finished_at, clock_timestamp()), claim_token = null,
+    erased_at = clock_timestamp(), updated_at = clock_timestamp()
+from batch
+where i.organization_id = $1 and i.id = batch.id
+returning i.id, i.object_key, (i.object_removed_at is null) as object_pending`;
+var DEAL_IMPORT_PURGE_BATCH = `with imp as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and id = $2 and erased_at is not null and object_removed_at is not null
+  for update),
+pick as (
+  select r.row_number from playbook.deal_import_rows r, imp
+  where r.organization_id = $1 and r.import_id = $2
+  order by r.row_number
+  limit ${BATCH("$3")}),
+del as (
+  delete from playbook.deal_import_rows r
+  using pick
+  where r.organization_id = $1 and r.import_id = $2 and r.row_number = pick.row_number
+  returning 1),
+gone as (
+  delete from playbook.deal_imports i
+  using imp
+  where i.organization_id = $1 and i.id = imp.id
+    and not exists (select 1 from playbook.deal_import_rows x where x.organization_id = $1 and x.import_id = $2)
+  returning 1)
+select (select count(*) from del)::int as deleted_rows, exists (select 1 from gone) as import_deleted
+where exists (select 1 from imp)`;
+var DEAL_ERASE_BATCH = `select playbook.erase_deals($1::text, $2::int) as deleted`;
+var RIGHTS_GET = `select confirmed_by, confirmed_at, wording_version
+from playbook.rights_confirmations
+where organization_id = $1`;
+var RIGHTS_CONFIRM = `with up as (
+  insert into playbook.rights_confirmations as r (organization_id, confirmed_by, confirmed_at, wording_version)
+  values ($1, $2::text, clock_timestamp(), $3::int)
+  on conflict (organization_id) do update
+    set confirmed_by = excluded.confirmed_by, confirmed_at = excluded.confirmed_at, wording_version = excluded.wording_version
+    where r.wording_version < excluded.wording_version
+  returning confirmed_by, confirmed_at, wording_version)
+select confirmed_by, confirmed_at, wording_version, true as recorded from up
+union all
+select confirmed_by, confirmed_at, wording_version, false
+from playbook.rights_confirmations
+where organization_id = $1 and not exists (select 1 from up)`;
 var PLAYBOOK_STATEMENTS = {
   QUOTA_LOCK,
   QUOTA_USAGE,
@@ -984,6 +1256,31 @@ var PLAYBOOK_STATEMENTS = {
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_RESET,
   ORPHAN_SWEEP_DONE,
+  DEAL_GET,
+  DEAL_BY_DEAL_ID,
+  DEAL_LIST,
+  DEAL_LIST_BY_OUTCOME,
+  DEAL_LIST_BY_IMPORT_FLAG,
+  DEAL_SET_OUTCOME,
+  DEAL_USAGE,
+  DEAL_IMPORT_INSERT,
+  DEAL_IMPORT_GET,
+  DEAL_IMPORT_LIST,
+  DEAL_IMPORT_CLAIM,
+  DEAL_IMPORT_HEARTBEAT,
+  DEAL_IMPORT_RETRY,
+  DEAL_IMPORT_APPLY,
+  DEAL_IMPORT_FINISH,
+  DEAL_IMPORT_FAIL,
+  DEAL_IMPORT_GIVE_UP_SPENT,
+  DEAL_IMPORT_OBJECT_REMOVED,
+  DEAL_IMPORT_ROWS_LIST,
+  DEAL_IMPORT_ROWS_LIST_BY_RESULT,
+  DEAL_IMPORT_ERASE_BATCH,
+  DEAL_IMPORT_PURGE_BATCH,
+  DEAL_ERASE_BATCH,
+  RIGHTS_GET,
+  RIGHTS_CONFIRM,
   ORGANIZATIONS_WITH_WORK
 };
 
@@ -1010,6 +1307,44 @@ export {
   CONTROL_PLANE_TABLE_REASONS,
   COUNTER_MIN_PERIOD_MS,
   COUNTER_PURGE_BATCH,
+  DEAL_BY_DEAL_ID,
+  DEAL_ERASE_BATCH,
+  DEAL_GET,
+  DEAL_ID_MAX_BYTES2 as DEAL_ID_MAX_BYTES,
+  DEAL_ID_MAX_LENGTH2 as DEAL_ID_MAX_LENGTH,
+  DEAL_IMPORT_APPLY,
+  DEAL_IMPORT_APPLY_BATCH2 as DEAL_IMPORT_APPLY_BATCH,
+  DEAL_IMPORT_CLAIM,
+  DEAL_IMPORT_ERASE_BATCH,
+  DEAL_IMPORT_FAIL,
+  DEAL_IMPORT_FAILURE_REASONS2 as DEAL_IMPORT_FAILURE_REASONS,
+  DEAL_IMPORT_FINISH,
+  DEAL_IMPORT_GET,
+  DEAL_IMPORT_GIVE_UP_SPENT,
+  DEAL_IMPORT_HEARTBEAT,
+  DEAL_IMPORT_INSERT,
+  DEAL_IMPORT_LIST,
+  DEAL_IMPORT_MAX_ATTEMPTS2 as DEAL_IMPORT_MAX_ATTEMPTS,
+  DEAL_IMPORT_MAX_BYTES2 as DEAL_IMPORT_MAX_BYTES,
+  DEAL_IMPORT_MAX_ROWS2 as DEAL_IMPORT_MAX_ROWS,
+  DEAL_IMPORT_OBJECT_REMOVED,
+  DEAL_IMPORT_PURGE_BATCH,
+  DEAL_IMPORT_RETRY,
+  DEAL_IMPORT_ROWS_LIST,
+  DEAL_IMPORT_ROWS_LIST_BY_RESULT,
+  DEAL_IMPORT_ROW_REASONS2 as DEAL_IMPORT_ROW_REASONS,
+  DEAL_IMPORT_ROW_RESULTS2 as DEAL_IMPORT_ROW_RESULTS,
+  DEAL_IMPORT_STATES2 as DEAL_IMPORT_STATES,
+  DEAL_LIST,
+  DEAL_LIST_BY_IMPORT_FLAG,
+  DEAL_LIST_BY_OUTCOME,
+  DEAL_MAX_SEQ2 as DEAL_MAX_SEQ,
+  DEAL_NAME_MAX_BYTES2 as DEAL_NAME_MAX_BYTES,
+  DEAL_NAME_MAX_LENGTH2 as DEAL_NAME_MAX_LENGTH,
+  DEAL_OUTCOMES2 as DEAL_OUTCOMES,
+  DEAL_ROW_FIELDS,
+  DEAL_SET_OUTCOME,
+  DEAL_USAGE,
   DEFAULT_POOL_OPTIONS,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
@@ -1073,6 +1408,9 @@ export {
   QUOTA_USAGE,
   RATE_HIT,
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
+  RIGHTS_CONFIRM,
+  RIGHTS_GET,
+  RIGHTS_MAX_WORDING_VERSION2 as RIGHTS_MAX_WORDING_VERSION,
   TENANT_SCHEMAS,
   WORK_KINDS2 as WORK_KINDS,
   assertTenantIsolation,

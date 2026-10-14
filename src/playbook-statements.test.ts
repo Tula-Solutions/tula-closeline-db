@@ -9,6 +9,12 @@ import {
   CONSUMED_PURGE_AGE_MS,
   CONSUMED_RENEW,
   claimedJobs,
+  DEAL_IMPORT_APPLY,
+  DEAL_IMPORT_CLAIM,
+  DEAL_IMPORT_FINISH,
+  DEAL_IMPORT_GIVE_UP_SPENT,
+  DEAL_IMPORT_PURGE_BATCH,
+  DEAL_SET_OUTCOME,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
@@ -48,7 +54,9 @@ import {
   PLAYBOOK_MIN_LEASE_MS,
   PLAYBOOK_STATEMENTS,
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
+  RIGHTS_CONFIRM,
 } from './playbook-statements'
+import { DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_MAX_ATTEMPTS } from './schema/playbook-sales-history'
 import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schema/playbook-tables'
 import { WORK_KINDS } from './schema/playbook-work-hints'
 
@@ -62,6 +70,11 @@ const TAKES_A_TIME = [
   'DOCUMENT_LIST_FILTERED',
   'DOCUMENT_LIST_PENDING_CLEANUP',
   'ORPHAN_SWEEP_DONE',
+  'DEAL_LIST',
+  'DEAL_LIST_BY_OUTCOME',
+  'DEAL_LIST_BY_IMPORT_FLAG',
+  'DEAL_SET_OUTCOME',
+  'DEAL_IMPORT_LIST',
 ]
 
 describe('the documented playbook statements', () => {
@@ -107,6 +120,14 @@ describe('the documented playbook statements', () => {
       }
       if (name === 'ORGANIZATION_REMOVE_REST') {
         expect(text).toContain('playbook.remove_organization_rest($1::text, $2::text)')
+        continue
+      }
+      if (name === 'DEAL_ERASE_BATCH') {
+        expect(text).toContain('playbook.erase_deals($1::text, $2::int)')
+        continue
+      }
+      if (name === 'DEAL_IMPORT_INSERT') {
+        expect(text).toContain('values ($2::text, $1,')
         continue
       }
       expect(text).toMatch(/organization_id\s*=\s*\$[12]|\$1,\s*\$2/)
@@ -551,5 +572,117 @@ describe('pending cleanups and the orphan sweep', () => {
     expect(done.indexOf('FOR UPDATE')).toBeGreaterThan(0)
     expect(done.indexOf('FOR UPDATE')).toBeLessThan(done.indexOf('"playbook"."idempotency_keys" k'))
     expect(ORPHAN_SWEEP_DONE).toContain('playbook.orphan_sweep_done(')
+  })
+})
+
+describe('sales history, part one', () => {
+  const migration = readFileSync(
+    fileURLToPath(new URL('../migrations/0015_playbook_sales_history.sql', import.meta.url)),
+    'utf8'
+  )
+
+  test('an import applies a bounded batch under its claim token and records only four things per row', () => {
+    expect(DEAL_IMPORT_APPLY).toContain(
+      "claim_token = $3::uuid and state = 'processing' and erased_at is null"
+    )
+    expect(DEAL_IMPORT_APPLY).toContain(
+      `limit least(greatest(coalesce($6::int, 1), 1), ${DEAL_IMPORT_APPLY_BATCH})`
+    )
+    expect(DEAL_IMPORT_APPLY).toContain(
+      'insert into playbook.deal_import_rows (organization_id, import_id, row_number, deal_id, result, reason)'
+    )
+    for (const reason of ['duplicate_in_file', 'outcome_already_decided', 'deal_limit_reached']) {
+      expect(DEAL_IMPORT_APPLY).toContain(`'${reason}'`)
+    }
+    // A decided Deal is never updated, even if the snapshot said open: the write re-checks it.
+    expect(DEAL_IMPORT_APPLY).toContain("d.outcome = 'open'")
+    // The Outcome sequence rises by the amount the trigger demands.
+    expect(DEAL_IMPORT_APPLY).toContain(
+      'when f.outcome <> d.outcome or coalesce(f.closed_at, d.closed_at) is distinct from d.closed_at then 1 else 0'
+    )
+    // Already reported rows are skipped, so a repeat changes nothing.
+    expect(DEAL_IMPORT_APPLY).toContain(
+      'where not exists (select 1 from playbook.deal_import_rows r'
+    )
+  })
+
+  test('a repeat in the file is judged before the row’s own reason, because the unique index is on the first row', () => {
+    const duplicate = DEAL_IMPORT_APPLY.indexOf("then 'duplicate_in_file'")
+    const own = DEAL_IMPORT_APPLY.indexOf('when k.reason is not null then k.reason')
+    expect(duplicate).toBeGreaterThan(0)
+    expect(duplicate).toBeLessThan(own)
+  })
+
+  test('the claim and the safety net use the attempt bound from one constant', () => {
+    expect(DEAL_IMPORT_CLAIM).toContain(`attempts < ${DEAL_IMPORT_MAX_ATTEMPTS}`)
+    expect(DEAL_IMPORT_GIVE_UP_SPENT).toContain(`attempts >= ${DEAL_IMPORT_MAX_ATTEMPTS}`)
+    for (const text of [DEAL_IMPORT_CLAIM, DEAL_IMPORT_GIVE_UP_SPENT]) {
+      expect(text).toContain('for update skip locked')
+    }
+  })
+
+  test('an Outcome change locks the row first and finishing checks the row count', () => {
+    expect(DEAL_SET_OUTCOME).toMatch(
+      /with cur as \(\n\s+select \* from playbook\.deals[\s\S]*for update\)/
+    )
+    expect(DEAL_IMPORT_FINISH).toContain('applied_count + rejected_count = $4::int')
+  })
+
+  test('purge deletes report rows before the import and only an erased one with its CSV removed', () => {
+    expect(DEAL_IMPORT_PURGE_BATCH).toContain(
+      'erased_at is not null and object_removed_at is not null'
+    )
+    expect(DEAL_IMPORT_PURGE_BATCH).toContain(
+      'not exists (select 1 from playbook.deal_import_rows x'
+    )
+  })
+
+  test('the rights confirmation never goes down in version and keeps the first of a version', () => {
+    expect(RIGHTS_CONFIRM).toContain('where r.wording_version < excluded.wording_version')
+  })
+
+  test('the status of removal accounts for the new tables', () => {
+    for (const table of ['deals', 'deal_imports', 'rights_confirmations']) {
+      expect(ORGANIZATION_REMOVAL_STATUS).toContain(`playbook.${table} where organization_id = $1`)
+    }
+  })
+
+  test('the migration: forced row-level security, one policy per table, restrictive deletes', () => {
+    for (const table of ['deals', 'deal_imports', 'deal_import_rows', 'rights_confirmations']) {
+      expect(migration).toContain(`ALTER TABLE "playbook"."${table}" FORCE ROW LEVEL SECURITY;`)
+      expect(migration).toContain(`CREATE POLICY "${table}_tenant_isolation"`)
+    }
+    expect(migration).toContain(
+      'REVOKE UPDATE, DELETE ON "playbook"."deals" FROM closeline_playbook;'
+    )
+    expect(migration).toContain('"deal_import_rows_erased_only"')
+    expect(migration).toContain('"deal_imports_erased_only"')
+  })
+
+  test('erase_deals takes the upload lock before it touches a Deal row', () => {
+    const erase = migration.slice(migration.indexOf('CREATE FUNCTION "playbook"."erase_deals"'))
+    expect(erase.indexOf('pg_advisory_xact_lock')).toBeGreaterThan(0)
+    expect(erase.indexOf('pg_advisory_xact_lock')).toBeLessThan(erase.indexOf('FOR UPDATE'))
+  })
+
+  test('erasure refuses while a Deal, an import or a document remains and removes the rights row', () => {
+    const rest = migration.slice(
+      migration.indexOf('CREATE OR REPLACE FUNCTION "playbook"."remove_organization_rest"')
+    )
+    expect(rest).toContain('"playbook"."deal_imports" i')
+    expect(rest).toContain('"playbook"."deals" e')
+    expect(rest).toContain('DELETE FROM "playbook"."rights_confirmations"')
+    // The v0.13.0 order is intact: the orphan_sweeps row before the upload lock, one statement for keys.
+    expect(rest.indexOf('INSERT INTO "playbook"."orphan_sweeps"')).toBeLessThan(
+      rest.indexOf('pg_advisory_xact_lock')
+    )
+    expect(rest).toContain('WITH del AS (')
+  })
+
+  test('the hint for imports is noted by triggers and verified by the due index', () => {
+    expect(migration).toContain('"deal_imports_note_work_insert"')
+    expect(migration).toContain('"deal_imports_note_work_update"')
+    expect(migration).toContain("ELSIF p_kind = 'import_apply' THEN")
+    expect(migration).toContain("'purge_spent', 'orphan_sweep', 'import_apply') THEN")
   })
 })

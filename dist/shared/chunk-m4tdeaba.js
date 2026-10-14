@@ -27,6 +27,20 @@ __export(exports_schema, {
   AUDIT_RETENTION_FLOOR: () => AUDIT_RETENTION_FLOOR2,
   CONSUMED_MESSAGE_STATES: () => CONSUMED_MESSAGE_STATES2,
   CREDENTIAL_TYPES: () => CREDENTIAL_TYPES2,
+  DEAL_ID_MAX_BYTES: () => DEAL_ID_MAX_BYTES2,
+  DEAL_ID_MAX_LENGTH: () => DEAL_ID_MAX_LENGTH2,
+  DEAL_IMPORT_APPLY_BATCH: () => DEAL_IMPORT_APPLY_BATCH2,
+  DEAL_IMPORT_FAILURE_REASONS: () => DEAL_IMPORT_FAILURE_REASONS2,
+  DEAL_IMPORT_MAX_ATTEMPTS: () => DEAL_IMPORT_MAX_ATTEMPTS2,
+  DEAL_IMPORT_MAX_BYTES: () => DEAL_IMPORT_MAX_BYTES2,
+  DEAL_IMPORT_MAX_ROWS: () => DEAL_IMPORT_MAX_ROWS2,
+  DEAL_IMPORT_ROW_REASONS: () => DEAL_IMPORT_ROW_REASONS2,
+  DEAL_IMPORT_ROW_RESULTS: () => DEAL_IMPORT_ROW_RESULTS2,
+  DEAL_IMPORT_STATES: () => DEAL_IMPORT_STATES2,
+  DEAL_MAX_SEQ: () => DEAL_MAX_SEQ2,
+  DEAL_NAME_MAX_BYTES: () => DEAL_NAME_MAX_BYTES2,
+  DEAL_NAME_MAX_LENGTH: () => DEAL_NAME_MAX_LENGTH2,
+  DEAL_OUTCOMES: () => DEAL_OUTCOMES2,
   DOCUMENT_FAILURE_REASONS: () => DOCUMENT_FAILURE_REASONS2,
   DOCUMENT_FILE_TYPES: () => DOCUMENT_FILE_TYPES2,
   DOCUMENT_MAX_BYTES: () => DOCUMENT_MAX_BYTES2,
@@ -55,6 +69,7 @@ __export(exports_schema, {
   ORGANIZATION_STATUSES: () => ORGANIZATION_STATUSES2,
   PASSKEY_CHALLENGE_PURPOSES: () => PASSKEY_CHALLENGE_PURPOSES2,
   PENDING_CLEANUP_PREDICATE: () => PENDING_CLEANUP_PREDICATE2,
+  RIGHTS_MAX_WORDING_VERSION: () => RIGHTS_MAX_WORDING_VERSION2,
   SESSION_CLIENTS: () => SESSION_CLIENTS2,
   SESSION_REVOKE_REASONS: () => SESSION_REVOKE_REASONS2,
   SESSION_TYPES: () => SESSION_TYPES2,
@@ -74,6 +89,9 @@ __export(exports_schema, {
   consumedMessage: () => consumedMessage2,
   coreSchema: () => coreSchema2,
   credentials: () => credentials2,
+  dealImportRows: () => dealImportRows2,
+  dealImports: () => dealImports2,
+  deals: () => deals2,
   documents: () => documents2,
   environmentSettings: () => environmentSettings2,
   environments: () => environments2,
@@ -105,6 +123,7 @@ __export(exports_schema, {
   projects: () => projects2,
   proposals: () => proposals2,
   refreshTokens: () => refreshTokens2,
+  rightsConfirmations: () => rightsConfirmations2,
   sessions: () => sessions2,
   signingKeys: () => signingKeys2,
   smsCodeCounts: () => smsCodeCounts2,
@@ -1287,11 +1306,13 @@ var organizationUsage2 = playbookSchema2.table("organization_usage", {
   organizationId: text33("organization_id").primaryKey(),
   documentCount: bigint3("document_count", { mode: "number" }).notNull().default(0),
   byteCount: bigint3("byte_count", { mode: "number" }).notNull().default(0),
+  dealCount: bigint3("deal_count", { mode: "number" }).notNull().default(0),
   updatedAt: updatedAt2()
 }, (t) => [
   check13("organization_usage_organization_id_shape", idShape2("organization_id", "org")),
   check13("organization_usage_organization_not_global", notGlobal),
-  check13("organization_usage_not_negative", sql18`${t.documentCount} >= 0 and ${t.byteCount} >= 0`)
+  check13("organization_usage_not_negative", sql18`${t.documentCount} >= 0 and ${t.byteCount} >= 0`),
+  check13("organization_usage_deal_count_not_negative", sql18`${t.dealCount} >= 0`)
 ]);
 var ingestionJobs2 = playbookSchema2.table("ingestion_jobs", {
   id: text33("id").notNull(),
@@ -1434,9 +1455,174 @@ var playbookOrphanSweeps2 = playbookSchema2.table("orphan_sweeps", {
   check16("orphan_sweeps_organization_id_shape", sql21.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
   check16("orphan_sweeps_organization_not_global", sql21.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`))
 ]);
-// src/schema/playbook-work-hints.ts
+// src/schema/playbook-sales-history.ts
 import { sql as sql22 } from "drizzle-orm";
-import { check as check17, index as index27, primaryKey as primaryKey7, text as text37, timestamp as timestamp30 } from "drizzle-orm/pg-core";
+import {
+  bigint as bigint4,
+  boolean as boolean6,
+  check as check17,
+  foreignKey as foreignKey6,
+  index as index27,
+  integer as integer14,
+  numeric,
+  primaryKey as primaryKey7,
+  text as text37,
+  timestamp as timestamp30,
+  uniqueIndex as uniqueIndex4,
+  uuid as uuid25
+} from "drizzle-orm/pg-core";
+var DEAL_OUTCOMES2 = ["won", "lost", "open"];
+var DEAL_IMPORT_STATES2 = ["uploaded", "processing", "completed", "failed"];
+var DEAL_IMPORT_FAILURE_REASONS2 = [
+  "too_many_rows",
+  "unreadable",
+  "processing_failed"
+];
+var DEAL_IMPORT_ROW_RESULTS2 = ["applied", "rejected"];
+var DEAL_IMPORT_ROW_REASONS2 = [
+  "wrong_column_count",
+  "invalid_deal_id",
+  "duplicate_in_file",
+  "invalid_outcome",
+  "invalid_closed_at",
+  "invalid_amount",
+  "invalid_currency",
+  "invalid_name",
+  "outcome_already_decided",
+  "deal_limit_reached"
+];
+var DEAL_ID_MAX_LENGTH2 = 128;
+var DEAL_ID_MAX_BYTES2 = 512;
+var DEAL_NAME_MAX_LENGTH2 = 200;
+var DEAL_NAME_MAX_BYTES2 = 800;
+var DEAL_IMPORT_MAX_ROWS2 = 50000;
+var DEAL_IMPORT_MAX_BYTES2 = 10 * 1024 * 1024;
+var DEAL_MAX_SEQ2 = 2147483647;
+var RIGHTS_MAX_WORDING_VERSION2 = 1e6;
+var DEAL_IMPORT_MAX_ATTEMPTS2 = 20;
+var DEAL_IMPORT_APPLY_BATCH2 = 500;
+var list4 = (values) => sql22.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape5 = (column, prefix) => sql22.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var notGlobal2 = sql22.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
+var ts3 = (name) => timestamp30(name, { withTimezone: true });
+var deals2 = playbookSchema2.table("deals", {
+  id: text37("id").notNull(),
+  organizationId: text37("organization_id").notNull(),
+  dealId: text37("deal_id").notNull(),
+  name: text37("name"),
+  outcome: text37("outcome", { enum: DEAL_OUTCOMES2 }).notNull().default("open"),
+  outcomeSeq: integer14("outcome_seq").notNull().default(0),
+  closedAt: ts3("closed_at"),
+  amount: numeric("amount", { precision: 17, scale: 2 }),
+  currency: text37("currency"),
+  appearedInImport: boolean6("appeared_in_import").notNull().default(false),
+  createdAt: ts3("created_at").notNull().defaultNow(),
+  updatedAt: ts3("updated_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey7({ name: "deals_pkey", columns: [t.organizationId, t.id] }),
+  check17("deals_id_shape", idShape5("id", "deal")),
+  check17("deals_organization_id_shape", idShape5("organization_id", "org")),
+  check17("deals_organization_not_global", notGlobal2),
+  check17("deals_deal_id_shape", sql22`char_length(${t.dealId}) between 1 and ${sql22.raw(String(DEAL_ID_MAX_LENGTH2))}
+        and octet_length(${t.dealId}) <= ${sql22.raw(String(DEAL_ID_MAX_BYTES2))}
+        and ${t.dealId} = btrim(${t.dealId}, E' \\t\\n\\r\\f\\v')`),
+  check17("deals_name_shape", sql22`${t.name} is null or (char_length(${t.name}) between 1 and ${sql22.raw(String(DEAL_NAME_MAX_LENGTH2))}
+        and octet_length(${t.name}) <= ${sql22.raw(String(DEAL_NAME_MAX_BYTES2))})`),
+  check17("deals_outcome_known", sql22`${t.outcome} in (${list4(DEAL_OUTCOMES2)})`),
+  check17("deals_outcome_seq_range", sql22`${t.outcomeSeq} between 0 and ${sql22.raw(String(DEAL_MAX_SEQ2))}`),
+  check17("deals_amount_range", sql22`${t.amount} is null or ${t.amount} >= 0`),
+  check17("deals_currency_shape", sql22`${t.currency} is null or ${t.currency} ~ '^[A-Z]{3}$'`),
+  check17("deals_amount_has_currency", sql22`${t.amount} is null or ${t.currency} is not null`),
+  uniqueIndex4("deals_deal_id_key").on(t.organizationId, t.dealId),
+  index27("deals_list_idx").on(t.organizationId, t.createdAt, t.id),
+  index27("deals_outcome_list_idx").on(t.organizationId, t.outcome, t.createdAt, t.id),
+  index27("deals_import_list_idx").on(t.organizationId, t.appearedInImport, t.createdAt, t.id)
+]);
+var dealImports2 = playbookSchema2.table("deal_imports", {
+  id: text37("id").notNull(),
+  organizationId: text37("organization_id").notNull(),
+  state: text37("state", { enum: DEAL_IMPORT_STATES2 }).notNull().default("uploaded"),
+  failureReason: text37("failure_reason", { enum: DEAL_IMPORT_FAILURE_REASONS2 }),
+  uploadedBy: text37("uploaded_by").notNull(),
+  objectKey: text37("object_key").notNull(),
+  sizeBytes: bigint4("size_bytes", { mode: "number" }).notNull(),
+  attempts: integer14("attempts").notNull().default(0),
+  nextAttemptAt: ts3("next_attempt_at").notNull().defaultNow(),
+  claimToken: uuid25("claim_token"),
+  rowCount: integer14("row_count"),
+  appliedCount: integer14("applied_count").notNull().default(0),
+  rejectedCount: integer14("rejected_count").notNull().default(0),
+  objectRemovedAt: ts3("object_removed_at"),
+  erasedAt: ts3("erased_at"),
+  finishedAt: ts3("finished_at"),
+  createdAt: ts3("created_at").notNull().defaultNow(),
+  updatedAt: ts3("updated_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey7({ name: "deal_imports_pkey", columns: [t.organizationId, t.id] }),
+  check17("deal_imports_id_shape", idShape5("id", "dimp")),
+  check17("deal_imports_organization_id_shape", idShape5("organization_id", "org")),
+  check17("deal_imports_organization_not_global", notGlobal2),
+  check17("deal_imports_uploaded_by_shape", idShape5("uploaded_by", "usr")),
+  check17("deal_imports_state_known", sql22`${t.state} in (${list4(DEAL_IMPORT_STATES2)})`),
+  check17("deal_imports_failure_reason_known", sql22`${t.failureReason} is null or ${t.failureReason} in (${list4(DEAL_IMPORT_FAILURE_REASONS2)})`),
+  check17("deal_imports_failure_matches_state", sql22`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check17("deal_imports_size_range", sql22`${t.sizeBytes} between 1 and ${sql22.raw(String(DEAL_IMPORT_MAX_BYTES2))}`),
+  check17("deal_imports_attempts_range", sql22`${t.attempts} between 0 and ${sql22.raw(String(DEAL_IMPORT_MAX_ATTEMPTS2))}`),
+  check17("deal_imports_counts_range", sql22`${t.appliedCount} between 0 and ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2))}
+        and ${t.rejectedCount} between 0 and ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2))}
+        and ${t.appliedCount} + ${t.rejectedCount} <= ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2))}`),
+  check17("deal_imports_row_count_matches_state", sql22`(${t.state} = 'completed') = (${t.rowCount} is not null)
+        and (${t.rowCount} is null or ${t.rowCount} = ${t.appliedCount} + ${t.rejectedCount})`),
+  check17("deal_imports_claim_only_while_processing", sql22`${t.claimToken} is null or ${t.state} = 'processing'`),
+  check17("deal_imports_finished_matches_state", sql22`(${t.state} in ('completed', 'failed')) = (${t.finishedAt} is not null)`),
+  check17("deal_imports_erased_is_final", sql22`${t.erasedAt} is null or ${t.state} in ('completed', 'failed')`),
+  index27("deal_imports_list_idx").on(t.organizationId, t.createdAt, t.id),
+  index27("deal_imports_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql22`${t.state} in ('uploaded', 'processing')`),
+  index27("deal_imports_unerased_idx").on(t.organizationId, t.id).where(sql22`${t.erasedAt} is null`)
+]);
+var dealImportRows2 = playbookSchema2.table("deal_import_rows", {
+  organizationId: text37("organization_id").notNull(),
+  importId: text37("import_id").notNull(),
+  rowNumber: integer14("row_number").notNull(),
+  dealId: text37("deal_id"),
+  result: text37("result", { enum: DEAL_IMPORT_ROW_RESULTS2 }).notNull(),
+  reason: text37("reason", { enum: DEAL_IMPORT_ROW_REASONS2 })
+}, (t) => [
+  primaryKey7({
+    name: "deal_import_rows_pkey",
+    columns: [t.organizationId, t.importId, t.rowNumber]
+  }),
+  foreignKey6({
+    name: "deal_import_rows_import_fkey",
+    columns: [t.organizationId, t.importId],
+    foreignColumns: [dealImports2.organizationId, dealImports2.id]
+  }),
+  check17("deal_import_rows_organization_id_shape", idShape5("organization_id", "org")),
+  check17("deal_import_rows_organization_not_global", notGlobal2),
+  check17("deal_import_rows_row_number_range", sql22`${t.rowNumber} between 2 and ${sql22.raw(String(DEAL_IMPORT_MAX_ROWS2 + 1))}`),
+  check17("deal_import_rows_result_known", sql22`${t.result} in (${list4(DEAL_IMPORT_ROW_RESULTS2)})`),
+  check17("deal_import_rows_reason_known", sql22`${t.reason} is null or ${t.reason} in (${list4(DEAL_IMPORT_ROW_REASONS2)})`),
+  check17("deal_import_rows_reason_matches_result", sql22`(${t.result} = 'rejected') = (${t.reason} is not null)`),
+  check17("deal_import_rows_deal_id_shape", sql22`${t.dealId} is null or (char_length(${t.dealId}) between 1 and ${sql22.raw(String(DEAL_ID_MAX_LENGTH2))}
+        and octet_length(${t.dealId}) <= ${sql22.raw(String(DEAL_ID_MAX_BYTES2))})`),
+  check17("deal_import_rows_deal_id_missing_only_when_unusable", sql22`${t.dealId} is not null or ${t.reason} in ('invalid_deal_id', 'wrong_column_count')`),
+  uniqueIndex4("deal_import_rows_first_key").on(t.organizationId, t.importId, t.dealId).where(sql22`${t.dealId} is not null and ${t.reason} is distinct from 'duplicate_in_file'`),
+  index27("deal_import_rows_result_idx").on(t.organizationId, t.importId, t.result, t.rowNumber)
+]);
+var rightsConfirmations2 = playbookSchema2.table("rights_confirmations", {
+  organizationId: text37("organization_id").primaryKey(),
+  confirmedBy: text37("confirmed_by").notNull(),
+  confirmedAt: ts3("confirmed_at").notNull().defaultNow(),
+  wordingVersion: integer14("wording_version").notNull()
+}, (t) => [
+  check17("rights_confirmations_organization_id_shape", idShape5("organization_id", "org")),
+  check17("rights_confirmations_organization_not_global", notGlobal2),
+  check17("rights_confirmations_confirmed_by_shape", idShape5("confirmed_by", "usr")),
+  check17("rights_confirmations_wording_version_range", sql22`${t.wordingVersion} between 1 and ${sql22.raw(String(RIGHTS_MAX_WORDING_VERSION2))}`)
+]);
+// src/schema/playbook-work-hints.ts
+import { sql as sql23 } from "drizzle-orm";
+import { check as check18, index as index28, primaryKey as primaryKey8, text as text38, timestamp as timestamp31 } from "drizzle-orm/pg-core";
 var WORK_KINDS2 = [
   "purge_due",
   "jobs_due",
@@ -1444,17 +1630,18 @@ var WORK_KINDS2 = [
   "consumed_purge",
   "idempotency_purge",
   "purge_spent",
-  "orphan_sweep"
+  "orphan_sweep",
+  "import_apply"
 ];
 var playbookWorkHints2 = playbookSchema2.table("work_hints", {
-  kind: text37("kind", { enum: WORK_KINDS2 }).notNull(),
-  organizationId: text37("organization_id").notNull(),
-  dueAt: timestamp30("due_at", { withTimezone: true }).notNull()
+  kind: text38("kind", { enum: WORK_KINDS2 }).notNull(),
+  organizationId: text38("organization_id").notNull(),
+  dueAt: timestamp31("due_at", { withTimezone: true }).notNull()
 }, (t) => [
-  primaryKey7({ name: "work_hints_pkey", columns: [t.kind, t.organizationId] }),
-  check17("work_hints_kind_known", sql22`${t.kind} in (${sql22.raw(WORK_KINDS2.map((k) => `'${k}'`).join(", "))})`),
-  check17("work_hints_organization_id_shape", sql22.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
-  check17("work_hints_global_only_consumed", sql22`${t.kind} = 'consumed_purge' or ${t.organizationId} <> ${sql22.raw(`'${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)}`),
-  index27("work_hints_due_idx").on(t.kind, t.dueAt, t.organizationId)
+  primaryKey8({ name: "work_hints_pkey", columns: [t.kind, t.organizationId] }),
+  check18("work_hints_kind_known", sql23`${t.kind} in (${sql23.raw(WORK_KINDS2.map((k) => `'${k}'`).join(", "))})`),
+  check18("work_hints_organization_id_shape", sql23.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
+  check18("work_hints_global_only_consumed", sql23`${t.kind} = 'consumed_purge' or ${t.organizationId} <> ${sql23.raw(`'${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)}`),
+  index28("work_hints_due_idx").on(t.kind, t.dueAt, t.organizationId)
 ]);
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, consumedMessage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, playbookOrphanSweeps2, WORK_KINDS2, playbookWorkHints2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, consumedMessage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, playbookOrphanSweeps2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, WORK_KINDS2, playbookWorkHints2, exports_schema };
