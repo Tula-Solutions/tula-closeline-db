@@ -47,7 +47,19 @@ export const DEAL_IMPORT_ROW_REASONS = [
   'invalid_name',
   'outcome_already_decided',
   'deal_limit_reached',
+  'blank_row',
 ] as const
+/**
+ * The reasons a rejected row may have no deal id: the id was unusable or the row had no cells at
+ * all. The check on `deal_import_rows` is built from this list, so a service double can import it.
+ */
+export const DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID = [
+  'invalid_deal_id',
+  'wrong_column_count',
+  'blank_row',
+] as const satisfies readonly (typeof DEAL_IMPORT_ROW_REASONS)[number][]
+/** The most unfinished (`uploaded` or `processing`) Deal imports an Organization may have. Mirrors the contract's `MAX_QUEUED_DEAL_IMPORTS` (v0.10.0). */
+export const MAX_QUEUED_DEAL_IMPORTS = 5
 /** The longest deal id in code points. Mirrors the contract's `MAX_DEAL_ID_LENGTH`. */
 export const DEAL_ID_MAX_LENGTH = 128
 /** The most UTF-8 bytes a deal id takes (4 per code point). Mirrors the contract's `MAX_DEAL_ID_BYTES`. */
@@ -294,7 +306,7 @@ export const dealImportRows = playbookSchema.table(
     ),
     check(
       'deal_import_rows_deal_id_missing_only_when_unusable',
-      sql`${t.dealId} is not null or ${t.reason} in ('invalid_deal_id', 'wrong_column_count')`
+      sql`${t.dealId} is not null or ${t.reason} in (${list(DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID)})`
     ),
     uniqueIndex('deal_import_rows_first_key')
       .on(t.organizationId, t.importId, t.dealId)

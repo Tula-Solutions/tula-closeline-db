@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { getTableConfig } from 'drizzle-orm/pg-core'
+import { readFileSync } from 'node:fs'
+import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core'
 import {
   DEAL_ID_MAX_BYTES,
   DEAL_ID_MAX_LENGTH,
@@ -7,6 +8,7 @@ import {
   DEAL_IMPORT_MAX_BYTES,
   DEAL_IMPORT_MAX_ROWS,
   DEAL_IMPORT_ROW_REASONS,
+  DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID,
   DEAL_IMPORT_ROW_RESULTS,
   DEAL_IMPORT_STATES,
   DEAL_MAX_SEQ,
@@ -16,6 +18,7 @@ import {
   dealImportRows,
   dealImports,
   deals,
+  MAX_QUEUED_DEAL_IMPORTS,
   RIGHTS_MAX_WORDING_VERSION,
   rightsConfirmations,
 } from './playbook-sales-history'
@@ -44,6 +47,7 @@ describe('the sales-history values match the contract at v0.8.0', () => {
       'invalid_name',
       'outcome_already_decided',
       'deal_limit_reached',
+      'blank_row',
     ]) // DEAL_IMPORT_ROW_REASONS
   })
 
@@ -119,5 +123,46 @@ describe('the sales-history tables', () => {
 
   test('the work kind exists', () => {
     expect(WORK_KINDS).toContain('import_apply')
+  })
+})
+
+describe('the rows of an import report that have no deal id (0019)', () => {
+  const sqlOf = (name: string): string => {
+    const check = getTableConfig(dealImportRows).checks.find((c) => c.name === name)
+    if (!check) {
+      throw new Error(`no check ${name}`)
+    }
+    return new PgDialect().sqlToQuery(check.value).sql
+  }
+  const migration = readFileSync(
+    new URL('../../migrations/0019_deal_counts_and_import_cap.sql', import.meta.url),
+    'utf8'
+  )
+
+  test('the reasons without a deal id are exported and are a subset of the reasons', () => {
+    expect(DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID).toEqual([
+      'invalid_deal_id',
+      'wrong_column_count',
+      'blank_row',
+    ])
+    for (const reason of DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID) {
+      expect(DEAL_IMPORT_ROW_REASONS).toContain(reason)
+    }
+  })
+
+  test('the constraint, the constant and the migration agree', () => {
+    const quoted = (values: readonly string[]) => values.map((v) => `'${v}'`).join(', ')
+    expect(sqlOf('deal_import_rows_deal_id_missing_only_when_unusable')).toContain(
+      `in (${quoted(DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID)})`
+    )
+    expect(sqlOf('deal_import_rows_reason_known')).toContain(
+      `in (${quoted(DEAL_IMPORT_ROW_REASONS)})`
+    )
+    expect(migration).toContain(quoted(DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID))
+    expect(migration).toContain(quoted(DEAL_IMPORT_ROW_REASONS))
+  })
+
+  test('the cap of unfinished imports mirrors the contract', () => {
+    expect(MAX_QUEUED_DEAL_IMPORTS).toBe(5) // MAX_QUEUED_DEAL_IMPORTS (contract v0.10.0)
   })
 })

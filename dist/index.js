@@ -10,6 +10,8 @@ import {
   DEAL_IMPORT_FAILURE_REASONS2,
   DEAL_IMPORT_ROW_RESULTS2,
   DEAL_IMPORT_ROW_REASONS2,
+  DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2,
+  MAX_QUEUED_DEAL_IMPORTS2,
   DEAL_ID_MAX_LENGTH2,
   DEAL_ID_MAX_BYTES2,
   DEAL_NAME_MAX_LENGTH2,
@@ -44,7 +46,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-9aaq5aqq.js";
+} from "./shared/chunk-em9b4czg.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -1602,8 +1604,11 @@ function discoveredOrganizations(rows) {
   const organizations = rows.flatMap((row) => row.organization_id === null ? [] : [row.organization_id]);
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null };
 }
-var DEAL_COLUMNS = `id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at`;
-var DEAL_LIST_COLUMNS = `${DEAL_COLUMNS}, created_at::text as cursor_at`;
+var CALL_COUNT = (outer) => `(select count(*)::int from playbook.calls cc
+  where cc.organization_id = ${outer}.organization_id and cc.deal_record_id = ${outer}.id and cc.state <> 'deleted') as call_count`;
+var DEAL_COLUMNS_OF = (outer) => `${outer}.id, ${outer}.deal_id, ${outer}.name, ${outer}.outcome, ${outer}.outcome_seq, ${outer}.closed_at, ${outer}.amount, ${outer}.currency, ${outer}.appeared_in_import, ${outer}.created_at, ${outer}.updated_at, ${CALL_COUNT(outer)}`;
+var DEAL_COLUMNS = DEAL_COLUMNS_OF("d");
+var DEAL_LIST_COLUMNS = `${DEAL_COLUMNS}, d.created_at::text as cursor_at`;
 var DEAL_ROW_FIELDS = [
   "id",
   "deal_id",
@@ -1615,26 +1620,27 @@ var DEAL_ROW_FIELDS = [
   "currency",
   "appeared_in_import",
   "created_at",
-  "updated_at"
+  "updated_at",
+  "call_count"
 ];
 var DEAL_GET = `select ${DEAL_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and id = $2`;
 var DEAL_BY_DEAL_ID = `select ${DEAL_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and deal_id = $2::text`;
 var DEAL_LIST = `select ${DEAL_LIST_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
 var DEAL_LIST_BY_OUTCOME = `select ${DEAL_LIST_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
 var DEAL_LIST_BY_IMPORT_FLAG = `select ${DEAL_LIST_COLUMNS}
-from playbook.deals
+from playbook.deals d
 where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
@@ -1648,9 +1654,9 @@ u as (
   where d.organization_id = $1 and d.id = cur.id
     and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
   returning d.*)
-select ${DEAL_COLUMNS}, true as changed from u
+select ${DEAL_COLUMNS_OF("u")}, true as changed from u
 union all
-select ${DEAL_COLUMNS}, false from cur where not exists (select 1 from u)`;
+select ${DEAL_COLUMNS_OF("cur")}, false from cur where not exists (select 1 from u)`;
 var DEAL_USAGE = `select deal_count
 from playbook.organization_usage
 where organization_id = $1`;
@@ -1659,9 +1665,7 @@ var DEAL_IMPORT_COLUMNS = `id, state, failure_reason,
   case when state = 'completed' then applied_count end as applied_count,
   case when state = 'completed' then rejected_count end as rejected_count,
   uploaded_by, created_at, updated_at`;
-var DEAL_IMPORT_INSERT = `insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)
-values ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())
-returning ${DEAL_IMPORT_COLUMNS}`;
+var DEAL_IMPORT_INSERT = `select * from playbook.insert_deal_import($1::text, $2::text, $3::text, $4::text, $5::bigint, ${MAX_QUEUED_DEAL_IMPORTS2})`;
 var DEAL_IMPORT_GET = `select ${DEAL_IMPORT_COLUMNS}
 from playbook.deal_imports
 where organization_id = $1 and id = $2 and erased_at is null`;
@@ -2054,6 +2058,7 @@ export {
   DEAL_IMPORT_ROWS_LIST,
   DEAL_IMPORT_ROWS_LIST_BY_RESULT,
   DEAL_IMPORT_ROW_REASONS2 as DEAL_IMPORT_ROW_REASONS,
+  DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2 as DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID,
   DEAL_IMPORT_ROW_RESULTS2 as DEAL_IMPORT_ROW_RESULTS,
   DEAL_IMPORT_STATES2 as DEAL_IMPORT_STATES,
   DEAL_LIST,
@@ -2115,6 +2120,7 @@ export {
   LOCKOUT_CLEAR,
   LOCKOUT_MIN_RETRY_AFTER_MS,
   LOCKOUT_RETRY_AFTER,
+  MAX_QUEUED_DEAL_IMPORTS2 as MAX_QUEUED_DEAL_IMPORTS,
   NON_TENANT_TABLES,
   NON_TENANT_TABLE_REASONS,
   ORGANIZATIONS_WITH_WORK,

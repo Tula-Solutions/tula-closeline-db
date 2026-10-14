@@ -18,6 +18,7 @@ import {
   DEAL_LIST,
   DEAL_LIST_BY_IMPORT_FLAG,
   DEAL_LIST_BY_OUTCOME,
+  DEAL_ROW_FIELDS,
   DEAL_SET_OUTCOME,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
@@ -64,6 +65,7 @@ import {
   DEAL_IMPORT_APPLY_BATCH,
   DEAL_IMPORT_MAX_ATTEMPTS,
   DEAL_IMPORT_MAX_ROWS,
+  MAX_QUEUED_DEAL_IMPORTS,
 } from './schema/playbook-sales-history'
 import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schema/playbook-tables'
 import { WORK_KINDS } from './schema/playbook-work-hints'
@@ -140,7 +142,7 @@ describe('the documented playbook statements', () => {
         continue
       }
       if (name === 'DEAL_IMPORT_INSERT') {
-        expect(text).toContain('values ($2::text, $1,')
+        expect(text).toContain('playbook.insert_deal_import($1::text, $2::text,')
         continue
       }
       expect(text).toMatch(/organization_id\s*=\s*\$[12]|\$1,\s*\$2/)
@@ -723,5 +725,36 @@ describe('sales history, part one', () => {
     expect(migration).toContain('"deal_imports_note_work_update"')
     expect(migration).toContain("ELSIF p_kind = 'import_apply' THEN")
     expect(migration).toContain("'purge_spent', 'orphan_sweep', 'import_apply') THEN")
+  })
+})
+
+describe('the Deal call count and the cap of queued imports (0019)', () => {
+  test('six Deal statements carry call_count: a correlated count of the Deal’s live Calls', () => {
+    for (const name of [
+      'DEAL_LIST',
+      'DEAL_LIST_BY_OUTCOME',
+      'DEAL_LIST_BY_IMPORT_FLAG',
+      'DEAL_GET',
+      'DEAL_BY_DEAL_ID',
+      'DEAL_SET_OUTCOME',
+    ] as const) {
+      const text = PLAYBOOK_STATEMENTS[name]
+      expect(text).toContain('from playbook.calls')
+      expect(text).toContain("state <> 'deleted'")
+      expect(text).toMatch(/\.deal_record_id = \w+\.id/)
+      expect(text).toMatch(/call_count/)
+    }
+    expect(DEAL_ROW_FIELDS).toContain('call_count')
+  })
+
+  test('the import insert is one call that counts and inserts under an Organization lock', () => {
+    expect(PLAYBOOK_STATEMENTS.DEAL_IMPORT_INSERT).toContain(`${MAX_QUEUED_DEAL_IMPORTS})`)
+    const migration = readFileSync(
+      fileURLToPath(new URL('../migrations/0019_deal_counts_and_import_cap.sql', import.meta.url)),
+      'utf8'
+    )
+    expect(migration).toContain('pg_advisory_xact_lock')
+    expect(migration).toContain("IN ('uploaded', 'processing')")
+    expect(migration).toContain('REVOKE ALL ON FUNCTION "playbook"."insert_deal_import"')
   })
 })

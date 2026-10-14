@@ -1544,24 +1544,27 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_GET`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at
-    from playbook.deals
+    select d.id, d.deal_id, d.name, d.outcome, d.outcome_seq, d.closed_at, d.amount, d.currency, d.appeared_in_import, d.created_at, d.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = d.organization_id and cc.deal_record_id = d.id and cc.state <> 'deleted') as call_count
+    from playbook.deals d
     where organization_id = $1 and id = $2
     ```
 
     `DEAL_BY_DEAL_ID`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at
-    from playbook.deals
+    select d.id, d.deal_id, d.name, d.outcome, d.outcome_seq, d.closed_at, d.amount, d.currency, d.appeared_in_import, d.created_at, d.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = d.organization_id and cc.deal_record_id = d.id and cc.state <> 'deleted') as call_count
+    from playbook.deals d
     where organization_id = $1 and deal_id = $2::text
     ```
 
     `DEAL_LIST`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, created_at::text as cursor_at
-    from playbook.deals
+    select d.id, d.deal_id, d.name, d.outcome, d.outcome_seq, d.closed_at, d.amount, d.currency, d.appeared_in_import, d.created_at, d.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = d.organization_id and cc.deal_record_id = d.id and cc.state <> 'deleted') as call_count, d.created_at::text as cursor_at
+    from playbook.deals d
     where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
     limit least(greatest(coalesce($4::int, 1), 1), 100)
@@ -1570,8 +1573,9 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_LIST_BY_OUTCOME`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, created_at::text as cursor_at
-    from playbook.deals
+    select d.id, d.deal_id, d.name, d.outcome, d.outcome_seq, d.closed_at, d.amount, d.currency, d.appeared_in_import, d.created_at, d.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = d.organization_id and cc.deal_record_id = d.id and cc.state <> 'deleted') as call_count, d.created_at::text as cursor_at
+    from playbook.deals d
     where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
     limit least(greatest(coalesce($4::int, 1), 1), 100)
@@ -1580,8 +1584,9 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_LIST_BY_IMPORT_FLAG`:
 
     ```sql
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, created_at::text as cursor_at
-    from playbook.deals
+    select d.id, d.deal_id, d.name, d.outcome, d.outcome_seq, d.closed_at, d.amount, d.currency, d.appeared_in_import, d.created_at, d.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = d.organization_id and cc.deal_record_id = d.id and cc.state <> 'deleted') as call_count, d.created_at::text as cursor_at
+    from playbook.deals d
     where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
     limit least(greatest(coalesce($4::int, 1), 1), 100)
@@ -1600,9 +1605,11 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where d.organization_id = $1 and d.id = cur.id
         and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
       returning d.*)
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u
+    select u.id, u.deal_id, u.name, u.outcome, u.outcome_seq, u.closed_at, u.amount, u.currency, u.appeared_in_import, u.created_at, u.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = u.organization_id and cc.deal_record_id = u.id and cc.state <> 'deleted') as call_count, true as changed from u
     union all
-    select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)
+    select cur.id, cur.deal_id, cur.name, cur.outcome, cur.outcome_seq, cur.closed_at, cur.amount, cur.currency, cur.appeared_in_import, cur.created_at, cur.updated_at, (select count(*)::int from playbook.calls cc
+      where cc.organization_id = cur.organization_id and cc.deal_record_id = cur.id and cc.state <> 'deleted') as call_count, false from cur where not exists (select 1 from u)
     ```
 
     `DEAL_USAGE`:
@@ -1616,13 +1623,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `DEAL_IMPORT_INSERT`:
 
     ```sql
-    insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)
-    values ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())
-    returning id, state, failure_reason,
-      case when state = 'completed' then row_count end as row_count,
-      case when state = 'completed' then applied_count end as applied_count,
-      case when state = 'completed' then rejected_count end as rejected_count,
-      uploaded_by, created_at, updated_at
+    select * from playbook.insert_deal_import($1::text, $2::text, $3::text, $4::text, $5::bigint, 5)
     ```
 
     `DEAL_IMPORT_GET`:
@@ -3115,3 +3116,31 @@ columns already exist, so there is no migration.
   The transcribe job keys a resend by this hash instead of by size.
 
 `ClaimedCallJob` types them as `Date` and `Buffer`; `CallJobClaimRow` as nullable.
+
+## Deal call count, the cap of unfinished imports and blank rows (v0.19.0, migration `0019`)
+
+- **`call_count` on every Deal answer.** `DEAL_LIST`, `DEAL_LIST_BY_OUTCOME`,
+  `DEAL_LIST_BY_IMPORT_FLAG`, `DEAL_GET`, `DEAL_BY_DEAL_ID` and `DEAL_SET_OUTCOME` return `call_count`,
+  an `int` (a number, not a string): the Deal's Calls with `state <> 'deleted'`, as a correlated
+  subquery per returned row, so the cost is the Deal's own Calls and only for one page. It is in
+  `DEAL_ROW_FIELDS`. **No new index**: the count reads `calls` by Organization and Deal with that
+  predicate, which is the leading columns and the predicate of `calls_deal_list_idx` (the Deal is the
+  column `deal_record_id`), so a second partial index would only add writes. A plan test pins the
+  property (an index condition on both columns, no Seq Scan, no Sort), not a name.
+- **`DEAL_IMPORT_INSERT` enforces the cap.** It is now one call, `playbook.insert_deal_import`, that
+  takes an advisory lock on the Organization's import cap, counts the imports in `uploaded` or
+  `processing`, and inserts when there are fewer than `MAX_QUEUED_DEAL_IMPORTS` (5, the contract's
+  value since v0.10.0). One row: `result` is `created` with the import's columns, or `busy` with
+  those columns null and nothing stored; on `busy` the service removes the CSV it stored and answers
+  the contract's `409`. The count and the insert are separate statements inside the function on
+  purpose: a single SQL statement counts in the snapshot taken before it waited for the lock, so two
+  inserts at four would both win. Two inserts of one Organization now queue (the second waits for the
+  first to commit; a failed or completed import frees its place); other Organizations never wait.
+  The lock is not `QUOTA_LOCK`, so it cannot deadlock with it. The call is still made in the upload's
+  idempotency-key transaction, key first.
+- **`blank_row`** is a new reason for a rejected row (`DEAL_IMPORT_ROW_REASONS`): a CSV row with no
+  cells. The migration replaces `deal_import_rows_reason_known` and
+  `deal_import_rows_deal_id_missing_only_when_unusable`. `DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID`
+  (`invalid_deal_id`, `wrong_column_count`, `blank_row`) lists the reasons that may have no deal id;
+  the check is built from it, so a service's in-memory double imports the list instead of repeating
+  it. A unit test pins that the constant, the check and the migration agree.
