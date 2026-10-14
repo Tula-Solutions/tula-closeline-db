@@ -1213,7 +1213,7 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
  * Publish the Outcome-changed message with the returned `outcome_seq` when `changed`.
  */
 export const DEAL_SET_OUTCOME = `with cur as (
-  select * from playbook.deals where organization_id = $1 and id = $2 for update),
+  select * from playbook.deals where organization_id = $1 and id = $2 for no key update),
 u as (
   update playbook.deals d
   set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,

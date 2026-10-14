@@ -137,7 +137,8 @@ queued as (
   from ins)
 select 'created' as result, id, state, null::text as failure_reason from ins
 union all
-select case when same_deal then 'existing' else 'other_deal' end, id, state, failure_reason
+select case when same_deal then 'existing' else 'other_deal' end,
+  case when same_deal then id end, case when same_deal then state end, case when same_deal then failure_reason end
 from dup where (select ok from rights)
 union all
 select case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null
@@ -835,7 +836,7 @@ returning c.id`
 export const DEAL_RETAG_LOCK = `select id, outcome, outcome_seq, retag_through
 from playbook.deals
 where organization_id = $1 and id = $2
-for update`
+for no key update`
 
 /**
  * Finish a Deal's re-tag: `$1` Organization, `$2` the Deal, `$3` the `outcome_seq` the batches

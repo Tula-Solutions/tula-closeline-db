@@ -661,7 +661,7 @@ describe('sales history, part one', () => {
 
   test('an Outcome change locks the row first and finishing checks the row count', () => {
     expect(DEAL_SET_OUTCOME).toMatch(
-      /with cur as \(\n\s+select \* from playbook\.deals[\s\S]*for update\)/
+      /with cur as \(\n\s+select \* from playbook\.deals[\s\S]*for no key update\)/
     )
     expect(DEAL_IMPORT_FINISH).toContain('report_through = $4::int + 1')
   })

@@ -921,13 +921,42 @@ describe('sales history, part two: Calls', () => {
       }
     })
 
-    test('a Rep change and a job claim on the same Call do not deadlock: jobs are locked before the Call by both', async () => {
+    test('a Rep change and a job claim on the same Call do not deadlock: both lock the job row before the Call', async () => {
+      const org = await newConfirmedOrg()
+      const u = await makeReady(org)
+      expect((await setRep(org, u.id, 'speaker', 'Bob')).result).toBe('changed')
+      const [a, b] = [await open(org), await open(org)]
+      try {
+        await a.client.query(`set local lock_timeout = '5s'`)
+        await b.client.query(`set local lock_timeout = '5s'`)
+        // The claim holds the job row and the Call row; the Rep change must queue behind it.
+        const claimed = claimedCallJobs(
+          (await a.client.query(CALL_JOB_CLAIM, [org, 5, 60_000, null])).rows
+        ).jobs
+        expect(claimed.map((j) => j.job_kind)).toEqual(['rebuild'])
+        const changing = b.client.query(CALL_SET_REP, [
+          org,
+          u.id,
+          'speaker',
+          'Bob',
+          null,
+          newCjob(),
+        ])
+        await untilBlocked(b.pid)
+        await a.client.query('commit')
+        expect((await changing).rows[0].result).toBe('unchanged')
+        await b.client.query('commit')
+      } finally {
+        await finish(a, b)
+      }
+    })
+
+    test('a claim does not wait for an uncommitted Rep change: it skips the new job and finds it afterwards', async () => {
       const org = await newConfirmedOrg()
       const u = await makeReady(org)
       const [a, b] = [await open(org), await open(org)]
       try {
-        await a.client.query(`set local lock_timeout = '3s'`)
-        await b.client.query(`set local lock_timeout = '3s'`)
+        await b.client.query(`set local lock_timeout = '2s'`)
         const rep = await a.client.query(CALL_SET_REP, [
           org,
           u.id,
@@ -937,15 +966,15 @@ describe('sales history, part two: Calls', () => {
           newCjob(),
         ])
         expect(rep.rows[0].result).toBe('changed')
-        const claiming = b.client.query(CALL_JOB_CLAIM, [org, 5, 60_000, null])
-        await untilBlocked(b.pid)
+        expect(
+          claimedCallJobs((await b.client.query(CALL_JOB_CLAIM, [org, 5, 60_000, null])).rows).jobs
+        ).toEqual([])
         await a.client.query('commit')
-        const jobs = claimedCallJobs((await claiming).rows).jobs
-        expect(jobs.map((j) => j.job_kind)).toEqual(['rebuild'])
         await b.client.query('commit')
       } finally {
         await finish(a, b)
       }
+      expect((await claim(org)).map((j) => j.job_kind)).toEqual(['rebuild'])
     })
 
     test('two claims at once take different jobs', async () => {

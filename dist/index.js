@@ -621,7 +621,8 @@ queued as (
   from ins)
 select 'created' as result, id, state, null::text as failure_reason from ins
 union all
-select case when same_deal then 'existing' else 'other_deal' end, id, state, failure_reason
+select case when same_deal then 'existing' else 'other_deal' end,
+  case when same_deal then id end, case when same_deal then state end, case when same_deal then failure_reason end
 from dup where (select ok from rights)
 union all
 select case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null
@@ -1047,7 +1048,7 @@ returning c.id`;
 var DEAL_RETAG_LOCK = `select id, outcome, outcome_seq, retag_through
 from playbook.deals
 where organization_id = $1 and id = $2
-for update`;
+for no key update`;
 var DEAL_RETAG_DONE = `update playbook.deals d
 set retag_through = $3::int
 where d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3::int <= d.outcome_seq
@@ -1570,7 +1571,7 @@ where organization_id = $1 and appeared_in_import = $5::boolean and (created_at,
 order by created_at desc, id desc
 limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
 var DEAL_SET_OUTCOME = `with cur as (
-  select * from playbook.deals where organization_id = $1 and id = $2 for update),
+  select * from playbook.deals where organization_id = $1 and id = $2 for no key update),
 u as (
   update playbook.deals d
   set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,

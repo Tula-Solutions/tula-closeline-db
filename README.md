@@ -1591,7 +1591,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     with cur as (
-      select * from playbook.deals where organization_id = $1 and id = $2 for update),
+      select * from playbook.deals where organization_id = $1 and id = $2 for no key update),
     u as (
       update playbook.deals d
       set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,
@@ -1984,7 +1984,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       from ins)
     select 'created' as result, id, state, null::text as failure_reason from ins
     union all
-    select case when same_deal then 'existing' else 'other_deal' end, id, state, failure_reason
+    select case when same_deal then 'existing' else 'other_deal' end,
+      case when same_deal then id end, case when same_deal then state end, case when same_deal then failure_reason end
     from dup where (select ok from rights)
     union all
     select case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null
@@ -2596,7 +2597,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     select id, outcome, outcome_seq, retag_through
     from playbook.deals
     where organization_id = $1 and id = $2
-    for update
+    for no key update
     ```
 
     `DEAL_RETAG_DONE`:
@@ -2845,8 +2846,11 @@ then `ORGANIZATION_REMOVE_REST`, which also refuses while Calls remain.
 **Lock order.** Always: idempotency key, `orphan_sweeps`, the upload lock, import and job rows, Call
 rows, Deal rows, the usage row; hint rows last. An upload holds the upload lock then touches the Deal
 and Call; an import apply holds the same lock; `DEAL_SET_OUTCOME` locks only the Deal row, and the
-upload's foreign key takes `KEY SHARE`, which `NO KEY UPDATE` does not conflict with. A Rep change
-and a claim both lock job rows before the Call row. Erasure locks Calls then Deals. No path takes
+upload's foreign key takes `KEY SHARE`, which `NO KEY UPDATE` does not conflict with (so
+`DEAL_SET_OUTCOME` and `DEAL_RETAG_LOCK` lock the Deal `for no key update`, never `for update`, and an
+Outcome change does not hold up an upload). A Rep change and a claim both lock job rows before the
+Call row; a claim skips job rows another transaction holds, so it never waits for an uncommitted Rep
+change, and a Rep change on a Call whose job a claim holds waits for the claim. Erasure locks Calls then Deals. No path takes
 two of these in the other direction, so no cycle forms.
 
 **Service duties.** Take the idempotency key and the upload lock before `CALL_INSERT`; stream objects
