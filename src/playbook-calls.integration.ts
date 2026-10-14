@@ -29,6 +29,7 @@ import {
   CALL_RESTORE,
   CALL_RESTORE_FOR_UPLOAD,
   CALL_RETAGGED,
+  CALL_SEARCH_STATE,
   CALL_SENT_TO_VENDOR,
   CALL_SET_REP,
   CALL_SOFT_DELETE,
@@ -56,6 +57,7 @@ import {
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
   RIGHTS_CONFIRM,
 } from './playbook-statements'
+import { MAX_SEARCH_STATE_IDS } from './schema/playbook-calls'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 // Every test works in Organizations of its own (random ids), so no test sees another's rows.
@@ -1948,6 +1950,140 @@ describe('sales history, part two: Calls', () => {
         if (!/\borganization_id =/.test(cond) || !/\bdeal_record_id =/.test(cond)) {
           throw new Error(`the count is not bound to the Organization and the Deal in ${dump}`)
         }
+      }
+    })
+  })
+  describe('CALL_SEARCH_STATE: what Postgres says about the Calls a search hit', () => {
+    type State = {
+      call_id: string
+      in_search: boolean
+      epoch: number
+      rep_seq: number
+      deal_record_id: string
+    }
+    const stateOf = async (org: string, ids: string[]) =>
+      (await q(org, CALL_SEARCH_STATE, [org, ids])).rows as State[]
+
+    test('it returns the caller’s Calls with the fields momentMayBeReturned needs, as CALL_GET does', async () => {
+      const org = await newConfirmedOrg()
+      const won = await makeReady(org, upload({ dealId: 'S-WON' }))
+      const open = await mustAdd(org, upload({ dealId: 'S-OPEN' }))
+      const deal = await dealOf(org, 'S-WON')
+      await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', null, false])
+      const batch = (await q(org, DEAL_RETAG_BATCH, [org, deal.id, '', 10])).rows
+      await q(org, CALL_RETAGGED, [org, batch.map((r) => r.id), batch[0].outcome_seq])
+      const rows = await stateOf(org, [open.id, won.id])
+      expect(rows.map((r) => r.call_id).sort()).toEqual([open.id, won.id].sort())
+      for (const row of rows) {
+        const one = await get(org, row.call_id)
+        expect(row).toEqual({
+          call_id: one.id,
+          in_search: one.in_search,
+          epoch: one.epoch,
+          rep_seq: one.rep_seq,
+          deal_record_id: one.deal_record_id,
+        })
+      }
+      expect(rows.find((r) => r.call_id === won.id)?.in_search).toBe(true)
+      expect(rows.find((r) => r.call_id === open.id)?.in_search).toBe(false)
+      // A Deal that turns lost takes the Call out of search at once.
+      await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'lost', null, false])
+      expect((await stateOf(org, [won.id]))[0]?.in_search).toBe(false)
+    })
+
+    test('another Organization’s ids return no rows, even when passed explicitly', async () => {
+      const mine = await newConfirmedOrg()
+      const theirs = await newConfirmedOrg()
+      const a = await mustAdd(mine, upload())
+      const b = await mustAdd(theirs, upload())
+      expect((await stateOf(mine, [a.id, b.id])).map((r) => r.call_id)).toEqual([a.id])
+      expect(await stateOf(mine, [b.id])).toEqual([])
+      expect(await stateOf(theirs, [a.id])).toEqual([])
+    })
+
+    test('unknown ids, an empty array and a null array return nothing', async () => {
+      const org = await newConfirmedOrg()
+      await mustAdd(org, upload())
+      expect(await stateOf(org, [newCall(), newCall()])).toEqual([])
+      expect(await stateOf(org, [])).toEqual([])
+      expect((await q(org, CALL_SEARCH_STATE, [org, null])).rows).toEqual([])
+    })
+
+    test('a repeated id is answered once', async () => {
+      const org = await newConfirmedOrg()
+      const a = await mustAdd(org, upload())
+      expect(await stateOf(org, [a.id, a.id, a.id])).toHaveLength(1)
+    })
+
+    test('the statement reads at most MAX_SEARCH_STATE_IDS ids: the first 100 are answered, the rest are not', async () => {
+      const org = await newConfirmedOrg()
+      const real = await mustAdd(org, upload())
+      // The real Call is 101st: past the cap, so it is not read. The caller (the search service) must
+      // pass at most MAX_SEARCH_STATE_IDS ids; this is only the statement's own bound on its work.
+      const padding = Array.from({ length: MAX_SEARCH_STATE_IDS }, () => newCall())
+      expect(await stateOf(org, [...padding, real.id])).toEqual([])
+      expect((await stateOf(org, [real.id, ...padding.slice(1)])).map((r) => r.call_id)).toEqual([
+        real.id,
+      ])
+      expect(MAX_SEARCH_STATE_IDS).toBe(100)
+    })
+
+    // The plan is a property, not an index name: no Seq Scan on calls, and an index condition on the
+    // Organization (and the ids). A realistic spread is seeded and analyzed first, as for the Deal count.
+    test('it reads Calls through an index bound to the Organization, with no Seq Scan', async () => {
+      interface Node {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Cond'?: string
+        Plans?: Node[]
+      }
+      const walk = (n: Node): Node[] => [n, ...(n.Plans ?? []).flatMap(walk)]
+      for (let n = 0; n < 4; n++) {
+        const seeded = newOrg()
+        await asOwner(seeded, async (c) => {
+          await c.query(QUOTA_LOCK, [seeded])
+          await c.query(
+            `insert into playbook.deals (id, organization_id, deal_id)
+             select 'deal_' || lpad(to_hex(g), 32, '0'), $1, 'D-' || g from generate_series(1, 30) g`,
+            [seeded]
+          )
+          await c.query(
+            `insert into playbook.calls (id, organization_id, deal_record_id, kind, file_name, media_type,
+               size_bytes, content_hash, state, rep_by, rep_label, speaker_labels, uploaded_by, object_key)
+             select 'call_' || lpad(to_hex(g), 32, '0'), $1, 'deal_' || lpad(to_hex(1 + g % 30), 32, '0'),
+                    'transcript', 'a.txt', 'text/plain', 100, sha256(g::text::bytea), 'uploaded', 'speaker',
+                    'Alice', array['Alice'], $2, $1 || '/' || g
+               from generate_series(1, 600) g`,
+            [seeded, newUser()]
+          )
+        })
+      }
+      for (const table of ['deals', 'calls']) {
+        await owner.query(`analyze playbook.${table}`)
+      }
+      const org = newOrg()
+      const plan = await inOrg(org, async (c) => {
+        await c.query('set local plan_cache_mode = force_generic_plan')
+        await c.query('set local enable_seqscan = off')
+        await c.query(`prepare plan_probe(text, text[]) as ${CALL_SEARCH_STATE}`)
+        try {
+          const r = await c.query(
+            `explain (format json, costs off) execute plan_probe('${org}', array['call_x'])`
+          )
+          return r.rows[0]['QUERY PLAN'][0].Plan as Node
+        } finally {
+          await c.query('deallocate plan_probe')
+        }
+      })
+      const nodes = walk(plan)
+      const dump = JSON.stringify(plan, null, 1)
+      const scans = nodes.filter((n) => n['Relation Name'] === 'calls')
+      if (scans.length === 0 || scans.some((n) => n['Node Type'] === 'Seq Scan')) {
+        throw new Error(`calls is not read through an index in ${dump}`)
+      }
+      const cond = scans.map((n) => n['Index Cond'] ?? '').join(' ')
+      if (!/\borganization_id =/.test(cond)) {
+        throw new Error(`the Calls read is not bound to the Organization in ${dump}`)
       }
     })
   })

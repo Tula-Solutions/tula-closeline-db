@@ -91,6 +91,8 @@ export const CALL_JOB_MAX_ATTEMPTS = 20
  * send, and {@link CALL_SENT_TO_VENDOR} answers `sent` false instead of counting it.
  */
 export const CALL_MAX_VENDOR_SENDS = 20
+/** The most Call ids {@link CALL_SEARCH_STATE} reads in one call: the search over-fetch window (topK 100). */
+export const MAX_SEARCH_STATE_IDS = 100
 /** What a vendor id may look like: opaque, 1 to 128 characters of `[A-Za-z0-9._:-]` (the transcriber port's rule). */
 export const CALL_VENDOR_ID_PATTERN = '^[A-Za-z0-9._:-]{1,128}$'
 /** The kinds of Call job: transcribe a Recording, build a Call's Moments, rebuild them after a Rep change. */

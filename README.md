@@ -2016,6 +2016,18 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where c.organization_id = $1 and c.id = $2
     ```
 
+    `CALL_SEARCH_STATE`:
+
+    ```sql
+    select c.id as call_id,
+      (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+      c.epoch, c.rep_seq, c.deal_record_id
+    from playbook.calls c
+    join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.id = any(($2::text[])[1:100])
+    order by c.id
+    ```
+
     `CALL_LIST`:
 
     ```sql
@@ -3167,3 +3179,18 @@ A Deal's `closed_at` is a `date`, not a `timestamptz` (hub #90; the contract typ
   whose time zone is behind UTC. `createDb` therefore sets `DB_TYPES` (exported) on its pool; **a pool
   built by hand for these statements must pass `types: DB_TYPES`** too. A test runs the round trip with
   the process time zone set to `America/Chicago`.
+
+## What Postgres says about the Calls a search hit (v0.21.0, no migration)
+
+`CALL_SEARCH_STATE` (hub #16): `$1` Organization, `$2` an array of Call ids. One row per id that is a
+Call of that Organization, in id order: `call_id`, `in_search`, `epoch`, `rep_seq` and `deal_record_id`.
+These are the fields the playbook's `momentMayBeReturned` needs. `in_search` is derived as in
+`CALL_GET` (state `ready`, the Deal `won`, the tag current), so after a Deal turns lost it is false at
+once, before the re-tag. Run it through the tenant-scoped helper: another Organization's ids, unknown
+ids, an empty array and a null array give no row (a hit with no row is dropped). A repeated id is
+answered once. It returns metadata only, no text, and adds no migration, table or column.
+
+**The array is capped at `MAX_SEARCH_STATE_IDS` (100) by the statement taking the first 100**; ids after
+the 100th get no row. It does not refuse them (a plain statement cannot raise), so the caller must pass
+at most 100, which the search's over-fetch window (`topK` 100) already guarantees. A plan test pins
+that `calls` is read through an index with the Organization in its condition and no Seq Scan.
