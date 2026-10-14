@@ -9,7 +9,10 @@ import { GLOBAL_SCOPE_ORGANIZATION_ID } from './playbook-tables'
  * messages old enough to purge, idempotency keys old enough to purge, documents whose purge
  * reached the attempt bound, and Organizations with an upload attempt whose stored objects have not
  * been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`), and Deal imports to
- * apply (`import_apply`, see `dealImports`).
+ * apply (`import_apply`, see `dealImports`). Calls add `call_jobs` (transcription, processing and
+ * rebuild jobs), `call_purge`, `call_cleanup`, `call_purge_spent` (the Call counterparts of the
+ * document kinds) and `outcome_retag` (a Deal whose Outcome changed and whose ready Calls are not
+ * all re-tagged).
  */
 export const WORK_KINDS = [
   'purge_due',
@@ -20,6 +23,11 @@ export const WORK_KINDS = [
   'purge_spent',
   'orphan_sweep',
   'import_apply',
+  'call_jobs',
+  'call_purge',
+  'call_cleanup',
+  'call_purge_spent',
+  'outcome_retag',
 ] as const
 
 /**

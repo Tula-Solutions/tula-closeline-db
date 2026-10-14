@@ -1501,13 +1501,15 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,
       not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,
       not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,
+      not exists (select 1 from playbook.calls where organization_id = $1) as no_calls,
       (not exists (select 1 from playbook.documents where organization_id = $1)
         and not exists (select 1 from playbook.index_settings where organization_id = $1)
         and not exists (select 1 from playbook.organization_usage where organization_id = $1)
         and not exists (select 1 from playbook.consumed_message where organization_id = $1)
         and not exists (select 1 from playbook.deals where organization_id = $1)
         and not exists (select 1 from playbook.deal_imports where organization_id = $1)
-        and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed
+        and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)
+        and not exists (select 1 from playbook.calls where organization_id = $1)) as removed
     where $1::text = nullif(current_setting('app.organization_id', true), '')
     ```
 
@@ -1933,6 +1935,682 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, least(greatest(coalesce($3::int, 1), 1), 500))
     ```
 
+    `CALL_USAGE`:
+
+    ```sql
+    select call_count, recording_byte_count
+    from playbook.organization_usage
+    where organization_id = $1
+    ```
+
+    `CALL_INSERT`:
+
+    ```sql
+    with rights as (
+      select exists (select 1 from playbook.rights_confirmations
+                     where organization_id = $1 and wording_version = $19::int) as ok),
+    dup as (
+      select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal
+      from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+      where c.organization_id = $1 and c.content_hash = $9::bytea
+        and c.purge_started_at is null and c.restore_barred_at is null),
+    deal as (
+      select id from playbook.deals where organization_id = $1 and deal_id = $3::text),
+    usage as (
+      select call_count, recording_byte_count, deal_count from playbook.organization_usage where organization_id = $1),
+    gate as (
+      select (select ok from rights) as rights_ok,
+        not exists (select 1 from dup) as no_dup,
+        (coalesce((select call_count from usage), 0) < $16::bigint
+          and ($7::text <> 'recording' or coalesce((select recording_byte_count from usage), 0) + $8::bigint <= $17::bigint)
+          and (exists (select 1 from deal) or coalesce((select deal_count from usage), 0) < $18::bigint)) as quota_ok),
+    go as (
+      select 1 as one from gate where rights_ok and no_dup and quota_ok),
+    made as (
+      insert into playbook.deals (id, organization_id, deal_id)
+      select $4::text, $1, $3::text from go where not exists (select 1 from deal)
+      returning id),
+    ins as (
+      insert into playbook.calls
+        (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash,
+         uploaded_by, object_key, rep_by, rep_label, rep_channel)
+      select $2::text, $1, coalesce((select id from deal), (select id from made)), $7::text, $5::text, $6::text,
+        $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text
+      from go
+      returning id, state, epoch, rep_seq),
+    queued as (
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+      from ins)
+    select 'created' as result, id, state, null::text as failure_reason from ins
+    union all
+    select case when same_deal then 'existing' else 'other_deal' end, id, state, failure_reason
+    from dup where (select ok from rights)
+    union all
+    select case when not rights_ok then 'rights_required' else 'quota_exceeded' end, null, null, null
+    from gate where not rights_ok or (no_dup and not quota_ok)
+    ```
+
+    `CALL_GET`:
+
+    ```sql
+    select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
+      (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
+      c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
+      (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable
+    from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.id = $2
+    ```
+
+    `CALL_LIST`:
+
+    ```sql
+    select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
+      (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
+      c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
+      (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
+    from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.state <> 'deleted' and (c.created_at, c.id) < ($2::timestamptz, $3::text)
+    order by c.created_at desc, c.id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `CALL_LIST_BY_STATE`:
+
+    ```sql
+    select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
+      (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
+      c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
+      (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
+    from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.state = $5::text and (c.created_at, c.id) < ($2::timestamptz, $3::text)
+    order by c.created_at desc, c.id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `CALL_LIST_BY_DEAL`:
+
+    ```sql
+    select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
+      (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
+      c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
+      (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
+    from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.deal_record_id = $5::text
+      and (($6::text is null and c.state <> 'deleted') or c.state = $6::text) and (c.created_at, c.id) < ($2::timestamptz, $3::text)
+    order by c.created_at desc, c.id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `CALL_SOFT_DELETE`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp(),
+          next_attempt_at = case when state = 'running' then next_attempt_at else clock_timestamp() end
+      where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
+      returning id),
+    x as (
+      update playbook.calls
+      set state = 'deleted', epoch = epoch + 1, deletion_seq = deletion_seq + 1,
+          deleted_at = clock_timestamp(), deleted_by = $3,
+          purge_due_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 3600000) / 1000),
+          failure_reason = null, updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and state <> 'deleted' and (select count(*) from j) >= 0
+      returning id, state, deletion_seq, purge_due_at)
+    select id, state, deletion_seq, purge_due_at, true as changed from x
+    union all
+    select id, state, deletion_seq, purge_due_at, false from playbook.calls
+    where organization_id = $1 and id = $2 and state = 'deleted' and not exists (select 1 from x)
+    ```
+
+    `CALL_RESTORE`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'deleted')
+      returning id),
+    x as (
+      update playbook.calls
+      set state = case when kind = 'recording' and transcript_key is null then 'uploaded'
+                       when rep_by is null then 'awaiting_rep' else 'processing' end,
+          epoch = epoch + 1, deleted_at = null, deleted_by = null, purge_due_at = null, updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null and restore_barred_at is null
+        and purge_due_at > clock_timestamp()
+        and (select count(*) from j) >= 0
+      returning organization_id, id, epoch, deletion_seq, state, rep_seq),
+    queued as (
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+      from x where state <> 'awaiting_rep')
+    select id, state, epoch, deletion_seq, true as changed from x
+    union all
+    select id, state, epoch, deletion_seq, false from playbook.calls
+    where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from x)
+    ```
+
+    `CALL_RESTORE_FOR_UPLOAD`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'deleted')
+      returning id),
+    x as (
+      update playbook.calls
+      set state = case when kind = 'recording' and transcript_key is null then 'uploaded'
+                       when rep_by is null then 'awaiting_rep' else 'processing' end,
+          epoch = epoch + 1, deleted_at = null, deleted_by = null, purge_due_at = null, updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is null and restore_barred_at is null
+        and (select count(*) from j) >= 0
+      returning organization_id, id, epoch, deletion_seq, state, rep_seq),
+    queued as (
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+      from x where state <> 'awaiting_rep')
+    select id, state, epoch, deletion_seq, true as changed from x
+    union all
+    select id, state, epoch, deletion_seq, false from playbook.calls
+    where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from x)
+    ```
+
+    `CALL_REQUEUE`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'
+                    and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed'))
+      returning id),
+    x as (
+      update playbook.calls
+      set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and state = 'failed'
+        and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
+        and (select count(*) from j) >= 0
+      returning organization_id, id, epoch, rep_seq, kind, transcript_key),
+    queued as (
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,
+        epoch, rep_seq, clock_timestamp()
+      from x)
+    select id, 'uploaded' as state, epoch, true as changed from x
+    union all
+    select id, state, epoch, false from playbook.calls
+    where organization_id = $1 and id = $2 and state <> 'deleted' and not exists (select 1 from x)
+    ```
+
+    `CALL_SET_REP`:
+
+    ```sql
+    with jl as (
+      select id from playbook.call_jobs
+      where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
+      order by id
+      for update),
+    cur as (
+      select * from playbook.calls where organization_id = $1 and id = $2 and (select count(*) from jl) >= 0 for update),
+    v as (
+      select cur.id, cur.state, cur.rep_seq,
+        case
+          when cur.state <> 'deleted' and cur.rep_by is not distinct from $3::text
+            and cur.rep_label is not distinct from (case when $3::text = 'speaker' then $4::text end)
+            and cur.rep_channel is not distinct from (case when $3::text = 'channel' then $5::text end)
+            and cur.state <> 'failed' then 'unchanged'
+          when not (cur.state in ('ready', 'awaiting_rep')
+                    or (cur.state = 'failed' and cur.failure_reason in ('rep_label_not_found', 'not_per_side')))
+            then 'not_changeable'
+          when not (($3::text = 'speaker' and ($4::text is not null and $4::text = any(cur.speaker_labels)))
+                    or ($3::text = 'channel' and cur.kind = 'recording' and $5::text in ('left', 'right'))) then 'invalid'
+          else 'changed'
+        end as result
+      from cur),
+    j as (
+      update playbook.call_jobs
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and id in (select id from jl)
+        and exists (select 1 from v where result = 'changed')
+      returning id),
+    u as (
+      update playbook.calls c
+      set rep_by = $3::text, rep_label = case when $3::text = 'speaker' then $4::text end,
+          rep_channel = case when $3::text = 'channel' then $5::text end,
+          rep_seq = c.rep_seq + 1, state = 'processing', failure_reason = null, updated_at = clock_timestamp()
+      from v
+      where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0
+      returning c.id, c.rep_seq, c.epoch),
+    queued as (
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)
+    select 'changed' as result, id, 'processing'::text as state, rep_seq from u
+    union all
+    select result, id, state, rep_seq from v where result <> 'changed'
+    ```
+
+    `CALL_JOB_CLAIM`:
+
+    ```sql
+    with due as (
+      select j.id, coalesce((c.epoch = j.epoch and (
+        (j.kind = 'transcribe' and c.state in ('uploaded', 'transcribing'))
+        or (j.kind = 'process' and c.state in ('uploaded', 'processing'))
+        or (j.kind = 'rebuild' and c.state = 'processing' and c.rep_seq = j.rep_seq))), false) as live
+      from playbook.call_jobs j
+      left join playbook.calls c on c.organization_id = j.organization_id and c.id = j.call_id
+      where j.organization_id = $1 and j.state in ('queued', 'running')
+        and j.attempts < 20 and j.next_attempt_at <= clock_timestamp()
+        and ($4::text is null or j.id = $4::text)
+      order by j.next_attempt_at
+      limit least(greatest(coalesce($2::int, 1), 1), 500)
+      for update of j skip locked),
+    stale as (
+      update playbook.call_jobs t
+      set state = 'cancelled', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      from due
+      where t.organization_id = $1 and t.id = due.id and not due.live
+      returning t.id),
+    claimed as (
+      update playbook.call_jobs j
+      set state = 'running', attempts = j.attempts + 1, claim_token = gen_random_uuid(),
+          next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
+      from due
+      where j.organization_id = $1 and j.id = due.id and due.live
+      returning j.id, j.call_id, j.kind, j.epoch, j.rep_seq, j.attempts, j.claim_token),
+    moved as (
+      update playbook.calls c
+      set state = case claimed.kind when 'transcribe' then 'transcribing' when 'process' then 'processing' else c.state end,
+          updated_at = clock_timestamp()
+      from claimed
+      where c.organization_id = $1 and c.id = claimed.call_id
+        and (c.epoch = claimed.epoch and (
+        (claimed.kind = 'transcribe' and c.state in ('uploaded', 'transcribing'))
+        or (claimed.kind = 'process' and c.state in ('uploaded', 'processing'))
+        or (claimed.kind = 'rebuild' and c.state = 'processing' and c.rep_seq = claimed.rep_seq)))
+      returning c.id, c.kind as call_kind, c.media_type, c.size_bytes, c.object_key, c.transcript_key,
+                c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.sent_to_vendor_at)
+    select cl.id, cl.call_id, cl.kind as job_kind, cl.epoch, cl.rep_seq, cl.attempts, cl.claim_token,
+      m.call_kind, m.media_type, m.size_bytes, m.object_key, m.transcript_key, m.rep_by, m.rep_label,
+      m.rep_channel, m.speaker_labels, m.sent_to_vendor_at,
+      (select count(*) from stale)::int as cancelled,
+      ((select count(*) from claimed) - (select count(*) from moved))::int as lost
+    from claimed cl join moved m on m.id = cl.call_id
+    union all
+    select null::text, null::text, null::text, null::int, null::int, null::int, null::uuid, null::text, null::text, null::bigint, null::text, null::text, null::text, null::text, null::text, null::text[], null::timestamptz,
+      (select count(*) from stale)::int, ((select count(*) from claimed) - (select count(*) from moved))::int
+    where not exists (select 1 from claimed cl join moved m on m.id = cl.call_id)
+      and ((select count(*) from stale) > 0 or (select count(*) from claimed) > 0)
+    ```
+
+    `CALL_JOB_HEARTBEAT`:
+
+    ```sql
+    update playbook.call_jobs
+    set next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($4::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
+    where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+      and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id and (x.epoch = call_jobs.epoch and (
+        (call_jobs.kind = 'transcribe' and x.state in ('uploaded', 'transcribing'))
+        or (call_jobs.kind = 'process' and x.state in ('uploaded', 'processing'))
+        or (call_jobs.kind = 'rebuild' and x.state = 'processing' and x.rep_seq = call_jobs.rep_seq))))
+    returning id
+    ```
+
+    `CALL_JOB_RETRY`:
+
+    ```sql
+    update playbook.call_jobs
+    set state = 'queued', claim_token = null,
+        next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),
+        updated_at = clock_timestamp()
+    where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+    returning id, attempts
+    ```
+
+    `CALL_SENT_TO_VENDOR`:
+
+    ```sql
+    update playbook.calls c
+    set sent_to_vendor_at = coalesce(c.sent_to_vendor_at, clock_timestamp()), updated_at = clock_timestamp()
+    from playbook.call_jobs j
+    where j.organization_id = $1 and j.id = $2 and j.claim_token = $3::uuid and j.state = 'running'
+      and c.organization_id = $1 and c.id = j.call_id and (c.epoch = j.epoch and (
+        (j.kind = 'transcribe' and c.state in ('uploaded', 'transcribing'))
+        or (j.kind = 'process' and c.state in ('uploaded', 'processing'))
+        or (j.kind = 'rebuild' and c.state = 'processing' and c.rep_seq = j.rep_seq)))
+    returning c.id
+    ```
+
+    `CALL_JOB_RECORD`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($7::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id and (x.epoch = call_jobs.epoch and (
+        (call_jobs.kind = 'transcribe' and x.state in ('uploaded', 'transcribing'))
+        or (call_jobs.kind = 'process' and x.state in ('uploaded', 'processing'))
+        or (call_jobs.kind = 'rebuild' and x.state = 'processing' and x.rep_seq = call_jobs.rep_seq))))
+      returning call_id, epoch)
+    update playbook.calls c
+    set transcript_key = coalesce($4::text, c.transcript_key), duration_seconds = coalesce($5::int, c.duration_seconds),
+        speaker_labels = coalesce($6::text[], c.speaker_labels), updated_at = clock_timestamp()
+    from j
+    where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch
+    returning c.id
+    ```
+
+    `CALL_JOB_TRANSCRIBED`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind = 'transcribe'
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id
+                    and x.state = 'transcribing' and x.epoch = call_jobs.epoch and x.transcript_key is not null)
+      returning call_id, epoch),
+    c as (
+      update playbook.calls
+      set state = case when rep_by is null then 'awaiting_rep' else 'processing' end, updated_at = clock_timestamp()
+      where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'
+      returning id, state, epoch, rep_seq),
+    q as (
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')
+    select id, state from c
+    ```
+
+    `CALL_JOB_COMPLETE`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'succeeded', claim_token = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running' and kind in ('process', 'rebuild')
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id
+                    and x.state = 'processing' and x.epoch = call_jobs.epoch
+                    and (call_jobs.kind = 'process' or x.rep_seq = call_jobs.rep_seq)
+                    and x.rep_by is not null and (x.rep_by <> 'speaker' or x.rep_label = any(x.speaker_labels)))
+      returning call_id, epoch),
+    c as (
+      update playbook.calls c
+      set state = 'ready', tagged_outcome_seq = greatest(c.tagged_outcome_seq, least($4::int, dd.outcome_seq)), updated_at = clock_timestamp()
+      from j, playbook.deals dd
+      where c.organization_id = $1 and c.id = j.call_id and c.epoch = j.epoch and c.state = 'processing'
+        and dd.organization_id = $1 and dd.id = c.deal_record_id
+      returning c.id, c.deal_record_id, c.tagged_outcome_seq),
+    dl as (
+      update playbook.deals d
+      set retag_through = least(d.retag_through, c.tagged_outcome_seq)
+      from c
+      where d.organization_id = $1 and d.id = c.deal_record_id and c.tagged_outcome_seq < d.outcome_seq
+      returning d.id)
+    select id from c
+    ```
+
+    `CALL_JOB_FAIL`:
+
+    ```sql
+    with j as (
+      update playbook.call_jobs
+      set state = 'failed', failure_reason = $4::text, claim_token = null,
+          finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+        and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = call_jobs.call_id and (x.epoch = call_jobs.epoch and (
+        (call_jobs.kind = 'transcribe' and x.state in ('uploaded', 'transcribing'))
+        or (call_jobs.kind = 'process' and x.state in ('uploaded', 'processing'))
+        or (call_jobs.kind = 'rebuild' and x.state = 'processing' and x.rep_seq = call_jobs.rep_seq))))
+      returning call_id, epoch),
+    c as (
+      update playbook.calls
+      set state = 'failed', failure_reason = $4::text,
+          speaker_labels = case when $4::text = 'too_many_speakers' then '{}'::text[] else speaker_labels end,
+          updated_at = clock_timestamp()
+      where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j)
+        and state in ('uploaded', 'transcribing', 'processing')
+      returning id)
+    select id from c
+    ```
+
+    `CALL_JOB_GIVE_UP_SPENT`:
+
+    ```sql
+    with batch as (
+      select id from playbook.call_jobs
+      where organization_id = $1 and state in ('queued', 'running')
+        and attempts >= 20 and next_attempt_at <= clock_timestamp()
+      order by next_attempt_at
+      limit least(greatest(coalesce($2::int, 1), 1), 500)
+      for update skip locked),
+    j as (
+      update playbook.call_jobs t
+      set state = 'failed', failure_reason = 'processing_failed', claim_token = null,
+          finished_at = clock_timestamp(), updated_at = clock_timestamp()
+      from batch
+      where t.organization_id = $1 and t.id = batch.id
+      returning t.call_id, t.epoch),
+    c as (
+      update playbook.calls
+      set state = 'failed', failure_reason = 'processing_failed', updated_at = clock_timestamp()
+      from j
+      where calls.organization_id = $1 and calls.id = j.call_id and calls.epoch = j.epoch
+        and calls.state in ('uploaded', 'transcribing', 'processing'))
+    select call_id from j
+    ```
+
+    `CALL_CLEANUP_BEGIN`:
+
+    ```sql
+    select c.id, c.epoch,
+      not exists (
+        select 1 from playbook.call_jobs j
+        where j.organization_id = c.organization_id and j.call_id = c.id
+          and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()) as clear
+    from playbook.calls c
+    where c.organization_id = $1 and c.id = $2 and c.state = 'deleted' and c.deletion_seq = $3::int
+    ```
+
+    `CALL_LIST_PENDING_CLEANUP`:
+
+    ```sql
+    select id, epoch, deletion_seq, deleted_at, deleted_at::text as cursor_at
+    from playbook.calls
+    where organization_id = $1 and state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)
+      and (deleted_at, id) > ($2::timestamptz, $3::text)
+    order by deleted_at, id
+    limit least(greatest(coalesce($4::int, 1), 1), 500)
+    ```
+
+    `CALL_CLEANUP_DONE`:
+
+    ```sql
+    update playbook.calls
+    set vectors_removed_seq = $3::int, updated_at = clock_timestamp()
+    where organization_id = $1 and id = $2 and state = 'deleted' and deletion_seq = $3::int
+    returning id
+    ```
+
+    `CALL_VENDOR_REMOVED`:
+
+    ```sql
+    update playbook.calls
+    set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
+    where organization_id = $1 and id = $2 and state = 'deleted' and sent_to_vendor_at is not null
+    returning id
+    ```
+
+    `CALL_PURGE_CLAIM`:
+
+    ```sql
+    with due as (
+      select id from playbook.calls
+      where organization_id = $1 and state = 'deleted' and purge_due_at <= clock_timestamp()
+        and purge_attempts < 20
+        and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
+      order by purge_due_at
+      limit least(greatest(coalesce($2::int, 1), 1), 500)
+      for update skip locked)
+    update playbook.calls c
+    set purge_started_at = coalesce(c.purge_started_at, clock_timestamp()),
+        purge_attempts = c.purge_attempts + 1,
+        purge_lease_until = clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000),
+        updated_at = clock_timestamp()
+    from due
+    where c.organization_id = $1 and c.id = due.id
+    returning c.id, c.kind, c.object_key, c.transcript_key, c.size_bytes, c.deletion_seq, c.vectors_removed_seq,
+      c.sent_to_vendor_at, c.vendor_removed_at, c.purge_attempts
+    ```
+
+    `CALL_PURGE_COMPLETE`:
+
+    ```sql
+    with jl as (
+      select state, next_attempt_at from playbook.call_jobs
+      where organization_id = $1 and call_id = $2
+      for update)
+    delete from playbook.calls
+    where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
+      and vectors_removed_seq = deletion_seq
+      and (sent_to_vendor_at is null or vendor_removed_at is not null)
+      and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
+    returning id, size_bytes
+    ```
+
+    `CALL_LIST_SPENT_PURGES`:
+
+    ```sql
+    select id, kind, object_key, transcript_key, deletion_seq, vectors_removed_seq,
+      sent_to_vendor_at, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts
+    from playbook.calls
+    where organization_id = $1 and state = 'deleted' and purge_attempts >= 20
+      and id > $2::text
+    order by id
+    limit least(greatest(coalesce($3::int, 1), 1), 100)
+    ```
+
+    `CALL_PURGE_RESET`:
+
+    ```sql
+    update playbook.calls
+    set purge_attempts = 0, purge_started_at = null, purge_lease_until = null,
+        restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()
+    where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20
+    returning id, purge_attempts
+    ```
+
+    `CALL_ERASE_BATCH`:
+
+    ```sql
+    with t as (select clock_timestamp() as now),
+    cand as (
+      select id, deletion_seq from playbook.calls
+      where organization_id = $1 and restore_barred_at is null
+      order by id
+      limit least(greatest(coalesce($2::int, 1), 1), 500)),
+    jl as (
+      select id from playbook.call_jobs
+      where organization_id = $1 and state in ('queued', 'running') and call_id in (select id from cand)
+      order by id
+      for update),
+    j as (
+      update playbook.call_jobs
+      set state = 'cancelled', claim_token = null, finished_at = (select now from t), updated_at = (select now from t),
+          next_attempt_at = case when state = 'running' then next_attempt_at else (select now from t) end
+      where organization_id = $1 and id in (select id from jl)
+      returning id),
+    cl as (
+      select id from playbook.calls
+      where organization_id = $1 and id in (select id from cand) and restore_barred_at is null
+        and (select count(*) from j) >= 0
+      order by id
+      for update),
+    x as (
+      update playbook.calls c
+      set state = 'deleted',
+          epoch = case when c.state <> 'deleted' then c.epoch + 1 else c.epoch end,
+          deletion_seq = case when c.state <> 'deleted' then c.deletion_seq + 1 else c.deletion_seq end,
+          deleted_at = case when c.state <> 'deleted' then (select now from t) else c.deleted_at end,
+          deleted_by = case when c.state <> 'deleted' then $3::text else c.deleted_by end,
+          purge_due_at = least(coalesce(c.purge_due_at, (select now from t)), (select now from t)),
+          restore_barred_at = (select now from t), failure_reason = null, updated_at = (select now from t)
+      from cand
+      where c.organization_id = $1 and c.id = cand.id and c.id in (select id from cl)
+      returning c.id, c.epoch, c.deletion_seq, (c.deletion_seq <> cand.deletion_seq) as changed,
+        c.object_key, c.transcript_key, c.kind, c.sent_to_vendor_at)
+    select id, epoch, deletion_seq, changed, object_key, transcript_key, kind, sent_to_vendor_at from x order by id
+    ```
+
+    `DEAL_LIST_PENDING_RETAG`:
+
+    ```sql
+    select id, outcome, outcome_seq, retag_through
+    from playbook.deals
+    where organization_id = $1 and retag_through < outcome_seq and id > $2::text
+    order by id
+    limit least(greatest(coalesce($3::int, 1), 1), 500)
+    ```
+
+    `DEAL_RETAG_BATCH`:
+
+    ```sql
+    select c.id, d.outcome, d.outcome_seq
+    from playbook.calls c
+    join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+    where c.organization_id = $1 and c.deal_record_id = $2::text and c.state = 'ready'
+      and c.tagged_outcome_seq < d.outcome_seq and c.id > $3::text
+    order by c.id
+    limit least(greatest(coalesce($4::int, 1), 1), 500)
+    ```
+
+    `CALL_RETAGGED`:
+
+    ```sql
+    update playbook.calls c
+    set tagged_outcome_seq = $3::int, updated_at = clock_timestamp()
+    from playbook.deals d
+    where c.organization_id = $1 and c.id = any(($2::text[])[1:500]) and c.state = 'ready'
+      and c.tagged_outcome_seq < $3::int
+      and d.organization_id = $1 and d.id = c.deal_record_id and $3::int <= d.outcome_seq
+    returning c.id
+    ```
+
+    `DEAL_RETAG_LOCK`:
+
+    ```sql
+    select id, outcome, outcome_seq, retag_through
+    from playbook.deals
+    where organization_id = $1 and id = $2
+    for update
+    ```
+
+    `DEAL_RETAG_DONE`:
+
+    ```sql
+    update playbook.deals d
+    set retag_through = $3::int
+    where d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3::int <= d.outcome_seq
+      and not exists (
+        select 1 from playbook.calls c
+        where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)
+    returning d.id, d.retag_through, d.outcome_seq
+    ```
+
 **The consumed-message table** is the kit's `ProcessedStore` store (`claim`, `renew`, `complete`,
 `release`, `purge`), with the kit README's rules: the key is `(consumer, organization_id,
 message_id)`, `claim` is one statement that inserts or takes over a lapsed claim and returns the
@@ -2082,3 +2760,95 @@ the last upload attempt is two times and no content.
 rules, the unknown-deal-id creation), the Rep and its ordering guard, Call delete, restore, purge and
 erasure, the jobs for transcription, processing, re-tag and Rep rebuild with their hint kinds, and the
 Call erase step that must come before `DEAL_ERASE_BATCH`.
+
+## Sales history, part two (migration `0016`)
+
+The second half of ADR 0018: **Calls, their upload, the Rep, and the background work around them.**
+Calls hold metadata only. The Transcript, the Recording and the Moments live in object storage and
+in the search index, never in Postgres. Every value mirrors the contract at `v0.8.0`
+(`schema/playbook-calls.ts`, pinned by `playbook-calls.test.ts`).
+
+| Table | Holds |
+| --- | --- |
+| `calls` | the Call: `call_…` id, its Deal (composite foreign key, no cascade), kind (`transcript`, `recording`), state, failure reason, object keys, content hash (unique per Organization), the Rep choice (`rep_by`, `rep_label`, `rep_channel`), the speaker labels, and the counters `epoch`, `rep_seq`, `deletion_seq`, `vectors_removed_seq`, `tagged_outcome_seq` |
+| `call_jobs` | one row per background job of a Call: kind `transcribe`, `process` or `rebuild`, state, attempts, claim token and lease |
+
+`call_jobs` is a **sibling of `ingestion_jobs`, not an extension of it.** An ingestion job is keyed to a
+Document and walks its parse, chunk, embed and index steps; a Call job has three kinds and no steps,
+and at most one job per Call is active. Widening `ingestion_jobs` would have loosened its checks for
+both. `organization_usage` gains `call_count` and `recording_byte_count`, kept by a trigger.
+
+**Upload.** The service takes the idempotency key, then `QUOTA_LOCK` (the Organization upload lock),
+then runs `CALL_INSERT` in the same transaction; the insert fails with `playbook.upload_lock` without
+the lock. One statement checks the rights confirmation against the wording version the service
+passes, the quota (Calls, Recording bytes, Deals; a deleted Call and one in `awaiting_rep` still
+count) and the duplicate rule, and answers `created`, `existing`, `other_deal`, `rights_required` or
+`quota_exceeded`. The same content under the same Deal returns the stored Call: a deleted one is
+restored by `CALL_RESTORE_FOR_UPLOAD`, a failed one is re-queued by `CALL_REQUEUE` only for
+`transcription_failed`, `transcription_timed_out` and `processing_failed`. The same content under
+another Deal is refused. An unknown deal id creates an open Deal. A Call whose file stopped
+part-way has no row; the idempotency key written before streaming is the evidence the orphan sweep
+uses, as for Documents.
+
+**Rep.** A Transcript takes a speaker; a Recording takes a speaker label or a channel. `CALL_SET_REP`
+answers `changed`, `unchanged` (the same choice again, also while the rebuild is queued), `invalid`
+or `not_changeable`. A change bumps `rep_seq`, leaves the Call `processing` and queues a `rebuild`
+job carrying that sequence. Every job statement (`CALL_JOB_HEARTBEAT`, `CALL_JOB_COMPLETE`) checks the
+sequence it was claimed with, so a stale rebuild returns no row and cannot finish. To avoid a
+deadlock the statement locks job rows first, then the Call row, the order the claim uses too.
+
+**Jobs.** `CALL_JOB_CLAIM` leases with `for update skip locked`, bounds the batch, and cancels the job
+of a deleted Call instead of running it. Workers record intermediate facts with `CALL_JOB_RECORD`,
+finish a transcription with `CALL_JOB_TRANSCRIBED`, and a rebuild or process with `CALL_JOB_COMPLETE`.
+`CALL_JOB_RETRY` and `CALL_JOB_FAIL` end an attempt; `CALL_JOB_GIVE_UP_SPENT` fails the Call of a job
+out of attempts. None of them takes the Organization upload lock.
+
+**Outcome re-tag and search.** `inSearch` is derived in the same query as the Deal's Outcome:
+state `ready`, Deal `won`, and `tagged_outcome_seq >= outcome_seq`. A Deal whose Outcome changes
+is found by `DEAL_LIST_PENDING_RETAG` (`retag_through < outcome_seq`, partial index
+`deals_retag_idx`). The service re-tags its Calls in bounded batches (`DEAL_RETAG_BATCH`, then
+`CALL_RETAGGED` after it rewrote the Moments' Outcome), and finishes with two statements in one
+transaction: `DEAL_RETAG_LOCK` takes the Deal row, then `DEAL_RETAG_DONE` sets `retag_through` only
+if no ready Call is stale, reading a fresh snapshot. `CALL_JOB_COMPLETE` takes the same Deal row
+and lowers `retag_through` when it finishes a Call with a stale tag, so a Call that became ready
+while the re-tag finished is never lost. The cost of `DEAL_RETAG_DONE` is one indexed read of the
+Deal's ready Calls, once per re-tag.
+
+**Delete, restore, purge.** Delete bumps `deletion_seq` once and starts the purge clock; restore (by a
+member or by an upload) returns the Call to `uploaded` and `transcribe` if it was never transcribed,
+`awaiting_rep` if it has a Transcript and no Rep, otherwise `processing`. The purge needs cleanup of
+the index recorded (`CALL_CLEANUP_BEGIN`, `CALL_CLEANUP_DONE`) and, for a Recording sent to the
+transcription vendor, the vendor copy confirmed removed (`CALL_SENT_TO_VENDOR`,
+`CALL_VENDOR_REMOVED`) before `CALL_PURGE_COMPLETE` deletes the row. A spent purge shows in
+`CALL_LIST_SPENT_PURGES` and `CALL_PURGE_RESET` bars the Call from restore.
+
+**Lists** (`CALL_LIST`, `CALL_LIST_BY_STATE`, `CALL_LIST_BY_DEAL`, and the pending-cleanup list) page
+on `cursor_at`, the timestamp as text, so microseconds survive the round trip. A malformed cursor
+fails with SQLSTATE 22007 (`invalid input syntax`); the service maps it to a 400.
+
+**Hint kinds.** Five more, each written by the trigger that creates the work and found by its own
+branch of `ORGANIZATIONS_WITH_WORK`, verified against an index:
+
+| Kind | Written when | Found through |
+| --- | --- | --- |
+| `call_jobs` | a job is queued or comes due | `call_jobs` by state and next attempt |
+| `call_purge` | a Call is deleted | `calls_purge_idx` |
+| `call_cleanup` | a Call is deleted | `calls_cleanup_idx` |
+| `call_purge_spent` | a purge runs out of attempts | `calls_spent_purge_idx` |
+| `outcome_retag` | a Deal's Outcome moves ahead of `retag_through` | `deals_retag_idx` |
+
+**Erasure.** The order is: `CALL_ERASE_BATCH` (bars restore, returns the object keys; remove the
+objects), the Call purge as above, `DEAL_ERASE_BATCH` (the foreign key refuses while a Call remains),
+then `ORGANIZATION_REMOVE_REST`, which also refuses while Calls remain.
+`ORGANIZATION_REMOVAL_STATUS` adds `no_calls`.
+
+**Lock order.** Always: idempotency key, `orphan_sweeps`, the upload lock, import and job rows, Call
+rows, Deal rows, the usage row; hint rows last. An upload holds the upload lock then touches the Deal
+and Call; an import apply holds the same lock; `DEAL_SET_OUTCOME` locks only the Deal row, and the
+upload's foreign key takes `KEY SHARE`, which `NO KEY UPDATE` does not conflict with. A Rep change
+and a claim both lock job rows before the Call row. Erasure locks Calls then Deals. No path takes
+two of these in the other direction, so no cycle forms.
+
+**Service duties.** Take the idempotency key and the upload lock before `CALL_INSERT`; stream objects
+only after the key is written; remove objects and the vendor copy before the purge completes; send
+the current rights wording version on every upload; re-tag by batches rather than inline.

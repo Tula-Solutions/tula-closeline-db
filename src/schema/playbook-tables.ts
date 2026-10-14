@@ -254,6 +254,10 @@ export const organizationUsage = playbookSchema.table(
     byteCount: bigint('byte_count', { mode: 'number' }).notNull().default(0),
     // Deals of the Organization, moved by the `deals` triggers (migration 0015).
     dealCount: bigint('deal_count', { mode: 'number' }).notNull().default(0),
+    // Calls of the Organization, soft-deleted and awaiting-Rep ones included until purged (migration 0016).
+    callCount: bigint('call_count', { mode: 'number' }).notNull().default(0),
+    // Bytes of its Recordings (not Transcripts), counted the same way.
+    recordingByteCount: bigint('recording_byte_count', { mode: 'number' }).notNull().default(0),
     updatedAt: updatedAt(),
   },
   (t) => [
@@ -261,6 +265,10 @@ export const organizationUsage = playbookSchema.table(
     check('organization_usage_organization_not_global', notGlobal),
     check('organization_usage_not_negative', sql`${t.documentCount} >= 0 and ${t.byteCount} >= 0`),
     check('organization_usage_deal_count_not_negative', sql`${t.dealCount} >= 0`),
+    check(
+      'organization_usage_call_counts_not_negative',
+      sql`${t.callCount} >= 0 and ${t.recordingByteCount} >= 0`
+    ),
   ]
 )
 

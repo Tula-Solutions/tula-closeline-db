@@ -1,3 +1,17 @@
+import { CALL_STATEMENTS } from './playbook-call-statements'
+import {
+  BATCH,
+  CLAMP,
+  DOCUMENT_LIST_MAX_PAGE,
+  DOCUMENT_MIN_RETENTION_MS,
+  IDEMPOTENCY_MIN_PURGE_AGE_MS,
+  IDEMPOTENCY_PURGE_AGE_MS,
+  INGESTION_MAX_RETRY_DELAY_MS,
+  LEASE,
+  ORPHAN_SWEEP_AGE_MS,
+  PLAYBOOK_MAX_BATCH,
+  PLAYBOOK_MIN_LEASE_MS,
+} from './playbook-sql'
 import {
   DEAL_IMPORT_APPLY_BATCH,
   DEAL_IMPORT_MAX_ATTEMPTS,
@@ -10,61 +24,16 @@ import {
   PENDING_CLEANUP_PREDICATE,
 } from './schema/playbook-tables'
 
-/**
- * The least soft-delete retention, in milliseconds, {@link DOCUMENT_SOFT_DELETE} stores: one hour.
- * A smaller, null or negative value passed in is raised to it, so a bug cannot make a mistaken
- * delete unrecoverable. The lead's default is 30 days (ADR 0016); the service passes it.
- */
-export const DOCUMENT_MIN_RETENTION_MS = 3_600_000
-
-/** The least lease, in milliseconds, any claim or renewal below stores; a smaller value is raised to it. */
-export const PLAYBOOK_MIN_LEASE_MS = 1000
-
-/** The longest delay, in milliseconds, {@link INGESTION_JOB_RETRY} will impose; a longer one is cut to it. */
-export const INGESTION_MAX_RETRY_DELAY_MS = 3_600_000
-
-/** The most documents one {@link DOCUMENT_LIST} or {@link DOCUMENT_LIST_DELETED} page returns, whatever limit is asked for. */
-export const DOCUMENT_LIST_MAX_PAGE = 100
-
-/**
- * The most rows any batch statement takes, whatever size is passed in: the purge claim, the job
- * claim, the give-up, and the two purges. A null, zero or negative size is raised to 1.
- */
-export const PLAYBOOK_MAX_BATCH = 500
-
-/**
- * How old an upload attempt is when its stored object may be an orphan worth sweeping, in
- * milliseconds: 25 hours. The service deletes an orphan object only when it is older than 24 hours;
- * the extra hour covers the time between an attempt's start (its key's `created_at`) and the object
- * being written. `organizations_with_work` reports `orphan_sweep` at this age after the oldest
- * attempt not yet marked swept, and {@link ORPHAN_SWEEP_DONE} cuts the swept-through time to this
- * long before now, so an attempt counts as swept only when its object was surely old enough to be
- * deleted.
- */
-export const ORPHAN_SWEEP_AGE_MS = 25 * 60 * 60 * 1000
-
-/**
- * How old an idempotency key is when it becomes purgeable, in milliseconds: 26 hours, one hour more
- * than {@link ORPHAN_SWEEP_AGE_MS}, so the key of an upload attempt is still there when its orphan
- * sweep is due. Core documents no age for its own keys, so this is the playbook's.
- * `organizations_with_work` hints `idempotency_purge` at this age, and {@link IDEMPOTENCY_PURGE}
- * is floored at this age in SQL, so a younger age passed to it is raised to this one.
- */
-export const IDEMPOTENCY_PURGE_AGE_MS = ORPHAN_SWEEP_AGE_MS + 60 * 60 * 1000
-
-/**
- * The least age, in milliseconds, {@link IDEMPOTENCY_PURGE} removes a key at: the same 26 hours as
- * {@link IDEMPOTENCY_PURGE_AGE_MS}, so no caller can purge the keys of unswept upload attempts.
- */
-export const IDEMPOTENCY_MIN_PURGE_AGE_MS = IDEMPOTENCY_PURGE_AGE_MS
-
-// A batch size or page size clamped to 1..max in SQL, null included.
-const CLAMP = (parameter: string, max: number) =>
-  `least(greatest(coalesce(${parameter}::int, 1), 1), ${max})`
-const BATCH = (parameter: string) => CLAMP(parameter, PLAYBOOK_MAX_BATCH)
-
-const LEASE = (parameter: string) =>
-  `make_interval(secs => greatest(coalesce(${parameter}::float8, 0), ${PLAYBOOK_MIN_LEASE_MS}) / 1000)`
+export {
+  DOCUMENT_LIST_MAX_PAGE,
+  DOCUMENT_MIN_RETENTION_MS,
+  IDEMPOTENCY_MIN_PURGE_AGE_MS,
+  IDEMPOTENCY_PURGE_AGE_MS,
+  INGESTION_MAX_RETRY_DELAY_MS,
+  ORPHAN_SWEEP_AGE_MS,
+  PLAYBOOK_MAX_BATCH,
+  PLAYBOOK_MIN_LEASE_MS,
+} from './playbook-sql'
 
 const STEP_ORDER = `array[${INGESTION_STEPS.map((step) => `'${step}'`).join(', ')}]`
 
@@ -1034,8 +1003,8 @@ export const ORGANIZATION_REMOVE_REST = `select playbook.remove_organization_res
  * Whether an Organization is fully removed: the answer of the internal remove-all route. `$1`
  * Organization. One row: `no_documents`, `no_settings`, `no_usage`, `no_messages` (the
  * Organization's own consumed messages), `no_deals`, `no_imports` (a Deal import row, whose report
- * rows cannot exist without it), `no_rights` (the rights confirmation) and `removed`, true when all
- * seven hold. Idempotency keys
+ * rows cannot exist without it), `no_rights` (the rights confirmation), `no_calls` (a Call row, whose jobs cannot exist without it) and `removed`, true when all
+ * eight hold. Idempotency keys
  * are not part of it (the remove-all call's own key stays until it ages out). Run it inside the
  * Organization's scope; in any other scope it returns no row, because the tenant tables would
  * otherwise look empty and answer "removed" for an Organization the caller cannot see.
@@ -1048,13 +1017,15 @@ export const ORGANIZATION_REMOVAL_STATUS = `select
   not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,
   not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,
   not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,
+  not exists (select 1 from playbook.calls where organization_id = $1) as no_calls,
   (not exists (select 1 from playbook.documents where organization_id = $1)
     and not exists (select 1 from playbook.index_settings where organization_id = $1)
     and not exists (select 1 from playbook.organization_usage where organization_id = $1)
     and not exists (select 1 from playbook.consumed_message where organization_id = $1)
     and not exists (select 1 from playbook.deals where organization_id = $1)
     and not exists (select 1 from playbook.deal_imports where organization_id = $1)
-    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed
+    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)
+    and not exists (select 1 from playbook.calls where organization_id = $1)) as removed
 where $1::text = nullif(current_setting('app.organization_id', true), '')`
 
 /**
@@ -1714,4 +1685,5 @@ export const PLAYBOOK_STATEMENTS = {
   RIGHTS_GET,
   RIGHTS_CONFIRM,
   ORGANIZATIONS_WITH_WORK,
+  ...CALL_STATEMENTS,
 } as const

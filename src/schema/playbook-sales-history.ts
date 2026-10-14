@@ -99,6 +99,8 @@ export const deals = playbookSchema.table(
     name: text('name'),
     outcome: text('outcome', { enum: DEAL_OUTCOMES }).notNull().default('open'),
     outcomeSeq: integer('outcome_seq').notNull().default(0),
+    // The Outcome sequence through which every ready Call of the Deal is tagged in the index: the Deal needs a re-tag while this is below `outcome_seq`.
+    retagThrough: integer('retag_through').notNull().default(0),
     closedAt: ts('closed_at'),
     amount: numeric('amount', { precision: 17, scale: 2 }),
     currency: text('currency'),
@@ -130,7 +132,12 @@ export const deals = playbookSchema.table(
     check('deals_amount_range', sql`${t.amount} is null or ${t.amount} >= 0`),
     check('deals_currency_shape', sql`${t.currency} is null or ${t.currency} ~ '^[A-Z]{3}$'`),
     check('deals_amount_has_currency', sql`${t.amount} is null or ${t.currency} is not null`),
+    check('deals_retag_through_range', sql`${t.retagThrough} between 0 and ${t.outcomeSeq}`),
     uniqueIndex('deals_deal_id_key').on(t.organizationId, t.dealId),
+    // The Deals that need a re-tag: the `outcome_retag` discovery verification and batch.
+    index('deals_retag_idx')
+      .on(t.organizationId, t.id)
+      .where(sql`${t.retagThrough} < ${t.outcomeSeq}`),
     index('deals_list_idx').on(t.organizationId, t.createdAt, t.id),
     index('deals_outcome_list_idx').on(t.organizationId, t.outcome, t.createdAt, t.id),
     index('deals_import_list_idx').on(t.organizationId, t.appearedInImport, t.createdAt, t.id),

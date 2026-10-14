@@ -298,6 +298,58 @@ describe('work discovery, erasure and spent purges', () => {
           [org, `m-${hex()}`, hoursAgo]
         )
       )
+    /** A Call as the owner can write one: a live Transcript with its Deal, under the upload lock every Call insert needs. */
+    const insertCall = (org: string) =>
+      asOwner(org, async (c) => {
+        await c.query(QUOTA_LOCK, [org])
+        const deal = `deal_${hex()}`
+        const id = `call_${hex()}`
+        await c.query(
+          `insert into playbook.deals (id, organization_id, deal_id) values ($1, $2, $3)`,
+          [deal, org, `D-${hex()}`]
+        )
+        await c.query(
+          `insert into playbook.calls (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash, uploaded_by, object_key, rep_by, rep_label)
+           values ($1, $2, $3, 'transcript', 'a.txt', 'text/plain', 100, $4, $5, $6, 'speaker', 'Alice')`,
+          [id, org, deal, hashOf(id), newUser(), `${org}/${id}`]
+        )
+        return { id, deal }
+      })
+    /** Soft-delete a Call as the owner: deleted `deletedMinutesAgo` minutes ago, purge due `purgeInMinutes` from now (negative: past). */
+    const deleteCall = (
+      org: string,
+      id: string,
+      deletedMinutesAgo: number,
+      purgeInMinutes: number,
+      extra = ''
+    ) =>
+      asOwner(org, (c) =>
+        c.query(
+          `update playbook.calls
+              set state = 'deleted', epoch = epoch + 1, deletion_seq = 1,
+                  deleted_at = clock_timestamp() - make_interval(mins => $2::int),
+                  purge_due_at = clock_timestamp() + make_interval(mins => $3::int)${extra}
+            where id = $1`,
+          [id, deletedMinutesAgo, purgeInMinutes]
+        )
+      )
+    const insertCallJob = (org: string, callId: string, dueInMinutes: number) =>
+      asOwner(org, (c) =>
+        c.query(
+          `insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, next_attempt_at)
+           values ($1, $2, $3, 'process', 0, clock_timestamp() + make_interval(mins => $4::int))`,
+          [`cjob_${hex()}`, org, callId, dueInMinutes]
+        )
+      )
+    const decideOutcome = (org: string, deal: string) =>
+      asOwner(org, (c) =>
+        c.query(
+          `update playbook.deals set outcome = 'won', outcome_seq = outcome_seq + 1 where id = $1`,
+          [deal]
+        )
+      )
+    const markRetagged = (org: string) =>
+      asOwner(org, (c) => c.query(`update playbook.deals set retag_through = outcome_seq`))
     const cases: KindCase[] = [
       {
         kind: 'purge_due',
@@ -456,6 +508,94 @@ describe('work discovery, erasure and spent purges', () => {
                   set state = 'failed', failure_reason = 'processing_failed', finished_at = clock_timestamp()`
             )
           )
+        },
+      },
+      {
+        kind: 'call_jobs',
+        due: async (org) => {
+          const call = await insertCall(org)
+          await insertCallJob(org, call.id, -60)
+        },
+        notDue: async (org) => {
+          const call = await insertCall(org)
+          await insertCallJob(org, call.id, 120)
+        },
+        finish: async (org) => {
+          await asOwner(org, (c) =>
+            c.query(
+              `update playbook.call_jobs set state = 'cancelled', finished_at = clock_timestamp()`
+            )
+          )
+        },
+      },
+      {
+        kind: 'call_purge',
+        due: async (org) => {
+          const call = await insertCall(org)
+          await deleteCall(org, call.id, 120, -60, ', vectors_removed_seq = 1')
+        },
+        notDue: async (org) => {
+          const call = await insertCall(org)
+          await deleteCall(org, call.id, 0, 120, ', vectors_removed_seq = 1')
+        },
+        finish: async (org) => {
+          await asOwner(org, (c) => c.query('delete from playbook.calls'))
+        },
+      },
+      {
+        kind: 'call_cleanup',
+        due: async (org) => {
+          const call = await insertCall(org)
+          await deleteCall(org, call.id, 10, 120)
+        },
+        notDue: async (org) => {
+          const call = await insertCall(org)
+          await deleteCall(org, call.id, 0, 120)
+        },
+        finish: async (org) => {
+          await asOwner(org, (c) =>
+            c.query(`update playbook.calls set vectors_removed_seq = deletion_seq`)
+          )
+        },
+      },
+      {
+        kind: 'call_purge_spent',
+        due: async (org) => {
+          const call = await insertCall(org)
+          await deleteCall(
+            org,
+            call.id,
+            10,
+            -5,
+            ", purge_attempts = 20, purge_started_at = clock_timestamp(), purge_lease_until = clock_timestamp() - interval '1 second'"
+          )
+        },
+        notDue: async (org) => {
+          const call = await insertCall(org)
+          await deleteCall(org, call.id, 0, 120)
+        },
+        finish: async (org) => {
+          await asOwner(org, (c) =>
+            c.query(
+              `update playbook.calls set purge_attempts = 0, purge_started_at = null, purge_lease_until = null`
+            )
+          )
+        },
+      },
+      {
+        kind: 'outcome_retag',
+        due: async (org) => {
+          const call = await insertCall(org)
+          await decideOutcome(org, call.deal)
+        },
+        // The hint is noted, but the Deal is already re-tagged: verification finds no work.
+        notDue: async (org) => {
+          const call = await insertCall(org)
+          await decideOutcome(org, call.deal)
+          await markRetagged(org)
+        },
+        finish: async (org) => {
+          await markRetagged(org)
         },
       },
     ]
@@ -668,7 +808,10 @@ describe('work discovery, erasure and spent purges', () => {
           where n.nspname = 'playbook' and p.prosecdef and p.proname like 'note\\_%' order by p.proname`
       )
       expect(definers.rows.map((r) => r.proname)).toEqual([
+        'note_call_job_work',
+        'note_call_work',
         'note_consumed_work',
+        'note_deal_retag',
         'note_document_work',
         'note_idempotency_work',
         'note_import_work',
@@ -1090,6 +1233,7 @@ describe('work discovery, erasure and spent purges', () => {
       // The rest goes only once no document is left.
       const status = () => inOrg(org, (c) => c.query(ORGANIZATION_REMOVAL_STATUS, [org]))
       expect((await status()).rows[0]).toEqual({
+        no_calls: true,
         no_deals: true,
         no_documents: true,
         no_imports: true,
@@ -1104,6 +1248,7 @@ describe('work discovery, erasure and spent purges', () => {
       )
       expect(rest.rows[0]).toEqual({ removed: true })
       expect((await status()).rows[0]).toEqual({
+        no_calls: true,
         no_deals: true,
         no_documents: true,
         no_imports: true,

@@ -83,6 +83,10 @@ const TAKES_A_TIME = [
   'DEAL_LIST_BY_IMPORT_FLAG',
   'DEAL_SET_OUTCOME',
   'DEAL_IMPORT_LIST',
+  'CALL_LIST',
+  'CALL_LIST_BY_STATE',
+  'CALL_LIST_BY_DEAL',
+  'CALL_LIST_PENDING_CLEANUP',
 ]
 
 describe('the documented playbook statements', () => {
