@@ -11,6 +11,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE,
   CALL_PURGE_MAX_ATTEMPTS,
   CALL_VENDOR_ID_PATTERN,
+  MAX_SEARCH_STATE_IDS,
 } from './schema/playbook-calls'
 
 /*
@@ -150,6 +151,27 @@ from gate where not rights_ok or (no_dup and not quota_ok)`
 export const CALL_GET = `select ${READ_COLUMNS}
 ${FROM_CALL}
 where c.organization_id = $1 and c.id = $2`
+
+/**
+ * What Postgres says about the Calls a search hit, for the playbook's `momentMayBeReturned`: the
+ * derived `in_search` (state `ready`, the Deal `won`, the tag current: as in {@link CALL_GET}) and the
+ * `epoch` and `rep_seq` the Call is at now, with its `deal_record_id`. `$1` Organization, `$2` an
+ * array of Call ids (`text[]`). One row per id that is a Call of this Organization, in id order; an
+ * unknown id, another Organization's id, an empty or null array give no row, so a hit with no row is
+ * dropped. **The statement reads at most {@link MAX_SEARCH_STATE_IDS} ids**: it takes the first 100
+ * of the array, so its work is bounded whatever is passed, and ids after the 100th get no row. It does
+ * not refuse them (a statement cannot raise without a function), so **the caller must pass at most
+ * 100**, which the search's over-fetch window (`topK` 100) already guarantees. A repeated id is
+ * answered once. Reads `calls` by `calls_pkey` (Organization, id) and the Deal by its key; nothing
+ * but metadata is returned, no text.
+ */
+export const CALL_SEARCH_STATE = `select c.id as call_id,
+  (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+  c.epoch, c.rep_seq, c.deal_record_id
+from playbook.calls c
+join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+where c.organization_id = $1 and c.id = any(($2::text[])[1:${MAX_SEARCH_STATE_IDS}])
+order by c.id`
 
 /** The sends of the Call aliased `alias`, as a JSON array ordered by `seq` (`[]` when none; at most {@link CALL_MAX_VENDOR_SENDS}), read through the primary key. */
 const VENDOR_SENDS = (
@@ -1009,6 +1031,7 @@ export const CALL_STATEMENTS = {
   CALL_USAGE,
   CALL_INSERT,
   CALL_GET,
+  CALL_SEARCH_STATE,
   CALL_LIST,
   CALL_LIST_BY_STATE,
   CALL_LIST_BY_DEAL,

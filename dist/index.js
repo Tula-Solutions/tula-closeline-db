@@ -38,6 +38,7 @@ import {
   CALL_PURGE_MAX_ATTEMPTS2,
   CALL_JOB_MAX_ATTEMPTS2,
   CALL_MAX_VENDOR_SENDS2,
+  MAX_SEARCH_STATE_IDS2,
   CALL_VENDOR_ID_PATTERN2,
   CALL_JOB_KINDS2,
   CALL_JOB_STATES2,
@@ -46,7 +47,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-k40jcgwv.js";
+} from "./shared/chunk-5t5d0jz6.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -644,6 +645,13 @@ from gate where not rights_ok or (no_dup and not quota_ok)`;
 var CALL_GET = `select ${READ_COLUMNS}
 ${FROM_CALL}
 where c.organization_id = $1 and c.id = $2`;
+var CALL_SEARCH_STATE = `select c.id as call_id,
+  (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
+  c.epoch, c.rep_seq, c.deal_record_id
+from playbook.calls c
+join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
+where c.organization_id = $1 and c.id = any(($2::text[])[1:${MAX_SEARCH_STATE_IDS2}])
+order by c.id`;
 var VENDOR_SENDS = (alias) => `(select coalesce(jsonb_agg(jsonb_build_object('seq', s.seq, 'vendor_id', s.vendor_id) order by s.seq), '[]'::jsonb)
    from playbook.call_vendor_sends s
    where s.organization_id = ${alias}.organization_id and s.call_id = ${alias}.id) as vendor_sends`;
@@ -1138,6 +1146,7 @@ var CALL_STATEMENTS = {
   CALL_USAGE,
   CALL_INSERT,
   CALL_GET,
+  CALL_SEARCH_STATE,
   CALL_LIST,
   CALL_LIST_BY_STATE,
   CALL_LIST_BY_DEAL,
@@ -2019,6 +2028,7 @@ export {
   CALL_RESTORE_FOR_UPLOAD,
   CALL_RETAGGED,
   CALL_ROW_FIELDS,
+  CALL_SEARCH_STATE,
   CALL_SENT_TO_VENDOR,
   CALL_SET_REP,
   CALL_SOFT_DELETE,
@@ -2132,6 +2142,7 @@ export {
   LOCKOUT_MIN_RETRY_AFTER_MS,
   LOCKOUT_RETRY_AFTER,
   MAX_QUEUED_DEAL_IMPORTS2 as MAX_QUEUED_DEAL_IMPORTS,
+  MAX_SEARCH_STATE_IDS2 as MAX_SEARCH_STATE_IDS,
   NON_TENANT_TABLES,
   NON_TENANT_TABLE_REASONS,
   ORGANIZATIONS_WITH_WORK,

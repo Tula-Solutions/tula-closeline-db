@@ -31,6 +31,7 @@ import {
   callReuploadRequeues,
   calls,
   callVendorSends,
+  MAX_SEARCH_STATE_IDS,
   repChangeAllowed,
 } from './playbook-calls'
 import { WORK_KINDS } from './playbook-work-hints'
@@ -344,5 +345,30 @@ describe('the Call tables', () => {
       return asMatch ? asMatch[1] : (t.split('.').pop() as string)
     })
     expect(names).toEqual([...CALL_ROW_FIELDS])
+  })
+})
+
+describe('CALL_SEARCH_STATE (v0.21.0)', () => {
+  test('it is scoped to the Organization, capped by one constant and returns metadata only', () => {
+    const text = CALL_STATEMENTS.CALL_SEARCH_STATE
+    expect(MAX_SEARCH_STATE_IDS).toBe(100)
+    expect(text).toContain('c.organization_id = $1')
+    expect(text).toContain(`($2::text[])[1:${MAX_SEARCH_STATE_IDS}]`)
+    expect(text).toContain(
+      "(c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search"
+    )
+    // The same derivation CALL_GET returns, and no text column of any kind.
+    expect(CALL_STATEMENTS.CALL_GET).toContain(
+      "(c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search"
+    )
+    for (const column of [
+      'file_name',
+      'object_key',
+      'transcript_key',
+      'rep_label',
+      'speaker_labels',
+    ]) {
+      expect(text).not.toContain(column)
+    }
   })
 })
