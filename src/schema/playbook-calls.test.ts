@@ -221,6 +221,13 @@ describe('the Call tables', () => {
     expect(vendorMigration).toContain('GRANT UPDATE ("vendor_id", "recorded_at")')
     expect(vendorMigration).toContain("CONSTRAINT = 'call_vendor_sends_identity'")
     expect(vendorMigration).toContain('FORCE ROW LEVEL SECURITY')
+    // The migration refuses on a Call past 20 sends, before anything else, and never caps silently.
+    expect(vendorMigration.indexOf('RAISE EXCEPTION')).toBeGreaterThan(-1)
+    expect(vendorMigration.indexOf('RAISE EXCEPTION')).toBeLessThan(
+      vendorMigration.indexOf('CREATE TABLE')
+    )
+    expect(vendorMigration).toContain('"vendor_send_seq" > 20')
+    expect(vendorMigration).not.toMatch(/LEAST|UPDATE "playbook"\."calls"/)
   })
 
   test('the id statement refuses to overwrite and validates the shape inside the statement', () => {
