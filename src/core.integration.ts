@@ -2164,7 +2164,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       // The Owner counter moves once per row, so a statement that promotes one member and demotes
       // the sole Owner is refused when the Owner row is processed first, and allowed when the
       // promoted row is. The end state is the same (one Owner) either way. The order is fixed by
-      // the keys: with sequential scans off the statement reads an index, which returns rows in
+      // the keys and the insert order: with sequential scans off the statement reads an index, which returns rows in
       // key order, and both `id` and `user_id` are chosen to sort the same way, so it does not
       // matter which of the two indexes the planner picks.
       async function transfer(ownerFirst: boolean) {
@@ -2177,8 +2177,17 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         created.add(orgId)
         await inOrg(orgId, async (c) => {
           await insertOrganization(c, orgId)
-          await insertMember(c, orgId, ownerUser, 'owner', ownerMem)
-          await insertMember(c, orgId, memberUser, 'rep', memberMem)
+          // Inserted in key order whichever one is the Owner. Every member has the same email, so
+          // the planner may also pick `memberships_organization_email_idx`, which returns equal keys
+          // in physical order: inserting the Owner first made that plan process the Owner row first
+          // and the "promoted row first" case fail whenever the planner chose it.
+          const rows = [
+            { id: ownerMem, user: ownerUser, role: 'owner' },
+            { id: memberMem, user: memberUser, role: 'rep' },
+          ].sort((x, y) => (x.id < y.id ? -1 : 1))
+          for (const row of rows) {
+            await insertMember(c, orgId, row.user, row.role, row.id)
+          }
         })
         const result = await scoped(core, orgId, async (c) => {
           await c.query('set local enable_seqscan = off')
