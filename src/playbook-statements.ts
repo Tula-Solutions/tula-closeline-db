@@ -1,4 +1,9 @@
 import {
+  DEAL_IMPORT_APPLY_BATCH,
+  DEAL_IMPORT_MAX_ATTEMPTS,
+  DEAL_IMPORT_MAX_ROWS,
+} from './schema/playbook-sales-history'
+import {
   DOCUMENT_PURGE_MAX_ATTEMPTS,
   INGESTION_JOB_MAX_ATTEMPTS,
   INGESTION_STEPS,
@@ -1028,7 +1033,9 @@ export const ORGANIZATION_REMOVE_REST = `select playbook.remove_organization_res
 /**
  * Whether an Organization is fully removed: the answer of the internal remove-all route. `$1`
  * Organization. One row: `no_documents`, `no_settings`, `no_usage`, `no_messages` (the
- * Organization's own consumed messages) and `removed`, true when all four hold. Idempotency keys
+ * Organization's own consumed messages), `no_deals`, `no_imports` (a Deal import row, whose report
+ * rows cannot exist without it), `no_rights` (the rights confirmation) and `removed`, true when all
+ * seven hold. Idempotency keys
  * are not part of it (the remove-all call's own key stays until it ages out). Run it inside the
  * Organization's scope; in any other scope it returns no row, because the tenant tables would
  * otherwise look empty and answer "removed" for an Organization the caller cannot see.
@@ -1038,10 +1045,16 @@ export const ORGANIZATION_REMOVAL_STATUS = `select
   not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,
   not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,
   not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,
+  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,
+  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,
+  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,
   (not exists (select 1 from playbook.documents where organization_id = $1)
     and not exists (select 1 from playbook.index_settings where organization_id = $1)
     and not exists (select 1 from playbook.organization_usage where organization_id = $1)
-    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed
+    and not exists (select 1 from playbook.consumed_message where organization_id = $1)
+    and not exists (select 1 from playbook.deals where organization_id = $1)
+    and not exists (select 1 from playbook.deal_imports where organization_id = $1)
+    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed
 where $1::text = nullif(current_setting('app.organization_id', true), '')`
 
 /**
@@ -1138,6 +1151,500 @@ export function discoveredOrganizations(rows: readonly WorkDiscoveryRow[]): {
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null }
 }
 
+/*
+ * Sales history, part one (hub issue 67, ADR 0018): Deals, Deal imports and the rights confirmation.
+ * The first page of every keyset list passes `'infinity'` as the cursor time and any text as the
+ * cursor id (a finite `created_at` is below infinity whatever the id).
+ */
+
+/** The columns a Deal answer carries. */
+const DEAL_COLUMNS = `id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at`
+
+/**
+ * The list statements add `cursor_at`, the database's own text form of `created_at`. The next
+ * page's `$2` is that text, never a JavaScript Date, which drops the microseconds: Deals created by
+ * one statement share a `created_at`, and a truncated cursor would skip rows at a page boundary.
+ */
+const DEAL_LIST_COLUMNS = `${DEAL_COLUMNS}, created_at::text as cursor_at`
+
+/** The names of the columns of a Deal answer, for the service's row type. */
+export const DEAL_ROW_FIELDS = [
+  'id',
+  'deal_id',
+  'name',
+  'outcome',
+  'outcome_seq',
+  'closed_at',
+  'amount',
+  'currency',
+  'appeared_in_import',
+  'created_at',
+  'updated_at',
+] as const
+
+/**
+ * Read one Deal by its opaque id. `$1` Organization, `$2` the `deal_…` id. No row when absent. The
+ * Deal's Calls are not counted here: a later statement counts them.
+ */
+export const DEAL_GET = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and id = $2`
+
+/**
+ * Look a Deal up by the customer's own deal id. `$1` Organization, `$2` the deal id, trimmed by the
+ * caller and otherwise exact: the comparison is byte for byte, so `A-1` and `a-1` are two Deals
+ * (`deals_deal_id_key`, one index read). No row when none has that id.
+ */
+export const DEAL_BY_DEAL_ID = `select ${DEAL_COLUMNS}
+from playbook.deals
+where organization_id = $1 and deal_id = $2::text`
+
+/**
+ * List the Deals, newest first, one page by keyset. `$1` Organization, `$2` and `$3` the
+ * `cursor_at` (text, never a Date) and `id` of the last row of the previous page (`'infinity'` and
+ * `''` for the first). A malformed cursor text raises SQLSTATE 22007 (`invalid_datetime_format`): the
+ * service maps it to a validation error. Each row carries `cursor_at`, the text of `created_at` to pass back,
+ * `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. On `deals_list_idx`, read
+ * backwards.
+ */
+export const DEAL_LIST = `select ${DEAL_LIST_COLUMNS}
+from playbook.deals
+where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/** {@link DEAL_LIST} for one Outcome (`$5`: `won`, `lost` or `open`), on `deals_outcome_list_idx`. */
+export const DEAL_LIST_BY_OUTCOME = `select ${DEAL_LIST_COLUMNS}
+from playbook.deals
+where organization_id = $1 and outcome = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/**
+ * {@link DEAL_LIST} for Deals that did (`$5` true) or never did (`$5` false) appear in an import, on
+ * `deals_import_list_idx`: the second is the list of Deals only a Call upload created, where a typo
+ * shows.
+ */
+export const DEAL_LIST_BY_IMPORT_FLAG = `select ${DEAL_LIST_COLUMNS}
+from playbook.deals
+where organization_id = $1 and appeared_in_import = $5::boolean and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/**
+ * Set a Deal's Outcome (an Owner or Admin may set or correct any Deal's, ADR 0018 choice 5). `$1`
+ * Organization, `$2` the Deal, `$3` the Outcome, `$4` the closing time and `$5` whether to set it
+ * (false leaves `closed_at` as it is; true with a null `$4` clears it). The row is locked first, so
+ * two changes queue and each sees the other's result. When the Outcome or the closing time
+ * changes, `outcome_seq` rises by exactly one in the same write (a trigger refuses any other
+ * move); when nothing changes it does not, so a repeat is idempotent and publishes nothing. The
+ * answer is the Deal's state after the call with `changed`; no row when the Deal does not exist.
+ * Publish the Outcome-changed message with the returned `outcome_seq` when `changed`.
+ */
+export const DEAL_SET_OUTCOME = `with cur as (
+  select * from playbook.deals where organization_id = $1 and id = $2 for update),
+u as (
+  update playbook.deals d
+  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,
+      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()
+  from cur
+  where d.organization_id = $1 and d.id = cur.id
+    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
+  returning d.*)
+select ${DEAL_COLUMNS}, true as changed from u
+union all
+select ${DEAL_COLUMNS}, false from cur where not exists (select 1 from u)`
+
+/** The Deal count of an Organization, kept by a trigger: the quota check reads this one row. */
+export const DEAL_USAGE = `select deal_count
+from playbook.organization_usage
+where organization_id = $1`
+
+/** The columns a Deal import answer carries; the counts exist only once the import completed. */
+const DEAL_IMPORT_COLUMNS = `id, state, failure_reason,
+  case when state = 'completed' then row_count end as row_count,
+  case when state = 'completed' then applied_count end as applied_count,
+  case when state = 'completed' then rejected_count end as rejected_count,
+  uploaded_by, created_at, updated_at`
+
+/**
+ * Record an uploaded CSV as a Deal import and queue its job. `$1` Organization, `$2` the new
+ * `dimp_…` id, `$3` the uploader, `$4` the object key the CSV was stored under, `$5` its size in
+ * bytes (1 to 10 MiB). Run it in the transaction of the upload's idempotency key
+ * ({@link IDEMPOTENCY_BEGIN} first, then this): the key insert is what lets the orphan sweep see a
+ * CSV whose outcome was unknown. It takes no upload lock and no row shared with another import of
+ * the Organization, so two imports uploading at once do not wait for each other. The trigger notes
+ * the `import_apply` hint.
+ */
+export const DEAL_IMPORT_INSERT = `insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)
+values ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())
+returning ${DEAL_IMPORT_COLUMNS}`
+
+/** Read one Deal import. `$1` Organization, `$2` the `dimp_…` id. No row when absent or erased. */
+export const DEAL_IMPORT_GET = `select ${DEAL_IMPORT_COLUMNS}
+from playbook.deal_imports
+where organization_id = $1 and id = $2 and erased_at is null`
+
+/**
+ * List the Deal imports, newest first, by keyset: `$1` Organization, `$2` and `$3` the cursor (the
+ * last row's `cursor_at`, a text, never a Date, and `id`; `'infinity'` and `''` first), `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}.
+ * On `deal_imports_list_idx`.
+ */
+export const DEAL_IMPORT_LIST = `select ${DEAL_IMPORT_COLUMNS}, created_at::text as cursor_at
+from playbook.deal_imports
+where organization_id = $1 and erased_at is null and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/**
+ * Claim due import jobs under a lease, as {@link INGESTION_JOB_CLAIM} does for documents: `$1`
+ * Organization, `$2` how many (clamped to 1..{@link PLAYBOOK_MAX_BATCH}), `$3` the lease in
+ * milliseconds (raised to {@link PLAYBOOK_MIN_LEASE_MS}). It takes `uploaded` imports and
+ * `processing` ones whose lease lapsed, never an erased one and never one at the attempt bound
+ * ({@link DEAL_IMPORT_GIVE_UP_SPENT} fails those), skipping rows another transaction holds. Each
+ * row carries the `claim_token` that fences every later write and `last_row_number`, the highest
+ * report row recorded (null for none). The report is always contiguous from row 2: send the next
+ * batch from the row after it. Rows at or below it are never read again.
+ */
+export const DEAL_IMPORT_CLAIM = `with due as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and state in ('uploaded', 'processing') and erased_at is null
+    and attempts < ${DEAL_IMPORT_MAX_ATTEMPTS} and next_attempt_at <= clock_timestamp()
+  order by next_attempt_at
+  limit ${BATCH('$2')}
+  for update skip locked)
+update playbook.deal_imports i
+set state = 'processing', attempts = i.attempts + 1, claim_token = gen_random_uuid(),
+    next_attempt_at = clock_timestamp() + ${LEASE('$3')}, updated_at = clock_timestamp()
+from due
+where i.organization_id = $1 and i.id = due.id
+returning i.id, i.object_key, i.size_bytes, i.attempts, i.claim_token,
+  case when i.report_through > 1 then i.report_through end as last_row_number`
+
+/**
+ * Extend the lease of a claimed import: `$1` Organization, `$2` the import, `$3` the claim token,
+ * `$4` the new lease in milliseconds. No row when the token no longer holds (the import was
+ * claimed again, finished or erased): stop.
+ */
+export const DEAL_IMPORT_HEARTBEAT = `update playbook.deal_imports
+set next_attempt_at = clock_timestamp() + ${LEASE('$4')}, updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+returning id`
+
+/**
+ * Give a claimed import back to the queue after a failure that may pass: `$1` Organization, `$2`
+ * the import, `$3` the claim token, `$4` the delay in milliseconds (cut to
+ * {@link INGESTION_MAX_RETRY_DELAY_MS}). Rows already recorded stay; the next claim resumes.
+ */
+export const DEAL_IMPORT_RETRY = `update playbook.deal_imports
+set state = 'uploaded', claim_token = null,
+    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), ${INGESTION_MAX_RETRY_DELAY_MS}) / 1000),
+    updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+returning id, attempts`
+
+/**
+ * Apply one bounded batch of CSV rows to the Deals and record the report, in one statement. `$1`
+ * Organization, `$2` the import, `$3` the claim token, `$4` a JSON array of rows, `$5` the
+ * Organization's Deal limit (the service's number, ADR 0018 leaves it to the ticket), `$6` how many
+ * rows to take (clamped to 1..{@link DEAL_IMPORT_APPLY_BATCH}; the first rows by row number are
+ * taken and the answer's `taken` says how many). Each element is
+ * `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` as the contract's
+ * `checkDealImportRow` produced it: `reason` is its rejection or null, `deal_id` is null only for
+ * `invalid_deal_id` and `wrong_column_count`, a blank cell is null. **Run {@link QUOTA_LOCK} first
+ * in the same transaction** (the statement refuses without it), so the Deal count and the existing
+ * Deals are read after the lock.
+ *
+ * **Order.** The report is contiguous from row 2 (the header is row 1): the import row keeps
+ * `report_through`, the highest row number in it, and a check ties `applied_count + rejected_count`
+ * to `report_through - 1`. The statement reads only the rows numbered `report_through + 1`,
+ * `report_through + 2` and so on without a gap (a row at or below `report_through` is skipped, so a
+ * batch resent after a lost answer changes nothing; a row after a gap is not taken) and the answer's
+ * `taken` says how many it took and `through` the new `report_through`: send the next batch from
+ * the row after it. A row is therefore judged only after every row before it was judged, which makes
+ * "the first row of a deal id wins" exact. Every row it takes is decided in the same statement: it
+ * locks the Deals the batch names (`for update`, in id order, which reads the newest committed version
+ * after waiting for a concurrent Outcome change), so no row is left undecided; a Deal that
+ * another transaction decided meanwhile is `outcome_already_decided`. Nothing else inserts a Deal
+ * without the upload lock, so the insert has no conflict to lose (a conflict, like an undecided
+ * row, aborts the statement and records nothing). The statement raises
+ * `playbook.upload_lock` when the transaction does not hold the lock.
+ *
+ * Rules, per row in row order: a deal id seen earlier in the file (this batch or an earlier one) is
+ * `duplicate_in_file`, whatever else is wrong with the repeat; the row's own `reason` is kept; a
+ * Deal that is `won` or `lost` is `outcome_already_decided`, even for a row that says the same; a
+ * Deal that is `open` takes the row (the Outcome if the row has one, and the closing time, amount,
+ * currency and name when the cell is not blank; a blank cell never clears a value; the Outcome
+ * sequence rises when the Outcome or closing time changes); an unknown deal id creates an open or
+ * decided Deal (`appeared_in_import` true) unless the count would pass `$5` (`deal_limit_reached`;
+ * a later row that would create one is refused too). No row at all when the claim token does not hold. The Outcome sequence
+ * is limited by `DEAL_MAX_SEQ` (the column is a 32-bit integer; a Deal whose sequence is at the
+ * ceiling cannot take another Outcome change, and the write fails rather than wraps).
+ *
+ * **What the service must do.** It counts the CSV's records itself and enforces `too_many_rows`
+ * ({@link DEAL_IMPORT_MAX_ROWS}) before applying anything, sends each row number once per batch, and
+ * passes the true data-row count to {@link DEAL_IMPORT_FINISH}. A row number outside 2 to
+ * `DEAL_IMPORT_MAX_ROWS + 1` or repeated within one batch is refused cleanly: the batch takes
+ * nothing, records nothing, and the `summary` row's `refusal` is `row_number_range` or
+ * `row_number_repeated` (null otherwise). A malformed `$4` JSON or a non-integer row number
+ * raises a data exception (SQLSTATE class 22): a programming error, not data.
+ *
+ * The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`, `refusal`) and one
+ * `outcome_changed` row per Deal this statement moved (`deal_record_id`, `outcome_seq`, read from the
+ * locked row the import changed, so a portal change made meanwhile never makes a second message):
+ * publish the Outcome-changed message for each.
+ */
+export const DEAL_IMPORT_APPLY = `with imp as (
+  select id, report_through, playbook.require_upload_lock($1) as lock_held from playbook.deal_imports
+  where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+  for update),
+raw as (
+  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+refuse as (
+  select case
+    when exists (select 1 from raw where row_number is null or row_number not between 2 and ${DEAL_IMPORT_MAX_ROWS + 1}) then 'row_number_range'
+    when exists (select 1 from raw group by row_number having count(*) > 1) then 'row_number_repeated'
+  end as why),
+sent as (
+  select raw.row_number, raw.deal_id, raw.reason, raw.outcome, raw.closed_at, raw.amount, raw.currency, raw.name,
+    imp.report_through as base, dense_rank() over (order by raw.row_number) as rk
+  from imp, raw
+  where raw.row_number > imp.report_through and (select why from refuse) is null),
+b as (
+  select row_number, deal_id, reason, outcome, closed_at, amount, currency, name
+  from sent where row_number = base + rk
+  order by row_number
+  limit ${CLAMP('$6', DEAL_IMPORT_APPLY_BATCH)}),
+lk as (
+  select d.id, d.deal_id, d.outcome, d.outcome_seq, d.closed_at from playbook.deals d
+  where d.organization_id = $1 and d.deal_id in (select deal_id from b where deal_id is not null)
+  order by d.id
+  for update),
+ranked as (
+  select b.*, row_number() over (partition by b.deal_id order by b.row_number) as nth from b),
+seen as (
+  select r.deal_id from playbook.deal_import_rows r
+  where r.organization_id = $1 and r.import_id = $2 and r.reason is distinct from 'duplicate_in_file'
+    and r.deal_id in (select deal_id from b)),
+cls as (
+  select k.*, d.id as deal_pk, d.outcome as cur_outcome, d.outcome_seq as cur_seq, d.closed_at as cur_closed_at,
+    case
+      when k.deal_id is not null and (k.nth > 1 or k.deal_id in (select deal_id from seen)) then 'duplicate_in_file'
+      when k.reason is not null then k.reason
+      when d.id is not null and d.outcome <> 'open' then 'outcome_already_decided'
+    end as bad
+  from ranked k left join lk d on d.deal_id = k.deal_id),
+fin as (
+  select c.*,
+    case when c.bad is null and c.deal_pk is null
+      and coalesce((select deal_count from playbook.organization_usage where organization_id = $1), 0)
+        + count(*) filter (where c.bad is null and c.deal_pk is null) over (order by c.row_number) > $5::bigint
+      then 'deal_limit_reached' else c.bad end as final_bad
+  from cls c),
+upd as (
+  update playbook.deals d
+  set outcome = f.outcome,
+      outcome_seq = d.outcome_seq + (case when f.outcome <> d.outcome or coalesce(f.closed_at, d.closed_at) is distinct from d.closed_at then 1 else 0 end),
+      closed_at = coalesce(f.closed_at, d.closed_at), amount = coalesce(f.amount, d.amount),
+      currency = coalesce(f.currency, d.currency), name = coalesce(f.name, d.name),
+      appeared_in_import = true, updated_at = clock_timestamp()
+  from fin f
+  where d.organization_id = $1 and d.id = f.deal_pk and f.final_bad is null and d.outcome = 'open'
+  returning d.id, d.deal_id, d.outcome_seq, (d.outcome_seq <> f.cur_seq) as bumped),
+ins as (
+  insert into playbook.deals (id, organization_id, deal_id, name, outcome, closed_at, amount, currency, appeared_in_import)
+  select 'deal_' || replace(gen_random_uuid()::text, '-', ''), $1, f.deal_id, f.name, f.outcome, f.closed_at, f.amount, f.currency, true
+  from fin f where f.final_bad is null and f.deal_pk is null
+  returning deal_id),
+res as (
+  select f.row_number, f.deal_id, f.final_bad as reason from fin f where f.final_bad is not null
+  union all select f.row_number, f.deal_id, null from fin f join upd u on u.id = f.deal_pk where f.final_bad is null
+  union all select f.row_number, f.deal_id, null from fin f join ins i on i.deal_id = f.deal_id where f.final_bad is null and f.deal_pk is null),
+rep as (
+  insert into playbook.deal_import_rows (organization_id, import_id, row_number, deal_id, result, reason)
+  select $1, $2, res.row_number, res.deal_id, case when res.reason is null then 'applied' else 'rejected' end, res.reason
+  from res
+  returning result),
+cnt as (
+  update playbook.deal_imports
+  set applied_count = applied_count + (select count(*) from rep where result = 'applied'),
+      rejected_count = rejected_count + (select count(*) from rep where result = 'rejected'),
+      report_through = report_through + (select count(*) from b),
+      updated_at = clock_timestamp()
+  where organization_id = $1 and id = $2 and exists (select 1 from imp)
+  returning report_through)
+select 'summary' as kind, null::text as deal_record_id, null::int as outcome_seq,
+  (select count(*) from b)::int as taken,
+  (select count(*) from rep where result = 'applied')::int as applied,
+  (select count(*) from rep where result = 'rejected')::int as rejected,
+  (select report_through from cnt) as through,
+  (select why from refuse) as refusal
+where exists (select 1 from imp)
+union all
+select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null, null from upd u where u.bumped`
+
+/**
+ * Finish an import whose rows are all reported: `$1` Organization, `$2` the import, `$3` the claim
+ * token, `$4` the number of data rows in the CSV. It completes only if the report is contiguous
+ * through the last row (`report_through = $4 + 1`, and the table check ties the counts to it), else
+ * returns no row: send the rows after `report_through`. **Remove the stored CSV first**; this records that it is gone (`object_removed_at`). The
+ * row has the three counts of the contract's import.
+ */
+export const DEAL_IMPORT_FINISH = `update playbook.deal_imports
+set state = 'completed', claim_token = null, row_count = applied_count + rejected_count,
+    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+  and report_through = $4::int + 1
+returning id, row_count, applied_count, rejected_count`
+
+/**
+ * End a claimed import as failed with a reason: `$1` Organization, `$2` the import, `$3` the claim
+ * token, `$4` the reason (`too_many_rows`, `unreadable` or `processing_failed`). Rows already
+ * applied stay applied and in the report. **Remove the stored CSV first**; this records that it is
+ * gone.
+ */
+export const DEAL_IMPORT_FAIL = `update playbook.deal_imports
+set state = 'failed', failure_reason = $4::text, claim_token = null,
+    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
+returning id`
+
+/**
+ * Fail the imports that reached the attempt bound ({@link DEAL_IMPORT_MAX_ATTEMPTS}) and whose
+ * lease lapsed: `$1` Organization, `$2` how many (clamped). The reason is `processing_failed`; the
+ * rows are `id` and `object_key`, whose stored CSVs the service removes and then records with
+ * {@link DEAL_IMPORT_OBJECT_REMOVED}.
+ */
+export const DEAL_IMPORT_GIVE_UP_SPENT = `with batch as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and state in ('uploaded', 'processing') and erased_at is null
+    and attempts >= ${DEAL_IMPORT_MAX_ATTEMPTS} and next_attempt_at <= clock_timestamp()
+  order by next_attempt_at
+  limit ${BATCH('$2')}
+  for update skip locked)
+update playbook.deal_imports t
+set state = 'failed', failure_reason = 'processing_failed', claim_token = null,
+    finished_at = clock_timestamp(), updated_at = clock_timestamp()
+from batch
+where t.organization_id = $1 and t.id = batch.id
+returning t.id, t.object_key`
+
+/**
+ * Record that the stored CSV of an import is removed: `$1` Organization, `$2` the import. Only for
+ * an import that ended without finishing through {@link DEAL_IMPORT_FINISH} or
+ * {@link DEAL_IMPORT_FAIL} (which record it themselves): a spent one from
+ * {@link DEAL_IMPORT_GIVE_UP_SPENT}, or an erased one from {@link DEAL_IMPORT_ERASE_BATCH}.
+ * Idempotent.
+ */
+export const DEAL_IMPORT_OBJECT_REMOVED = `update playbook.deal_imports
+set object_removed_at = coalesce(object_removed_at, clock_timestamp()), updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and (erased_at is not null or state = 'failed')
+returning id`
+
+/** One page of an import's report by row number: `$1` Organization, `$2` the import, `$3` the last row number of the previous page (0 for the first), `$4` the page size (clamped). On the primary key. */
+export const DEAL_IMPORT_ROWS_LIST = `select row_number, deal_id, result, reason
+from playbook.deal_import_rows
+where organization_id = $1 and import_id = $2 and row_number > $3::int
+order by row_number
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/** {@link DEAL_IMPORT_ROWS_LIST} for one result (`$5`: `applied` or `rejected`), on `deal_import_rows_result_idx`. */
+export const DEAL_IMPORT_ROWS_LIST_BY_RESULT = `select row_number, deal_id, result, reason
+from playbook.deal_import_rows
+where organization_id = $1 and import_id = $2 and result = $5::text and row_number > $3::int
+order by row_number
+limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
+
+/**
+ * One batch of an erasure of Deal imports: `$1` Organization, `$2` batch size (clamped). It takes the
+ * first imports, in id order, that are not yet erased (`deal_imports_unerased_idx`), marks them
+ * erased, ends an active one as `failed` with `processing_failed` (its job is fenced: no claim,
+ * heartbeat, apply or finish holds any more) and returns each as `id`, `object_key` and
+ * `object_pending`, true when the CSV may still be stored: **remove it, then call
+ * {@link DEAL_IMPORT_OBJECT_REMOVED}**. An import that ended normally already recorded its removal.
+ * Repeat until no row comes back. Then purge each with {@link DEAL_IMPORT_PURGE_BATCH}.
+ */
+export const DEAL_IMPORT_ERASE_BATCH = `with batch as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and erased_at is null
+  order by id
+  limit ${BATCH('$2')}
+  for update)
+update playbook.deal_imports i
+set state = case when i.state in ('uploaded', 'processing') then 'failed' else i.state end,
+    failure_reason = case when i.state in ('uploaded', 'processing') then 'processing_failed' else i.failure_reason end,
+    finished_at = coalesce(i.finished_at, clock_timestamp()), claim_token = null,
+    erased_at = clock_timestamp(), updated_at = clock_timestamp()
+from batch
+where i.organization_id = $1 and i.id = batch.id
+returning i.id, i.object_key, (i.object_removed_at is null) as object_pending`
+
+/**
+ * Purge an erased import in bounded steps: `$1` Organization, `$2` the import, `$3` how many report
+ * rows to delete (clamped). It does nothing unless the import is erased and its stored CSV is
+ * recorded removed. One call deletes up to `$3` report rows; a call that finds none left deletes the
+ * import row itself (`import_deleted` true). Repeat until `import_deleted`. The foreign key does not
+ * cascade, so the import row cannot go while a report row remains.
+ */
+export const DEAL_IMPORT_PURGE_BATCH = `with imp as (
+  select id from playbook.deal_imports
+  where organization_id = $1 and id = $2 and erased_at is not null and object_removed_at is not null
+  for update),
+pick as (
+  select r.row_number from playbook.deal_import_rows r, imp
+  where r.organization_id = $1 and r.import_id = $2
+  order by r.row_number
+  limit ${BATCH('$3')}),
+del as (
+  delete from playbook.deal_import_rows r
+  using pick
+  where r.organization_id = $1 and r.import_id = $2 and r.row_number = pick.row_number
+  returning 1),
+gone as (
+  delete from playbook.deal_imports i
+  using imp
+  where i.organization_id = $1 and i.id = imp.id
+    and not exists (select 1 from playbook.deal_import_rows x where x.organization_id = $1 and x.import_id = $2)
+  returning 1)
+select (select count(*) from del)::int as deleted_rows, exists (select 1 from gone) as import_deleted
+where exists (select 1 from imp)`
+
+/**
+ * Erase one bounded batch of Deals: `$1` Organization, `$2` batch size (clamped); the number deleted
+ * comes back as `deleted`. Repeat until 0. `playbook.erase_deals` takes the upload lock first (see the
+ * migration) and runs in the Organization's scope only.
+ */
+export const DEAL_ERASE_BATCH = `select playbook.erase_deals($1::text, $2::int) as deleted`
+
+/** The rights confirmation of the Organization: `$1` Organization. No row when none was recorded. */
+export const RIGHTS_GET = `select confirmed_by, confirmed_at, wording_version
+from playbook.rights_confirmations
+where organization_id = $1`
+
+/**
+ * Record the rights confirmation (ADR 0018 choice 12): `$1` Organization, `$2` the confirming
+ * member, `$3` the wording version shown (the service checks it is the current one first). A
+ * version above the stored one replaces it; the same version keeps the first confirmation (its
+ * member and time), so a repeat is idempotent; a lower version is ignored. The row is the stored
+ * confirmation after the call, with `recorded` true when this call wrote it. Whether the stored
+ * version is the current one is the service's comparison, and the Call upload statement (a later
+ * migration) takes the current version as a parameter and refuses unless the stored version equals
+ * it, in the same statement as the insert.
+ */
+export const RIGHTS_CONFIRM = `with up as (
+  insert into playbook.rights_confirmations as r (organization_id, confirmed_by, confirmed_at, wording_version)
+  values ($1, $2::text, clock_timestamp(), $3::int)
+  on conflict (organization_id) do update
+    set confirmed_by = excluded.confirmed_by, confirmed_at = excluded.confirmed_at, wording_version = excluded.wording_version
+    where r.wording_version < excluded.wording_version
+  returning confirmed_by, confirmed_at, wording_version)
+select confirmed_by, confirmed_at, wording_version, true as recorded from up
+union all
+select confirmed_by, confirmed_at, wording_version, false
+from playbook.rights_confirmations
+where organization_id = $1 and not exists (select 1 from up)`
+
 /** Every statement above by name, for the README check and the integration tests. */
 export const PLAYBOOK_STATEMENTS = {
   QUOTA_LOCK,
@@ -1181,5 +1688,30 @@ export const PLAYBOOK_STATEMENTS = {
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_RESET,
   ORPHAN_SWEEP_DONE,
+  DEAL_GET,
+  DEAL_BY_DEAL_ID,
+  DEAL_LIST,
+  DEAL_LIST_BY_OUTCOME,
+  DEAL_LIST_BY_IMPORT_FLAG,
+  DEAL_SET_OUTCOME,
+  DEAL_USAGE,
+  DEAL_IMPORT_INSERT,
+  DEAL_IMPORT_GET,
+  DEAL_IMPORT_LIST,
+  DEAL_IMPORT_CLAIM,
+  DEAL_IMPORT_HEARTBEAT,
+  DEAL_IMPORT_RETRY,
+  DEAL_IMPORT_APPLY,
+  DEAL_IMPORT_FINISH,
+  DEAL_IMPORT_FAIL,
+  DEAL_IMPORT_GIVE_UP_SPENT,
+  DEAL_IMPORT_OBJECT_REMOVED,
+  DEAL_IMPORT_ROWS_LIST,
+  DEAL_IMPORT_ROWS_LIST_BY_RESULT,
+  DEAL_IMPORT_ERASE_BATCH,
+  DEAL_IMPORT_PURGE_BATCH,
+  DEAL_ERASE_BATCH,
+  RIGHTS_GET,
+  RIGHTS_CONFIRM,
   ORGANIZATIONS_WITH_WORK,
 } as const

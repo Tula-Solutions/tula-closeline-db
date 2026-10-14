@@ -179,7 +179,7 @@ declare const AUTH_STATEMENTS: {
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CONSUMED_MESSAGE_STATES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, consumedMessage, coreSchema, credentials, dealImportRows, dealImports, deals, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, refreshTokens, rightsConfirmations, sessions, signingKeys, smsCodeCounts, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -8658,6 +8658,806 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g36<{
 }>;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
+/** The Outcome of a Deal. Mirrors the contract's `OUTCOMES`. */
+declare const DEAL_OUTCOMES: readonly ["won", "lost", "open"];
+/** The states of a Deal import. Mirrors the contract's `DEAL_IMPORT_STATES`. */
+declare const DEAL_IMPORT_STATES: readonly ["uploaded", "processing", "completed", "failed"];
+/** Why a whole import ended `failed`. Mirrors the contract's `DEAL_IMPORT_FAILURE_REASONS`. */
+declare const DEAL_IMPORT_FAILURE_REASONS: readonly ["too_many_rows", "unreadable", "processing_failed"];
+/** The result of one CSV row. Mirrors the contract's `DEAL_IMPORT_ROW_RESULTS`. */
+declare const DEAL_IMPORT_ROW_RESULTS: readonly ["applied", "rejected"];
+/** Why a row was rejected. Mirrors the contract's `DEAL_IMPORT_ROW_REASONS`. */
+declare const DEAL_IMPORT_ROW_REASONS: readonly ["wrong_column_count", "invalid_deal_id", "duplicate_in_file", "invalid_outcome", "invalid_closed_at", "invalid_amount", "invalid_currency", "invalid_name", "outcome_already_decided", "deal_limit_reached"];
+/** The longest deal id in code points. Mirrors the contract's `MAX_DEAL_ID_LENGTH`. */
+declare const DEAL_ID_MAX_LENGTH = 128;
+/** The most UTF-8 bytes a deal id takes (4 per code point). Mirrors the contract's `MAX_DEAL_ID_BYTES`. */
+declare const DEAL_ID_MAX_BYTES = 512;
+/** The longest Deal name in code points. Mirrors the contract's `MAX_DEAL_NAME_LENGTH`. */
+declare const DEAL_NAME_MAX_LENGTH = 200;
+/** The most UTF-8 bytes a Deal name takes. Mirrors the contract's `MAX_DEAL_NAME_BYTES`. */
+declare const DEAL_NAME_MAX_BYTES = 800;
+/** The most data rows in one CSV. Mirrors the contract's `MAX_DEAL_IMPORT_ROWS`. */
+declare const DEAL_IMPORT_MAX_ROWS = 5e4;
+/** The largest CSV in bytes (10 MiB). Mirrors the contract's `MAX_DEAL_IMPORT_BYTES`. */
+declare const DEAL_IMPORT_MAX_BYTES: number;
+/** The largest sequence number (Outcome sequence). Mirrors the contract's `MAX_DELETION_SEQ`. */
+declare const DEAL_MAX_SEQ = 2147483647;
+/** The largest rights wording version. Mirrors the contract's `MAX_RIGHTS_WORDING_VERSION`. */
+declare const RIGHTS_MAX_WORDING_VERSION = 1e6;
+/** The most times an import job may be claimed: the table's bound, as for ingestion jobs. */
+declare const DEAL_IMPORT_MAX_ATTEMPTS = 20;
+/** The most rows one {@link DEAL_IMPORT_APPLY}-style batch may take: the library's batch bound. */
+declare const DEAL_IMPORT_APPLY_BATCH = 500;
+/**
+* A Deal of an Organization (ADR 0018): the record a Call is linked to and a CSV row creates or
+* updates. `deal_id` is the customer's own identifier, trimmed by the service and otherwise
+* compared exactly (`deals_deal_id_key`, unique per Organization); it is customer text, never
+* logged. `outcome` is `won`, `lost` or `open` and `outcome_seq` counts its changes: a trigger
+* demands that a change of Outcome raises it by exactly one and that it never falls, so a
+* re-tag job that carries it cannot finish in the wrong order (as `deletion_seq` for documents).
+* There is **no delete** for the service role: a Deal goes only with its Organization's erasure
+* (`playbook.erase_deals`). `appeared_in_import` says whether any CSV ever named it, so a Deal
+* made only by a Call upload (a typo) can be listed.
+*
+* Lists served (keyset on `(created_at, id)`, newest first): all (`deals_list_idx`), by Outcome
+* (`deals_outcome_list_idx`), by whether it appeared in an import (`deals_import_list_idx`);
+* lookup by the customer's id: `deals_deal_id_key`.
+*/
+declare const deals: PgTableWithColumns_a5zn0g37<{
+	name: "deals";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp37<{
+			name: "id";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp37<{
+			name: "organization_id";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealId: PgColumn_ffrhhp37<{
+			name: "deal_id";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		name: PgColumn_ffrhhp37<{
+			name: "name";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		outcome: PgColumn_ffrhhp37<{
+			name: "outcome";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgText";
+			data: "lost" | "open" | "won";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["won", "lost", "open"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		outcomeSeq: PgColumn_ffrhhp37<{
+			name: "outcome_seq";
+			tableName: "deals";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		closedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deals";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		amount: PgColumn_ffrhhp37<{
+			name: "amount";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgNumeric";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		currency: PgColumn_ffrhhp37<{
+			name: "currency";
+			tableName: "deals";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		appearedInImport: PgColumn_ffrhhp37<{
+			name: "appeared_in_import";
+			tableName: "deals";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deals";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deals";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A Deal import: one uploaded CSV and the job that applies it. The CSV is in object storage under
+* `object_key` until the job ends; the service removes it first and then finishes the import, or
+* (for an erased import) records the removal with `DEAL_IMPORT_OBJECT_REMOVED`. The job's lease
+* is the same as an ingestion job's: `next_attempt_at` is the due time while `uploaded` and the
+* lease end while `processing`, `claim_token` fences a worker whose lease lapsed, and `attempts` is
+* bounded by the table. Rows are applied in batches (`DEAL_IMPORT_APPLY`) that move
+* `applied_count` and `rejected_count` in the same statement that records the report rows, so the
+* counts cannot drift; `row_count` is set when the import completes, and only then. An erased
+* import has `erased_at`, is `failed` and is never claimed again; its report rows and then the
+* import row itself are removed in bounded batches (`DEAL_IMPORT_PURGE_BATCH`).
+*/
+declare const dealImports: PgTableWithColumns_a5zn0g37<{
+	name: "deal_imports";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp37<{
+			name: "id";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp37<{
+			name: "organization_id";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp37<{
+			name: "state";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgText";
+			data: "completed" | "failed" | "processing" | "uploaded";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["uploaded", "processing", "completed", "failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp37<{
+			name: "failure_reason";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgText";
+			data: "processing_failed" | "too_many_rows" | "unreadable";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["too_many_rows", "unreadable", "processing_failed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		uploadedBy: PgColumn_ffrhhp37<{
+			name: "uploaded_by";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		objectKey: PgColumn_ffrhhp37<{
+			name: "object_key";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sizeBytes: PgColumn_ffrhhp37<{
+			name: "size_bytes";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		attempts: PgColumn_ffrhhp37<{
+			name: "attempts";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		nextAttemptAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deal_imports";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		claimToken: PgColumn_ffrhhp37<{
+			name: "claim_token";
+			tableName: "deal_imports";
+			dataType: "string";
+			columnType: "PgUUID";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		rowCount: PgColumn_ffrhhp37<{
+			name: "row_count";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		appliedCount: PgColumn_ffrhhp37<{
+			name: "applied_count";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		rejectedCount: PgColumn_ffrhhp37<{
+			name: "rejected_count";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		reportThrough: PgColumn_ffrhhp37<{
+			name: "report_through";
+			tableName: "deal_imports";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		objectRemovedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deal_imports";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		erasedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deal_imports";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		finishedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deal_imports";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deal_imports";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "deal_imports";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* The report of a Deal import, one row per CSV data row: the row number (2 is the first data row,
+* counting the header as 1), the deal id the row named, the result and the reason. **Only those
+* four things are stored**, never another cell, so the report holds no amount, name or date. A
+* row has a deal id unless its id was unusable (`invalid_deal_id`, `wrong_column_count`). The first
+* row of a deal id within an import is unique (`deal_import_rows_first_key`); every later row of it
+* is `duplicate_in_file`, so a repeat is rejected even when two batches race. Listed by row number
+* (`deal_import_rows_pkey`, `deal_import_rows_result_idx` for one result). The foreign key to the
+* import is not cascading: rows go in bounded batches before the import row.
+*/
+declare const dealImportRows: PgTableWithColumns_a5zn0g37<{
+	name: "deal_import_rows";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp37<{
+			name: "organization_id";
+			tableName: "deal_import_rows";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		importId: PgColumn_ffrhhp37<{
+			name: "import_id";
+			tableName: "deal_import_rows";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		rowNumber: PgColumn_ffrhhp37<{
+			name: "row_number";
+			tableName: "deal_import_rows";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealId: PgColumn_ffrhhp37<{
+			name: "deal_id";
+			tableName: "deal_import_rows";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		result: PgColumn_ffrhhp37<{
+			name: "result";
+			tableName: "deal_import_rows";
+			dataType: "string";
+			columnType: "PgText";
+			data: "applied" | "rejected";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["applied", "rejected"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		reason: PgColumn_ffrhhp37<{
+			name: "reason";
+			tableName: "deal_import_rows";
+			dataType: "string";
+			columnType: "PgText";
+			data: "deal_limit_reached" | "duplicate_in_file" | "invalid_amount" | "invalid_closed_at" | "invalid_currency" | "invalid_deal_id" | "invalid_name" | "invalid_outcome" | "outcome_already_decided" | "wrong_column_count";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["wrong_column_count", "invalid_deal_id", "duplicate_in_file", "invalid_outcome", "invalid_closed_at", "invalid_amount", "invalid_currency", "invalid_name", "outcome_already_decided", "deal_limit_reached"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* The rights confirmation of ADR 0018, choice 12: one row per Organization, saying which member
+* confirmed that the Organization may share its Recordings and Transcripts, when, and the version
+* of the wording shown. A newer version replaces it (`RIGHTS_CONFIRM`); the wording itself is not
+* here. Whether the stored version is the current one is the service's number to compare.
+*/
+declare const rightsConfirmations: PgTableWithColumns_a5zn0g37<{
+	name: "rights_confirmations";
+	schema: "playbook";
+	columns: {
+		organizationId: PgColumn_ffrhhp37<{
+			name: "organization_id";
+			tableName: "rights_confirmations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: true;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		confirmedBy: PgColumn_ffrhhp37<{
+			name: "confirmed_by";
+			tableName: "rights_confirmations";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		confirmedAt: PgColumn_ffrhhp37<{
+			name: string;
+			tableName: "rights_confirmations";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		wordingVersion: PgColumn_ffrhhp37<{
+			name: "wording_version";
+			tableName: "rights_confirmations";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
 /**
 * The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
 * `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
@@ -8722,11 +9522,11 @@ declare const PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_remove
 * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
 * - Quota counts: `organization_usage`, one row, kept by triggers.
 */
-declare const documents: PgTableWithColumns_a5zn0g37<{
+declare const documents: PgTableWithColumns_a5zn0g38<{
 	name: "documents";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp37<{
+		id: PgColumn_ffrhhp38<{
 			name: "id";
 			tableName: "documents";
 			dataType: "string";
@@ -8743,7 +9543,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "documents";
 			dataType: "string";
@@ -8760,7 +9560,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp37<{
+		name: PgColumn_ffrhhp38<{
 			name: "name";
 			tableName: "documents";
 			dataType: "string";
@@ -8777,7 +9577,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp37<{
+		state: PgColumn_ffrhhp38<{
 			name: "state";
 			tableName: "documents";
 			dataType: "string";
@@ -8794,7 +9594,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp37<{
+		contentHash: PgColumn_ffrhhp38<{
 			name: "content_hash";
 			tableName: "documents";
 			dataType: "custom";
@@ -8813,7 +9613,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		sizeBytes: PgColumn_ffrhhp37<{
+		sizeBytes: PgColumn_ffrhhp38<{
 			name: "size_bytes";
 			tableName: "documents";
 			dataType: "number";
@@ -8830,7 +9630,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		declaredType: PgColumn_ffrhhp37<{
+		declaredType: PgColumn_ffrhhp38<{
 			name: "declared_type";
 			tableName: "documents";
 			dataType: "string";
@@ -8847,7 +9647,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		detectedType: PgColumn_ffrhhp37<{
+		detectedType: PgColumn_ffrhhp38<{
 			name: "detected_type";
 			tableName: "documents";
 			dataType: "string";
@@ -8864,7 +9664,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp37<{
+		uploadedBy: PgColumn_ffrhhp38<{
 			name: "uploaded_by";
 			tableName: "documents";
 			dataType: "string";
@@ -8881,7 +9681,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp37<{
+		objectKey: PgColumn_ffrhhp38<{
 			name: "object_key";
 			tableName: "documents";
 			dataType: "string";
@@ -8898,7 +9698,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp37<{
+		failureReason: PgColumn_ffrhhp38<{
 			name: "failure_reason";
 			tableName: "documents";
 			dataType: "string";
@@ -8915,7 +9715,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp37<{
+		pageCount: PgColumn_ffrhhp38<{
 			name: "page_count";
 			tableName: "documents";
 			dataType: "number";
@@ -8932,7 +9732,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp37<{
+		epoch: PgColumn_ffrhhp38<{
 			name: "epoch";
 			tableName: "documents";
 			dataType: "number";
@@ -8949,7 +9749,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletionSeq: PgColumn_ffrhhp37<{
+		deletionSeq: PgColumn_ffrhhp38<{
 			name: "deletion_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -8966,7 +9766,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsRemovedSeq: PgColumn_ffrhhp37<{
+		vectorsRemovedSeq: PgColumn_ffrhhp38<{
 			name: "vectors_removed_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -8983,7 +9783,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp37<{
+		deletedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9000,7 +9800,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedBy: PgColumn_ffrhhp37<{
+		deletedBy: PgColumn_ffrhhp38<{
 			name: "deleted_by";
 			tableName: "documents";
 			dataType: "string";
@@ -9017,7 +9817,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp37<{
+		purgeDueAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9034,7 +9834,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeStartedAt: PgColumn_ffrhhp37<{
+		purgeStartedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9051,7 +9851,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeLeaseUntil: PgColumn_ffrhhp37<{
+		purgeLeaseUntil: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9068,7 +9868,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeAttempts: PgColumn_ffrhhp37<{
+		purgeAttempts: PgColumn_ffrhhp38<{
 			name: "purge_attempts";
 			tableName: "documents";
 			dataType: "number";
@@ -9085,7 +9885,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		restoreBarredAt: PgColumn_ffrhhp37<{
+		restoreBarredAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9102,7 +9902,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp37<{
+		createdAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9119,7 +9919,7 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp37<{
+		updatedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -9145,11 +9945,11 @@ declare const documents: PgTableWithColumns_a5zn0g37<{
 * own transaction, so it cannot drift from the table; the service role can only read it. A row
 * stays, at zero, once an Organization has had a document.
 */
-declare const organizationUsage: PgTableWithColumns_a5zn0g37<{
+declare const organizationUsage: PgTableWithColumns_a5zn0g38<{
 	name: "organization_usage";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "organization_usage";
 			dataType: "string";
@@ -9166,7 +9966,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentCount: PgColumn_ffrhhp37<{
+		documentCount: PgColumn_ffrhhp38<{
 			name: "document_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -9183,7 +9983,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		byteCount: PgColumn_ffrhhp37<{
+		byteCount: PgColumn_ffrhhp38<{
 			name: "byte_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -9200,7 +10000,24 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp37<{
+		dealCount: PgColumn_ffrhhp38<{
+			name: "deal_count";
+			tableName: "organization_usage";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "organization_usage";
 			dataType: "date";
@@ -9229,11 +10046,11 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g37<{
 * spent job and the give-up statement fails it. One active job per document
 * (`ingestion_jobs_active_document_key`).
 */
-declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
+declare const ingestionJobs: PgTableWithColumns_a5zn0g38<{
 	name: "ingestion_jobs";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp37<{
+		id: PgColumn_ffrhhp38<{
 			name: "id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9250,7 +10067,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9267,7 +10084,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentId: PgColumn_ffrhhp37<{
+		documentId: PgColumn_ffrhhp38<{
 			name: "document_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9284,7 +10101,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp37<{
+		epoch: PgColumn_ffrhhp38<{
 			name: "epoch";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9301,7 +10118,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp37<{
+		state: PgColumn_ffrhhp38<{
 			name: "state";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9318,7 +10135,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		step: PgColumn_ffrhhp37<{
+		step: PgColumn_ffrhhp38<{
 			name: "step";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9335,7 +10152,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp37<{
+		attempts: PgColumn_ffrhhp38<{
 			name: "attempts";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9352,7 +10169,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp37<{
+		nextAttemptAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9369,7 +10186,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp37<{
+		claimToken: PgColumn_ffrhhp38<{
 			name: "claim_token";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9386,7 +10203,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		artifactKey: PgColumn_ffrhhp37<{
+		artifactKey: PgColumn_ffrhhp38<{
 			name: "artifact_key";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9403,7 +10220,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp37<{
+		pageCount: PgColumn_ffrhhp38<{
 			name: "page_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9420,7 +10237,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunkCount: PgColumn_ffrhhp37<{
+		chunkCount: PgColumn_ffrhhp38<{
 			name: "chunk_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9437,7 +10254,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunksDone: PgColumn_ffrhhp37<{
+		chunksDone: PgColumn_ffrhhp38<{
 			name: "chunks_done";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -9454,7 +10271,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp37<{
+		failureReason: PgColumn_ffrhhp38<{
 			name: "failure_reason";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -9471,7 +10288,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp37<{
+		finishedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9488,7 +10305,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp37<{
+		createdAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9505,7 +10322,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp37<{
+		updatedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -9531,11 +10348,11 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g37<{
 * service role cannot delete the row: changing the model is a deliberate re-index, done by an
 * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
 */
-declare const indexSettings: PgTableWithColumns_a5zn0g37<{
+declare const indexSettings: PgTableWithColumns_a5zn0g38<{
 	name: "index_settings";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp37<{
+		organizationId: PgColumn_ffrhhp38<{
 			name: "organization_id";
 			tableName: "index_settings";
 			dataType: "string";
@@ -9552,7 +10369,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingModel: PgColumn_ffrhhp37<{
+		embeddingModel: PgColumn_ffrhhp38<{
 			name: "embedding_model";
 			tableName: "index_settings";
 			dataType: "string";
@@ -9569,7 +10386,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingDimension: PgColumn_ffrhhp37<{
+		embeddingDimension: PgColumn_ffrhhp38<{
 			name: "embedding_dimension";
 			tableName: "index_settings";
 			dataType: "number";
@@ -9586,7 +10403,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsWrittenAt: PgColumn_ffrhhp37<{
+		vectorsWrittenAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -9603,7 +10420,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp37<{
+		createdAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -9620,7 +10437,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp37<{
+		updatedAt: PgColumn_ffrhhp38<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -9640,16 +10457,17 @@ declare const indexSettings: PgTableWithColumns_a5zn0g37<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g39 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp39 } from "drizzle-orm/pg-core";
 /**
 * The kinds of due work `playbook.organizations_with_work` finds: documents due for purge, ingestion
 * jobs due or with a lapsed lease, deleted documents whose vector cleanup is not recorded, consumed
 * messages old enough to purge, idempotency keys old enough to purge, documents whose purge
 * reached the attempt bound, and Organizations with an upload attempt whose stored objects have not
-* been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`).
+* been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`), and Deal imports to
+* apply (`import_apply`, see `dealImports`).
 */
-declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep"];
+declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep", "import_apply"];
 /**
 * One row per kind of work and Organization that may have work from `due_at` on: the registry the
 * discovery function reads, because row-level security hides every tenant table from any role
@@ -9661,28 +10479,28 @@ declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", 
 * privilege on it; the function and the triggers are the only way in. The all-zero global scope
 * appears only for `consumed_purge`.
 */
-declare const playbookWorkHints: PgTableWithColumns_a5zn0g38<{
+declare const playbookWorkHints: PgTableWithColumns_a5zn0g39<{
 	name: "work_hints";
 	schema: "playbook";
 	columns: {
-		kind: PgColumn_ffrhhp38<{
+		kind: PgColumn_ffrhhp39<{
 			name: "kind";
 			tableName: "work_hints";
 			dataType: "string";
 			columnType: "PgText";
-			data: "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "jobs_due" | "orphan_sweep" | "purge_due" | "purge_spent";
+			data: "cleanup_pending" | "consumed_purge" | "idempotency_purge" | "import_apply" | "jobs_due" | "orphan_sweep" | "purge_due" | "purge_spent";
 			driverParam: string;
 			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep"];
+			enumValues: ["purge_due", "jobs_due", "cleanup_pending", "consumed_purge", "idempotency_purge", "purge_spent", "orphan_sweep", "import_apply"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "work_hints";
 			dataType: "string";
@@ -9699,7 +10517,7 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dueAt: PgColumn_ffrhhp38<{
+		dueAt: PgColumn_ffrhhp39<{
 			name: "due_at";
 			tableName: "work_hints";
 			dataType: "date";
@@ -10547,12 +11365,14 @@ declare const ORGANIZATION_REMOVE_REST = "select playbook.remove_organization_re
 /**
 * Whether an Organization is fully removed: the answer of the internal remove-all route. `$1`
 * Organization. One row: `no_documents`, `no_settings`, `no_usage`, `no_messages` (the
-* Organization's own consumed messages) and `removed`, true when all four hold. Idempotency keys
+* Organization's own consumed messages), `no_deals`, `no_imports` (a Deal import row, whose report
+* rows cannot exist without it), `no_rights` (the rights confirmation) and `removed`, true when all
+* seven hold. Idempotency keys
 * are not part of it (the remove-all call's own key stays until it ages out). Run it inside the
 * Organization's scope; in any other scope it returns no row, because the tenant tables would
 * otherwise look empty and answer "removed" for an Organization the caller cannot see.
 */
-declare const ORGANIZATION_REMOVAL_STATUS = "select\\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\\n  (not exists (select 1 from playbook.documents where organization_id = $1)\\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed\\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
+declare const ORGANIZATION_REMOVAL_STATUS = "select\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\n  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,\n  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,\n  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,\n  (not exists (select 1 from playbook.documents where organization_id = $1)\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)\n    and not exists (select 1 from playbook.deals where organization_id = $1)\n    and not exists (select 1 from playbook.deal_imports where organization_id = $1)\n    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
 /**
 * List the documents whose purge reached the attempt bound, one page, for a person to look at. `$1`
 * Organization, `$2` the last id of the previous page (`''` for the first), `$3` the page size,
@@ -10626,6 +11446,213 @@ declare function discoveredOrganizations(rows: readonly WorkDiscoveryRow[]): {
 	organizations: string[];
 	resumeAfter: string | null;
 };
+/** The names of the columns of a Deal answer, for the service's row type. */
+declare const DEAL_ROW_FIELDS: readonly ["id", "deal_id", "name", "outcome", "outcome_seq", "closed_at", "amount", "currency", "appeared_in_import", "created_at", "updated_at"];
+/**
+* Read one Deal by its opaque id. `$1` Organization, `$2` the `deal_…` id. No row when absent. The
+* Deal's Calls are not counted here: a later statement counts them.
+*/
+declare const DEAL_GET = "select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at\nfrom playbook.deals\nwhere organization_id = $1 and id = $2";
+/**
+* Look a Deal up by the customer's own deal id. `$1` Organization, `$2` the deal id, trimmed by the
+* caller and otherwise exact: the comparison is byte for byte, so `A-1` and `a-1` are two Deals
+* (`deals_deal_id_key`, one index read). No row when none has that id.
+*/
+declare const DEAL_BY_DEAL_ID = "select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at\nfrom playbook.deals\nwhere organization_id = $1 and deal_id = $2::text";
+/**
+* List the Deals, newest first, one page by keyset. `$1` Organization, `$2` and `$3` the
+* `cursor_at` (text, never a Date) and `id` of the last row of the previous page (`'infinity'` and
+* `''` for the first). A malformed cursor text raises SQLSTATE 22007 (`invalid_datetime_format`): the
+* service maps it to a validation error. Each row carries `cursor_at`, the text of `created_at` to pass back,
+* `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. On `deals_list_idx`, read
+* backwards.
+*/
+declare const DEAL_LIST: string;
+/** {@link DEAL_LIST} for one Outcome (`$5`: `won`, `lost` or `open`), on `deals_outcome_list_idx`. */
+declare const DEAL_LIST_BY_OUTCOME: string;
+/**
+* {@link DEAL_LIST} for Deals that did (`$5` true) or never did (`$5` false) appear in an import, on
+* `deals_import_list_idx`: the second is the list of Deals only a Call upload created, where a typo
+* shows.
+*/
+declare const DEAL_LIST_BY_IMPORT_FLAG: string;
+/**
+* Set a Deal's Outcome (an Owner or Admin may set or correct any Deal's, ADR 0018 choice 5). `$1`
+* Organization, `$2` the Deal, `$3` the Outcome, `$4` the closing time and `$5` whether to set it
+* (false leaves `closed_at` as it is; true with a null `$4` clears it). The row is locked first, so
+* two changes queue and each sees the other's result. When the Outcome or the closing time
+* changes, `outcome_seq` rises by exactly one in the same write (a trigger refuses any other
+* move); when nothing changes it does not, so a repeat is idempotent and publishes nothing. The
+* answer is the Deal's state after the call with `changed`; no row when the Deal does not exist.
+* Publish the Outcome-changed message with the returned `outcome_seq` when `changed`.
+*/
+declare const DEAL_SET_OUTCOME = "with cur as (\n  select * from playbook.deals where organization_id = $1 and id = $2 for update),\nu as (\n  update playbook.deals d\n  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,\n      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()\n  from cur\n  where d.organization_id = $1 and d.id = cur.id\n    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))\n  returning d.*)\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u\nunion all\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)";
+/** The Deal count of an Organization, kept by a trigger: the quota check reads this one row. */
+declare const DEAL_USAGE = "select deal_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+/**
+* Record an uploaded CSV as a Deal import and queue its job. `$1` Organization, `$2` the new
+* `dimp_…` id, `$3` the uploader, `$4` the object key the CSV was stored under, `$5` its size in
+* bytes (1 to 10 MiB). Run it in the transaction of the upload's idempotency key
+* ({@link IDEMPOTENCY_BEGIN} first, then this): the key insert is what lets the orphan sweep see a
+* CSV whose outcome was unknown. It takes no upload lock and no row shared with another import of
+* the Organization, so two imports uploading at once do not wait for each other. The trigger notes
+* the `import_apply` hint.
+*/
+declare const DEAL_IMPORT_INSERT = "insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)\\nvalues ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())\\nreturning id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at";
+/** Read one Deal import. `$1` Organization, `$2` the `dimp_…` id. No row when absent or erased. */
+declare const DEAL_IMPORT_GET = "select id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at\\nfrom playbook.deal_imports\\nwhere organization_id = $1 and id = $2 and erased_at is null";
+/**
+* List the Deal imports, newest first, by keyset: `$1` Organization, `$2` and `$3` the cursor (the
+* last row's `cursor_at`, a text, never a Date, and `id`; `'infinity'` and `''` first), `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}.
+* On `deal_imports_list_idx`.
+*/
+declare const DEAL_IMPORT_LIST: string;
+/**
+* Claim due import jobs under a lease, as {@link INGESTION_JOB_CLAIM} does for documents: `$1`
+* Organization, `$2` how many (clamped to 1..{@link PLAYBOOK_MAX_BATCH}), `$3` the lease in
+* milliseconds (raised to {@link PLAYBOOK_MIN_LEASE_MS}). It takes `uploaded` imports and
+* `processing` ones whose lease lapsed, never an erased one and never one at the attempt bound
+* ({@link DEAL_IMPORT_GIVE_UP_SPENT} fails those), skipping rows another transaction holds. Each
+* row carries the `claim_token` that fences every later write and `last_row_number`, the highest
+* report row recorded (null for none). The report is always contiguous from row 2: send the next
+* batch from the row after it. Rows at or below it are never read again.
+*/
+declare const DEAL_IMPORT_CLAIM: string;
+/**
+* Extend the lease of a claimed import: `$1` Organization, `$2` the import, `$3` the claim token,
+* `$4` the new lease in milliseconds. No row when the token no longer holds (the import was
+* claimed again, finished or erased): stop.
+*/
+declare const DEAL_IMPORT_HEARTBEAT: string;
+/**
+* Give a claimed import back to the queue after a failure that may pass: `$1` Organization, `$2`
+* the import, `$3` the claim token, `$4` the delay in milliseconds (cut to
+* {@link INGESTION_MAX_RETRY_DELAY_MS}). Rows already recorded stay; the next claim resumes.
+*/
+declare const DEAL_IMPORT_RETRY = "update playbook.deal_imports\\nset state = 'uploaded', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\nreturning id, attempts";
+/**
+* Apply one bounded batch of CSV rows to the Deals and record the report, in one statement. `$1`
+* Organization, `$2` the import, `$3` the claim token, `$4` a JSON array of rows, `$5` the
+* Organization's Deal limit (the service's number, ADR 0018 leaves it to the ticket), `$6` how many
+* rows to take (clamped to 1..{@link DEAL_IMPORT_APPLY_BATCH}; the first rows by row number are
+* taken and the answer's `taken` says how many). Each element is
+* `{row_number, deal_id, reason, outcome, closed_at, amount, currency, name}` as the contract's
+* `checkDealImportRow` produced it: `reason` is its rejection or null, `deal_id` is null only for
+* `invalid_deal_id` and `wrong_column_count`, a blank cell is null. **Run {@link QUOTA_LOCK} first
+* in the same transaction** (the statement refuses without it), so the Deal count and the existing
+* Deals are read after the lock.
+*
+* **Order.** The report is contiguous from row 2 (the header is row 1): the import row keeps
+* `report_through`, the highest row number in it, and a check ties `applied_count + rejected_count`
+* to `report_through - 1`. The statement reads only the rows numbered `report_through + 1`,
+* `report_through + 2` and so on without a gap (a row at or below `report_through` is skipped, so a
+* batch resent after a lost answer changes nothing; a row after a gap is not taken) and the answer's
+* `taken` says how many it took and `through` the new `report_through`: send the next batch from
+* the row after it. A row is therefore judged only after every row before it was judged, which makes
+* "the first row of a deal id wins" exact. Every row it takes is decided in the same statement: it
+* locks the Deals the batch names (`for update`, in id order, which reads the newest committed version
+* after waiting for a concurrent Outcome change), so no row is left undecided; a Deal that
+* another transaction decided meanwhile is `outcome_already_decided`. Nothing else inserts a Deal
+* without the upload lock, so the insert has no conflict to lose (a conflict, like an undecided
+* row, aborts the statement and records nothing). The statement raises
+* `playbook.upload_lock` when the transaction does not hold the lock.
+*
+* Rules, per row in row order: a deal id seen earlier in the file (this batch or an earlier one) is
+* `duplicate_in_file`, whatever else is wrong with the repeat; the row's own `reason` is kept; a
+* Deal that is `won` or `lost` is `outcome_already_decided`, even for a row that says the same; a
+* Deal that is `open` takes the row (the Outcome if the row has one, and the closing time, amount,
+* currency and name when the cell is not blank; a blank cell never clears a value; the Outcome
+* sequence rises when the Outcome or closing time changes); an unknown deal id creates an open or
+* decided Deal (`appeared_in_import` true) unless the count would pass `$5` (`deal_limit_reached`;
+* a later row that would create one is refused too). No row at all when the claim token does not hold. The Outcome sequence
+* is limited by `DEAL_MAX_SEQ` (the column is a 32-bit integer; a Deal whose sequence is at the
+* ceiling cannot take another Outcome change, and the write fails rather than wraps).
+*
+* **What the service must do.** It counts the CSV's records itself and enforces `too_many_rows`
+* ({@link DEAL_IMPORT_MAX_ROWS}) before applying anything, sends each row number once per batch, and
+* passes the true data-row count to {@link DEAL_IMPORT_FINISH}. A row number outside 2 to
+* `DEAL_IMPORT_MAX_ROWS + 1` or repeated within one batch is refused cleanly: the batch takes
+* nothing, records nothing, and the `summary` row's `refusal` is `row_number_range` or
+* `row_number_repeated` (null otherwise). A malformed `$4` JSON or a non-integer row number
+* raises a data exception (SQLSTATE class 22): a programming error, not data.
+*
+* The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`, `refusal`) and one
+* `outcome_changed` row per Deal this statement moved (`deal_record_id`, `outcome_seq`, read from the
+* locked row the import changed, so a portal change made meanwhile never makes a second message):
+* publish the Outcome-changed message for each.
+*/
+declare const DEAL_IMPORT_APPLY: string;
+/**
+* Finish an import whose rows are all reported: `$1` Organization, `$2` the import, `$3` the claim
+* token, `$4` the number of data rows in the CSV. It completes only if the report is contiguous
+* through the last row (`report_through = $4 + 1`, and the table check ties the counts to it), else
+* returns no row: send the rows after `report_through`. **Remove the stored CSV first**; this records that it is gone (`object_removed_at`). The
+* row has the three counts of the contract's import.
+*/
+declare const DEAL_IMPORT_FINISH = "update playbook.deal_imports\\nset state = 'completed', claim_token = null, row_count = applied_count + rejected_count,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\n  and report_through = $4::int + 1\\nreturning id, row_count, applied_count, rejected_count";
+/**
+* End a claimed import as failed with a reason: `$1` Organization, `$2` the import, `$3` the claim
+* token, `$4` the reason (`too_many_rows`, `unreadable` or `processing_failed`). Rows already
+* applied stay applied and in the report. **Remove the stored CSV first**; this records that it is
+* gone.
+*/
+declare const DEAL_IMPORT_FAIL = "update playbook.deal_imports\\nset state = 'failed', failure_reason = $4::text, claim_token = null,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\nreturning id";
+/**
+* Fail the imports that reached the attempt bound ({@link DEAL_IMPORT_MAX_ATTEMPTS}) and whose
+* lease lapsed: `$1` Organization, `$2` how many (clamped). The reason is `processing_failed`; the
+* rows are `id` and `object_key`, whose stored CSVs the service removes and then records with
+* {@link DEAL_IMPORT_OBJECT_REMOVED}.
+*/
+declare const DEAL_IMPORT_GIVE_UP_SPENT: string;
+/**
+* Record that the stored CSV of an import is removed: `$1` Organization, `$2` the import. Only for
+* an import that ended without finishing through {@link DEAL_IMPORT_FINISH} or
+* {@link DEAL_IMPORT_FAIL} (which record it themselves): a spent one from
+* {@link DEAL_IMPORT_GIVE_UP_SPENT}, or an erased one from {@link DEAL_IMPORT_ERASE_BATCH}.
+* Idempotent.
+*/
+declare const DEAL_IMPORT_OBJECT_REMOVED = "update playbook.deal_imports\\nset object_removed_at = coalesce(object_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and (erased_at is not null or state = 'failed')\\nreturning id";
+/** One page of an import's report by row number: `$1` Organization, `$2` the import, `$3` the last row number of the previous page (0 for the first), `$4` the page size (clamped). On the primary key. */
+declare const DEAL_IMPORT_ROWS_LIST: string;
+/** {@link DEAL_IMPORT_ROWS_LIST} for one result (`$5`: `applied` or `rejected`), on `deal_import_rows_result_idx`. */
+declare const DEAL_IMPORT_ROWS_LIST_BY_RESULT: string;
+/**
+* One batch of an erasure of Deal imports: `$1` Organization, `$2` batch size (clamped). It takes the
+* first imports, in id order, that are not yet erased (`deal_imports_unerased_idx`), marks them
+* erased, ends an active one as `failed` with `processing_failed` (its job is fenced: no claim,
+* heartbeat, apply or finish holds any more) and returns each as `id`, `object_key` and
+* `object_pending`, true when the CSV may still be stored: **remove it, then call
+* {@link DEAL_IMPORT_OBJECT_REMOVED}**. An import that ended normally already recorded its removal.
+* Repeat until no row comes back. Then purge each with {@link DEAL_IMPORT_PURGE_BATCH}.
+*/
+declare const DEAL_IMPORT_ERASE_BATCH: string;
+/**
+* Purge an erased import in bounded steps: `$1` Organization, `$2` the import, `$3` how many report
+* rows to delete (clamped). It does nothing unless the import is erased and its stored CSV is
+* recorded removed. One call deletes up to `$3` report rows; a call that finds none left deletes the
+* import row itself (`import_deleted` true). Repeat until `import_deleted`. The foreign key does not
+* cascade, so the import row cannot go while a report row remains.
+*/
+declare const DEAL_IMPORT_PURGE_BATCH: string;
+/**
+* Erase one bounded batch of Deals: `$1` Organization, `$2` batch size (clamped); the number deleted
+* comes back as `deleted`. Repeat until 0. `playbook.erase_deals` takes the upload lock first (see the
+* migration) and runs in the Organization's scope only.
+*/
+declare const DEAL_ERASE_BATCH = "select playbook.erase_deals($1::text, $2::int) as deleted";
+/** The rights confirmation of the Organization: `$1` Organization. No row when none was recorded. */
+declare const RIGHTS_GET = "select confirmed_by, confirmed_at, wording_version\nfrom playbook.rights_confirmations\nwhere organization_id = $1";
+/**
+* Record the rights confirmation (ADR 0018 choice 12): `$1` Organization, `$2` the confirming
+* member, `$3` the wording version shown (the service checks it is the current one first). A
+* version above the stored one replaces it; the same version keeps the first confirmation (its
+* member and time), so a repeat is idempotent; a lower version is ignored. The row is the stored
+* confirmation after the call, with `recorded` true when this call wrote it. Whether the stored
+* version is the current one is the service's comparison, and the Call upload statement (a later
+* migration) takes the current version as a parameter and refuses unless the stored version equals
+* it, in the same statement as the insert.
+*/
+declare const RIGHTS_CONFIRM = "with up as (\n  insert into playbook.rights_confirmations as r (organization_id, confirmed_by, confirmed_at, wording_version)\n  values ($1, $2::text, clock_timestamp(), $3::int)\n  on conflict (organization_id) do update\n    set confirmed_by = excluded.confirmed_by, confirmed_at = excluded.confirmed_at, wording_version = excluded.wording_version\n    where r.wording_version < excluded.wording_version\n  returning confirmed_by, confirmed_at, wording_version)\nselect confirmed_by, confirmed_at, wording_version, true as recorded from up\nunion all\nselect confirmed_by, confirmed_at, wording_version, false\nfrom playbook.rights_confirmations\nwhere organization_id = $1 and not exists (select 1 from up)";
 /** Every statement above by name, for the README check and the integration tests. */
 declare const PLAYBOOK_STATEMENTS: {
 	readonly QUOTA_LOCK: "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
@@ -10665,10 +11692,35 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly IDEMPOTENCY_PURGE: string;
 	readonly DOCUMENT_ERASE_BATCH: string;
 	readonly ORGANIZATION_REMOVE_REST: "select playbook.remove_organization_rest($1::text, $2::text) as removed";
-	readonly ORGANIZATION_REMOVAL_STATUS: "select\\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\\n  (not exists (select 1 from playbook.documents where organization_id = $1)\\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)) as removed\\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
+	readonly ORGANIZATION_REMOVAL_STATUS: "select\n  not exists (select 1 from playbook.documents where organization_id = $1) as no_documents,\n  not exists (select 1 from playbook.index_settings where organization_id = $1) as no_settings,\n  not exists (select 1 from playbook.organization_usage where organization_id = $1) as no_usage,\n  not exists (select 1 from playbook.consumed_message where organization_id = $1) as no_messages,\n  not exists (select 1 from playbook.deals where organization_id = $1) as no_deals,\n  not exists (select 1 from playbook.deal_imports where organization_id = $1) as no_imports,\n  not exists (select 1 from playbook.rights_confirmations where organization_id = $1) as no_rights,\n  (not exists (select 1 from playbook.documents where organization_id = $1)\n    and not exists (select 1 from playbook.index_settings where organization_id = $1)\n    and not exists (select 1 from playbook.organization_usage where organization_id = $1)\n    and not exists (select 1 from playbook.consumed_message where organization_id = $1)\n    and not exists (select 1 from playbook.deals where organization_id = $1)\n    and not exists (select 1 from playbook.deal_imports where organization_id = $1)\n    and not exists (select 1 from playbook.rights_confirmations where organization_id = $1)) as removed\nwhere $1::text = nullif(current_setting('app.organization_id', true), '')";
 	readonly DOCUMENT_LIST_SPENT_PURGES: string;
 	readonly DOCUMENT_PURGE_RESET: "update playbook.documents\\nset purge_attempts = 0, purge_started_at = null, purge_lease_until = null,\\n    restore_barred_at = coalesce(restore_barred_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts >= 20\\nreturning id, purge_attempts";
 	readonly ORPHAN_SWEEP_DONE: "select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)";
+	readonly DEAL_GET: "select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at\nfrom playbook.deals\nwhere organization_id = $1 and id = $2";
+	readonly DEAL_BY_DEAL_ID: "select id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at\nfrom playbook.deals\nwhere organization_id = $1 and deal_id = $2::text";
+	readonly DEAL_LIST: string;
+	readonly DEAL_LIST_BY_OUTCOME: string;
+	readonly DEAL_LIST_BY_IMPORT_FLAG: string;
+	readonly DEAL_SET_OUTCOME: "with cur as (\n  select * from playbook.deals where organization_id = $1 and id = $2 for update),\nu as (\n  update playbook.deals d\n  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,\n      outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()\n  from cur\n  where d.organization_id = $1 and d.id = cur.id\n    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))\n  returning d.*)\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, true as changed from u\nunion all\nselect id, deal_id, name, outcome, outcome_seq, closed_at, amount, currency, appeared_in_import, created_at, updated_at, false from cur where not exists (select 1 from u)";
+	readonly DEAL_USAGE: "select deal_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
+	readonly DEAL_IMPORT_INSERT: "insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)\\nvalues ($2::text, $1, $3::text, $4::text, $5::bigint, clock_timestamp())\\nreturning id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at";
+	readonly DEAL_IMPORT_GET: "select id, state, failure_reason,\\n  case when state = 'completed' then row_count end as row_count,\\n  case when state = 'completed' then applied_count end as applied_count,\\n  case when state = 'completed' then rejected_count end as rejected_count,\\n  uploaded_by, created_at, updated_at\\nfrom playbook.deal_imports\\nwhere organization_id = $1 and id = $2 and erased_at is null";
+	readonly DEAL_IMPORT_LIST: string;
+	readonly DEAL_IMPORT_CLAIM: string;
+	readonly DEAL_IMPORT_HEARTBEAT: string;
+	readonly DEAL_IMPORT_RETRY: "update playbook.deal_imports\\nset state = 'uploaded', claim_token = null,\\n    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 3600000) / 1000),\\n    updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\nreturning id, attempts";
+	readonly DEAL_IMPORT_APPLY: string;
+	readonly DEAL_IMPORT_FINISH: "update playbook.deal_imports\\nset state = 'completed', claim_token = null, row_count = applied_count + rejected_count,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\n  and report_through = $4::int + 1\\nreturning id, row_count, applied_count, rejected_count";
+	readonly DEAL_IMPORT_FAIL: "update playbook.deal_imports\\nset state = 'failed', failure_reason = $4::text, claim_token = null,\\n    object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null\\nreturning id";
+	readonly DEAL_IMPORT_GIVE_UP_SPENT: string;
+	readonly DEAL_IMPORT_OBJECT_REMOVED: "update playbook.deal_imports\\nset object_removed_at = coalesce(object_removed_at, clock_timestamp()), updated_at = clock_timestamp()\\nwhere organization_id = $1 and id = $2 and (erased_at is not null or state = 'failed')\\nreturning id";
+	readonly DEAL_IMPORT_ROWS_LIST: string;
+	readonly DEAL_IMPORT_ROWS_LIST_BY_RESULT: string;
+	readonly DEAL_IMPORT_ERASE_BATCH: string;
+	readonly DEAL_IMPORT_PURGE_BATCH: string;
+	readonly DEAL_ERASE_BATCH: "select playbook.erase_deals($1::text, $2::int) as deleted";
+	readonly RIGHTS_GET: "select confirmed_by, confirmed_at, wording_version\nfrom playbook.rights_confirmations\nwhere organization_id = $1";
+	readonly RIGHTS_CONFIRM: "with up as (\n  insert into playbook.rights_confirmations as r (organization_id, confirmed_by, confirmed_at, wording_version)\n  values ($1, $2::text, clock_timestamp(), $3::int)\n  on conflict (organization_id) do update\n    set confirmed_by = excluded.confirmed_by, confirmed_at = excluded.confirmed_at, wording_version = excluded.wording_version\n    where r.wording_version < excluded.wording_version\n  returning confirmed_by, confirmed_at, wording_version)\nselect confirmed_by, confirmed_at, wording_version, true as recorded from up\nunion all\nselect confirmed_by, confirmed_at, wording_version, false\nfrom playbook.rights_confirmations\nwhere organization_id = $1 and not exists (select 1 from up)";
 	readonly ORGANIZATIONS_WITH_WORK: string;
 };
 /** The one database role that owns every schema and table and runs every migration. */
@@ -10708,4 +11760,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, ClaimedIngestionJob, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };

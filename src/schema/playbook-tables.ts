@@ -252,12 +252,15 @@ export const organizationUsage = playbookSchema.table(
     organizationId: text('organization_id').primaryKey(),
     documentCount: bigint('document_count', { mode: 'number' }).notNull().default(0),
     byteCount: bigint('byte_count', { mode: 'number' }).notNull().default(0),
+    // Deals of the Organization, moved by the `deals` triggers (migration 0015).
+    dealCount: bigint('deal_count', { mode: 'number' }).notNull().default(0),
     updatedAt: updatedAt(),
   },
   (t) => [
     check('organization_usage_organization_id_shape', idShape('organization_id', 'org')),
     check('organization_usage_organization_not_global', notGlobal),
     check('organization_usage_not_negative', sql`${t.documentCount} >= 0 and ${t.byteCount} >= 0`),
+    check('organization_usage_deal_count_not_negative', sql`${t.dealCount} >= 0`),
   ]
 )
 

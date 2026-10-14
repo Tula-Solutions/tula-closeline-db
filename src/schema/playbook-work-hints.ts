@@ -8,7 +8,8 @@ import { GLOBAL_SCOPE_ORGANIZATION_ID } from './playbook-tables'
  * jobs due or with a lapsed lease, deleted documents whose vector cleanup is not recorded, consumed
  * messages old enough to purge, idempotency keys old enough to purge, documents whose purge
  * reached the attempt bound, and Organizations with an upload attempt whose stored objects have not
- * been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`).
+ * been swept for orphans (`orphan_sweep`, see `playbookOrphanSweeps`), and Deal imports to
+ * apply (`import_apply`, see `dealImports`).
  */
 export const WORK_KINDS = [
   'purge_due',
@@ -18,6 +19,7 @@ export const WORK_KINDS = [
   'idempotency_purge',
   'purge_spent',
   'orphan_sweep',
+  'import_apply',
 ] as const
 
 /**
