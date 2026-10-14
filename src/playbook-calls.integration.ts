@@ -1675,8 +1675,13 @@ describe('sales history, part two: Calls', () => {
       const org = await newConfirmedOrg()
       const a = await mustAdd(org, recording())
       const b = await mustAdd(org, recording({ dealId: 'V-B' }))
+      // One claim takes every due job of the Organization, so a second claim would find none.
+      const jobs = await claim(org)
       for (const call of [a, b]) {
-        const job = await claimOf(org, call.id)
+        const job = jobs.find((j) => j.call_id === call.id)
+        if (!job) {
+          throw new Error('no job claimed for the Call')
+        }
         await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
       }
       expect(await record(org, a.id, 1, idOf)).toEqual({ result: 'recorded' })

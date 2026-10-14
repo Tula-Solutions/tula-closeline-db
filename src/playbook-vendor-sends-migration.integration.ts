@@ -53,38 +53,43 @@ describe('migration 0018 on data that exists before it', () => {
     const playbook = new Pool({ connectionString: urlFor(env.playbook, name), max: 1 })
     const org = `org_${hex()}`
     const id = `call_${hex()}`
-    await scoped(playbook, org, (c) => c.query(RIGHTS_CONFIRM, [org, `usr_${hex()}`, 1]))
-    await scoped(playbook, org, async (c) => {
-      await c.query(QUOTA_LOCK, [org])
-      return c.query(CALL_INSERT, [
-        org,
-        id,
-        'D-1',
-        `deal_${hex()}`,
-        'a.mp3',
-        'audio/mpeg',
-        'recording',
-        5000,
-        createHash('sha256').update(hex()).digest(),
-        `usr_${hex()}`,
-        `${org}/${id}`,
-        null,
-        null,
-        null,
-        `cjob_${hex()}`,
-        100,
-        10 ** 12,
-        100,
-        1,
-      ])
-    })
-    await scoped(owner, org, (c) =>
-      c.query(
-        `update playbook.calls set vendor_send_seq = $2, sent_to_vendor_at = now() where id = $1`,
-        [id, sends]
+    try {
+      await scoped(playbook, org, (c) => c.query(RIGHTS_CONFIRM, [org, `usr_${hex()}`, 1]))
+      await scoped(playbook, org, async (c) => {
+        await c.query(QUOTA_LOCK, [org])
+        return c.query(CALL_INSERT, [
+          org,
+          id,
+          'D-1',
+          `deal_${hex()}`,
+          'a.mp3',
+          'audio/mpeg',
+          'recording',
+          5000,
+          createHash('sha256').update(hex()).digest(),
+          `usr_${hex()}`,
+          `${org}/${id}`,
+          null,
+          null,
+          null,
+          `cjob_${hex()}`,
+          100,
+          10 ** 12,
+          100,
+          1,
+        ])
+      })
+      await scoped(owner, org, (c) =>
+        c.query(
+          `update playbook.calls set vendor_send_seq = $2, sent_to_vendor_at = now() where id = $1`,
+          [id, sends]
+        )
       )
-    )
-    return { owner, playbook, org, id, url: urlFor(env.owner, name) }
+      return { owner, playbook, org, id, url: urlFor(env.owner, name) }
+    } catch (error) {
+      await Promise.all([owner.end(), playbook.end()])
+      throw error
+    }
   }
 
   beforeAll(async () => {
