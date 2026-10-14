@@ -972,6 +972,10 @@ var CALL_PURGE_CLAIM = `with due as (
   where organization_id = $1 and state = 'deleted' and purge_due_at <= clock_timestamp()
     and purge_attempts < ${CALL_PURGE_MAX_ATTEMPTS2}
     and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
+    and not exists (
+      select 1 from playbook.call_jobs j
+      where j.organization_id = calls.organization_id and j.call_id = calls.id
+        and j.state in ('running', 'cancelled') and j.next_attempt_at > clock_timestamp())
   order by purge_due_at
   limit ${BATCH("$2")}
   for update skip locked)

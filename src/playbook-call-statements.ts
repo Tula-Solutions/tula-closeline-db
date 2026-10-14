@@ -735,13 +735,22 @@ returning id`
  * transaction: `object_key` (the original), `transcript_key` (the kept Transcript), `kind`,
  * `sent_to_vendor_at`, `vendor_send_seq` and `vendor_removed_at` (remove the vendor's copy and record it
  * with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
- * when they differ). The service also removes every artefact under the Call's id prefix.
+ * when they differ). The service also removes every artefact under the Call's id prefix. **A claim
+ * means the purge can finish**: a Call is not handed out while a job of it is `running`, or
+ * `cancelled` with its lease unexpired (delete and erasure cancel a job but keep its lease), the
+ * state in which {@link CALL_VENDOR_REMOVED} and {@link CALL_PURGE_COMPLETE} refuse, so a service
+ * that retries during the wait spends none of the {@link CALL_PURGE_MAX_ATTEMPTS} attempts. Erasure
+ * reaches the purge only through this claim and inherits that.
  */
 export const CALL_PURGE_CLAIM = `with due as (
   select id from playbook.calls
   where organization_id = $1 and state = 'deleted' and purge_due_at <= clock_timestamp()
     and purge_attempts < ${CALL_PURGE_MAX_ATTEMPTS}
     and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
+    and not exists (
+      select 1 from playbook.call_jobs j
+      where j.organization_id = calls.organization_id and j.call_id = calls.id
+        and j.state in ('running', 'cancelled') and j.next_attempt_at > clock_timestamp())
   order by purge_due_at
   limit ${BATCH('$2')}
   for update skip locked)

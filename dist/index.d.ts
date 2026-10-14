@@ -12055,7 +12055,12 @@ declare const CALL_VENDOR_REMOVED2 = "update playbook.calls\\nset vendor_removed
 * transaction: `object_key` (the original), `transcript_key` (the kept Transcript), `kind`,
 * `sent_to_vendor_at`, `vendor_send_seq` and `vendor_removed_at` (remove the vendor's copy and record it
 * with {@link CALL_VENDOR_REMOVED} and that `vendor_send_seq`), `deletion_seq` and `vectors_removed_seq` (run the cleanup first
-* when they differ). The service also removes every artefact under the Call's id prefix.
+* when they differ). The service also removes every artefact under the Call's id prefix. **A claim
+* means the purge can finish**: a Call is not handed out while a job of it is `running`, or
+* `cancelled` with its lease unexpired (delete and erasure cancel a job but keep its lease), the
+* state in which {@link CALL_VENDOR_REMOVED} and {@link CALL_PURGE_COMPLETE} refuse, so a service
+* that retries during the wait spends none of the {@link CALL_PURGE_MAX_ATTEMPTS} attempts. Erasure
+* reaches the purge only through this claim and inherits that.
 */
 declare const CALL_PURGE_CLAIM2: string;
 /**

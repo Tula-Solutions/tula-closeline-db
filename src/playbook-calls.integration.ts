@@ -431,6 +431,8 @@ describe('sales history, part two: Calls', () => {
       await asOwner(org, (c) =>
         c.query(`update playbook.calls set purge_due_at = deleted_at where state = 'deleted'`)
       )
+      // A delete leaves the cancelled job's lease; the purge is claimed only once it has passed.
+      await lapseJobs(org)
       const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows
       expect(claimed.length).toBe(2)
       for (const c of claimed) {
@@ -758,6 +760,8 @@ describe('sales history, part two: Calls', () => {
       await asOwner(org, (c) =>
         c.query(`update playbook.calls set purge_due_at = clock_timestamp() - interval '1 second'`)
       )
+      // A delete leaves the cancelled job's lease; the purge is claimed only once it has passed.
+      await lapseJobs(org)
       expect((await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rowCount).toBe(1)
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
       await asOwner(org, (c) =>
@@ -1046,6 +1050,7 @@ describe('sales history, part two: Calls', () => {
       expect(again.rows[0]).toEqual({ vendor_removed_at: null, vendor_send_seq: 2 })
       await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
       await ageAllDeleted(org)
+      await lapseJobs(org) // the claim waits for the cancelled job's lease
       expect((await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]).toMatchObject({
         vendor_send_seq: 2,
         vendor_removed_at: null,
@@ -1067,6 +1072,7 @@ describe('sales history, part two: Calls', () => {
       await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
       const erased = (await q(org, CALL_ERASE_BATCH, [org, 10, ERASER])).rows[0]
       expect(erased).toMatchObject({ id: rec.id, vendor_send_seq: 1 })
+      await lapseJobs(org) // the claim waits for the cancelled job's lease
       const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
       await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
@@ -1346,6 +1352,13 @@ describe('sales history, part two: Calls', () => {
         const dump = JSON.stringify(plan, null, 1)
         expect([walk(plan).some((n) => n['Index Name'] === index), dump]).toEqual([true, dump])
         expect([walk(plan).some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([false, dump])
+        if (_n === 'CALL_PURGE_CLAIM') {
+          const probes = walk(plan).filter((n) => n['Relation Name'] === 'call_jobs')
+          expect([probes.length > 0 && probes.every((n) => n['Index Name']), dump]).toEqual([
+            true,
+            dump,
+          ])
+        }
       }
     )
   })
@@ -1372,7 +1385,15 @@ describe('sales history, part two: Calls', () => {
         } else {
           await q(org, CALL_ERASE_BATCH, [org, 10, ERASER])
         }
+        // The claim itself waits for the lease (F13); claim after it has passed, then give the
+        // cancelled job a live lease again, as a worker still mid-request would hold.
+        await lapseJobs(org)
         const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
+        await asOwner(org, (c) =>
+          c.query(
+            `update playbook.call_jobs set next_attempt_at = clock_timestamp() + interval '1 minute'`
+          )
+        )
         await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
         const jobs = await asOwner(org, (c) =>
           c.query('select state from playbook.call_jobs where call_id = $1', [rec.id])
@@ -1403,5 +1424,37 @@ describe('sales history, part two: Calls', () => {
       await lapse(org)
       expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
     })
+  })
+
+  describe('review round 3', () => {
+    // F13. Fails on 93e24a9: the claim is handed out during the wait and spends an attempt.
+    test.each(['delete', 'erase'] as const)(
+      'F13: after a %s, the purge is not claimed, and no attempt is spent, while a job holds its lease',
+      async (how) => {
+        const org = await newConfirmedOrg()
+        const rec = await mustAdd(org, recording())
+        const job = await claimOf(org, rec.id)
+        expect(job.job_kind).toBe('transcribe')
+        if (how === 'delete') {
+          await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+          await asOwner(org, (c) =>
+            c.query(`update playbook.calls set purge_due_at = deleted_at where state = 'deleted'`)
+          )
+        } else {
+          await q(org, CALL_ERASE_BATCH, [org, 10, ERASER])
+        }
+        for (let tries = 0; tries < 3; tries++) {
+          expect((await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rowCount).toBe(0)
+        }
+        const spent = await asOwner(org, (c) =>
+          c.query('select purge_attempts from playbook.calls where id = $1', [rec.id])
+        )
+        expect(spent.rows[0].purge_attempts).toBe(0)
+        await lapseJobs(org)
+        const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows
+        expect(claimed.map((r) => r.id)).toEqual([rec.id])
+        expect(claimed[0].purge_attempts).toBe(1)
+      }
+    )
   })
 })

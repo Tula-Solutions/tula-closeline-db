@@ -2492,6 +2492,10 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1 and state = 'deleted' and purge_due_at <= clock_timestamp()
         and purge_attempts < 20
         and (purge_lease_until is null or purge_lease_until <= clock_timestamp())
+        and not exists (
+          select 1 from playbook.call_jobs j
+          where j.organization_id = calls.organization_id and j.call_id = calls.id
+            and j.state in ('running', 'cancelled') and j.next_attempt_at > clock_timestamp())
       order by purge_due_at
       limit least(greatest(coalesce($2::int, 1), 1), 500)
       for update skip locked)
@@ -2858,7 +2862,12 @@ member or by an upload) returns the Call to `uploaded` and `transcribe` if it wa
 `awaiting_rep` if it has a Transcript and no Rep, otherwise `processing`. The purge needs cleanup of
 the index recorded (`CALL_CLEANUP_BEGIN`, `CALL_CLEANUP_DONE`) and, for a Recording sent to the
 transcription vendor, the vendor copy confirmed removed (`CALL_SENT_TO_VENDOR`,
-`CALL_VENDOR_REMOVED`) before `CALL_PURGE_COMPLETE` deletes the row. A spent purge shows in
+`CALL_VENDOR_REMOVED`) before `CALL_PURGE_COMPLETE` deletes the row. A claim (`CALL_PURGE_CLAIM`) means the purge can
+finish: a Call is not handed out while a job of it is `running`, or `cancelled` with its lease unexpired,
+so a service that retries during that wait spends none of its 20 attempts; erasure reaches the purge
+only through this claim and inherits it. The `call_purge` discovery branch is left as it is: an
+Organization whose only purgeable Calls are waiting on a job lease is reported due for at most one
+lease of wasted visits, which costs less than a second condition in the function. A spent purge shows in
 `CALL_LIST_SPENT_PURGES` and `CALL_PURGE_RESET` bars the Call from restore.
 
 **Lists** (`CALL_LIST`, `CALL_LIST_BY_STATE`, `CALL_LIST_BY_DEAL`, `CALL_LIST_BY_DEAL_STATE` and the
