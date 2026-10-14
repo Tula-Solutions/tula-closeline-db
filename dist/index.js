@@ -46,7 +46,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-em9b4czg.js";
+} from "./shared/chunk-k40jcgwv.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -166,6 +166,15 @@ var AUTH_STATEMENTS = {
 // src/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+
+// src/pg-types.ts
+import { types } from "pg";
+var DATE_OID = 1082;
+var DB_TYPES = {
+  getTypeParser: (oid, format) => oid === DATE_OID ? (value) => value : types.getTypeParser(oid, format)
+};
+
+// src/client.ts
 var DEFAULT_POOL_OPTIONS = {
   max: 10,
   statementTimeoutMs: 30000,
@@ -209,7 +218,8 @@ function createDb(connectionString, options = {}) {
     connectionTimeoutMillis,
     idleTimeoutMillis: IDLE_CONNECTION_TIMEOUT_MS,
     statement_timeout: statementTimeout,
-    idle_in_transaction_session_timeout: IDLE_IN_TRANSACTION_TIMEOUT_MS
+    idle_in_transaction_session_timeout: IDLE_IN_TRANSACTION_TIMEOUT_MS,
+    types: DB_TYPES
   });
   const clients = new Set;
   pool.on("connect", (client) => {
@@ -1648,11 +1658,11 @@ var DEAL_SET_OUTCOME = `with cur as (
   select * from playbook.deals where organization_id = $1 and id = $2 for no key update),
 u as (
   update playbook.deals d
-  set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,
+  set outcome = $3::text, closed_at = case when $5::boolean then $4::date else d.closed_at end,
       outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()
   from cur
   where d.organization_id = $1 and d.id = cur.id
-    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
+    and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::date))
   returning d.*)
 select ${DEAL_COLUMNS_OF("u")}, true as changed from u
 union all
@@ -1704,7 +1714,7 @@ var DEAL_IMPORT_APPLY = `with imp as (
   for update),
 raw as (
   select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
-  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at date, amount numeric, currency text, name text)),
 refuse as (
   select case
     when exists (select 1 from raw where row_number is null or row_number not between 2 and ${DEAL_IMPORT_MAX_ROWS2 + 1}) then 'row_number_range'
@@ -2031,6 +2041,7 @@ export {
   CONTROL_PLANE_TABLE_REASONS,
   COUNTER_MIN_PERIOD_MS,
   COUNTER_PURGE_BATCH,
+  DB_TYPES,
   DEAL_BY_DEAL_ID,
   DEAL_ERASE_BATCH,
   DEAL_GET,

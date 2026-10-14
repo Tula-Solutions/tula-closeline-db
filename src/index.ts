@@ -32,6 +32,7 @@ export {
   NON_TENANT_TABLES,
   TENANT_SCHEMAS,
 } from './isolation'
+export { DB_TYPES } from './pg-types'
 export {
   CALL_CLEANUP_BEGIN,
   CALL_CLEANUP_DONE,

@@ -9722,11 +9722,11 @@ declare const deals: PgTableWithColumns_a5zn0g38<{
 			generated: undefined;
 		}, {}, {}>;
 		closedAt: PgColumn_ffrhhp38<{
-			name: string;
+			name: "closed_at";
 			tableName: "deals";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
+			dataType: "string";
+			columnType: "PgDateString";
+			data: string;
 			driverParam: string;
 			notNull: false;
 			hasDefault: false;

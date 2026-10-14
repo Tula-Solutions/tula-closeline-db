@@ -758,3 +758,12 @@ describe('the Deal call count and the cap of queued imports (0019)', () => {
     expect(migration).toContain('REVOKE ALL ON FUNCTION "playbook"."insert_deal_import"')
   })
 })
+
+describe('the closing date statements take and give a date (0020)', () => {
+  test('the Outcome setter casts the closing time to a date and the import reads one', () => {
+    expect(PLAYBOOK_STATEMENTS.DEAL_SET_OUTCOME).toContain('$4::date')
+    expect(PLAYBOOK_STATEMENTS.DEAL_SET_OUTCOME).not.toContain('$4::timestamptz')
+    expect(PLAYBOOK_STATEMENTS.DEAL_IMPORT_APPLY).toContain('closed_at date')
+    expect(PLAYBOOK_STATEMENTS.DEAL_IMPORT_APPLY).not.toContain('closed_at timestamptz')
+  })
+})

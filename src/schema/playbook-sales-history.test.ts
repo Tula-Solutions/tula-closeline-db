@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core'
+import { DB_TYPES } from '../pg-types'
 import {
   DEAL_ID_MAX_BYTES,
   DEAL_ID_MAX_LENGTH,
@@ -164,5 +165,27 @@ describe('the rows of an import report that have no deal id (0019)', () => {
 
   test('the cap of unfinished imports mirrors the contract', () => {
     expect(MAX_QUEUED_DEAL_IMPORTS).toBe(5) // MAX_QUEUED_DEAL_IMPORTS (contract v0.10.0)
+  })
+})
+
+describe('the closing date is a calendar date (0020)', () => {
+  const migration = readFileSync(
+    new URL('../../migrations/0020_deal_closed_at_date.sql', import.meta.url),
+    'utf8'
+  )
+
+  test('the column is a date read as a string, and the migration converts through UTC', () => {
+    const column = getTableConfig(deals).columns.find((c) => c.name === 'closed_at')
+    expect(column?.getSQLType()).toBe('date')
+    expect(column?.dataType).toBe('string')
+    expect(migration).toContain(`("closed_at" AT TIME ZONE 'UTC')::date`)
+    expect(migration).toContain('SET DATA TYPE date')
+  })
+
+  test('the driver is told to leave a date as the text Postgres sends', () => {
+    const DATE_OID = 1082
+    expect(DB_TYPES.getTypeParser(DATE_OID, 'text')('2026-01-31')).toBe('2026-01-31')
+    // Other types keep the driver's parsers (an integer still becomes a number).
+    expect(DB_TYPES.getTypeParser(23, 'text')('7')).toBe(7)
   })
 })

@@ -1599,11 +1599,11 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       select * from playbook.deals where organization_id = $1 and id = $2 for no key update),
     u as (
       update playbook.deals d
-      set outcome = $3::text, closed_at = case when $5::boolean then $4::timestamptz else d.closed_at end,
+      set outcome = $3::text, closed_at = case when $5::boolean then $4::date else d.closed_at end,
           outcome_seq = d.outcome_seq + 1, updated_at = clock_timestamp()
       from cur
       where d.organization_id = $1 and d.id = cur.id
-        and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::timestamptz))
+        and (d.outcome is distinct from $3::text or ($5::boolean and d.closed_at is distinct from $4::date))
       returning d.*)
     select u.id, u.deal_id, u.name, u.outcome, u.outcome_seq, u.closed_at, u.amount, u.currency, u.appeared_in_import, u.created_at, u.updated_at, (select count(*)::int from playbook.calls cc
       where cc.organization_id = u.organization_id and cc.deal_record_id = u.id and cc.state <> 'deleted') as call_count, true as changed from u
@@ -1700,7 +1700,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       for update),
     raw as (
       select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
-      from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+      from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at date, amount numeric, currency text, name text)),
     refuse as (
       select case
         when exists (select 1 from raw where row_number is null or row_number not between 2 and 50001) then 'row_number_range'
@@ -3147,3 +3147,23 @@ columns already exist, so there is no migration.
   (`invalid_deal_id`, `wrong_column_count`, `blank_row`) lists the reasons that may have no deal id;
   the check is built from it, so a service's in-memory double imports the list instead of repeating
   it. A unit test pins that the constant, the check and the migration agree.
+
+## The closing date is a calendar date (v0.20.0, migration `0020`)
+
+A Deal's `closed_at` is a `date`, not a `timestamptz` (hub #90; the contract types `closedAt` as
+`YYYY-MM-DD`).
+
+- **Migration.** Existing instants become the date they fall on **in UTC**
+  (`("closed_at" AT TIME ZONE 'UTC')::date`, written out so no session or database time zone matters):
+  `2026-01-31T23:00:00-05:00` is 04:00 UTC on 1 February and becomes `2026-02-01`. Nothing else held the
+  column (`deal_import_rows` keeps no closing date; no index or check uses it). The rewrite is not
+  filtered by row-level security, so forced RLS is not lifted; a migration test seeds Deals at 0019,
+  migrates and checks the values and that RLS is still forced.
+- **Statements.** `DEAL_SET_OUTCOME` takes `$4` as a `date` (pass `YYYY-MM-DD`; a longer ISO string is
+  cut to its date text, never converted through a zone) and `DEAL_IMPORT_APPLY` reads `closed_at` from
+  the rows as a `date`. A repeat of the same date is not a change.
+- **Reading it.** Every Deal answer returns `closed_at` as the string `YYYY-MM-DD` (or null). The driver
+  would turn a `date` into a JavaScript `Date` at local midnight, which is the previous day in a process
+  whose time zone is behind UTC. `createDb` therefore sets `DB_TYPES` (exported) on its pool; **a pool
+  built by hand for these statements must pass `types: DB_TYPES`** too. A test runs the round trip with
+  the process time zone set to `America/Chicago`.

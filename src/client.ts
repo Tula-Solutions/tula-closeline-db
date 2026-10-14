@@ -1,5 +1,6 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool, type PoolClient } from 'pg'
+import { DB_TYPES } from './pg-types'
 import * as schema from './schema'
 
 /** The Drizzle schema object: every Postgres schema the services own. */
@@ -117,6 +118,7 @@ export function createDb(connectionString: string, options: DbOptions = {}): DbH
     idleTimeoutMillis: IDLE_CONNECTION_TIMEOUT_MS,
     statement_timeout: statementTimeout,
     idle_in_transaction_session_timeout: IDLE_IN_TRANSACTION_TIMEOUT_MS,
+    types: DB_TYPES,
   })
   // pg-pool listens for errors on a connection only while it is idle and removes that listener
   // on checkout, so an error on a checked-out connection (which a transaction holds) would be an
