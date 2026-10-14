@@ -975,6 +975,15 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where organization_id = $1 and id = $2
     ```
 
+    `DOCUMENT_SEARCH_STATE`:
+
+    ```sql
+    select id, name, state, epoch
+    from playbook.documents
+    where organization_id = $1 and id = any(($2::text[])[1:100])
+    order by id
+    ```
+
     `DOCUMENT_LIST`:
 
     ```sql
@@ -3194,3 +3203,17 @@ answered once. It returns metadata only, no text, and adds no migration, table o
 the 100th get no row. It does not refuse them (a plain statement cannot raise), so the caller must pass
 at most 100, which the search's over-fetch window (`topK` 100) already guarantees. A plan test pins
 that `calls` is read through an index with the Organization in its condition and no Seq Scan.
+
+## What Postgres says about the documents a search hit (v0.22.0, no migration)
+
+`DOCUMENT_SEARCH_STATE` (hub #98): `$1` Organization, `$2` an array of document ids. One row per id that
+is a document of that Organization, in id order: `id`, `name`, `state` and `epoch`, read as
+`DOCUMENT_GET` reads them. The playbook applies the staleness rule (`state = 'ready'` and `epoch` equal
+to the vector's epoch), so a deleted document, or one restored and so given a higher epoch, is dropped.
+Run it through the tenant-scoped helper: another Organization's ids, unknown ids, an empty array and a
+null array give no row. Metadata only, no text, and no migration, table or column.
+
+**The array is capped at `MAX_DOCUMENT_SEARCH_STATE_IDS` (100) by the statement taking the first 100**;
+ids after the 100th get no row. It does not refuse them (a plain statement cannot raise), so the caller
+must pass at most 100, which the search's over-fetch window (`topK` 100) already guarantees. A plan
+test pins that one index condition holds both `organization_id` and `id = ANY`, with no Seq Scan.

@@ -8,6 +8,7 @@ import {
   IDEMPOTENCY_PURGE_AGE_MS,
   INGESTION_MAX_RETRY_DELAY_MS,
   LEASE,
+  MAX_DOCUMENT_SEARCH_STATE_IDS,
   ORPHAN_SWEEP_AGE_MS,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
@@ -31,6 +32,7 @@ export {
   IDEMPOTENCY_MIN_PURGE_AGE_MS,
   IDEMPOTENCY_PURGE_AGE_MS,
   INGESTION_MAX_RETRY_DELAY_MS,
+  MAX_DOCUMENT_SEARCH_STATE_IDS,
   ORPHAN_SWEEP_AGE_MS,
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
@@ -254,6 +256,21 @@ limit ${CLAMP('$4', DOCUMENT_LIST_MAX_PAGE)}`
 export const DOCUMENT_GET = `select ${DOCUMENT_COLUMNS}
 from playbook.documents
 where organization_id = $1 and id = $2`
+
+/**
+ * What Postgres says about the documents a search hit (hub #98): `$1` Organization, `$2` an array of
+ * document ids. One row per id that is a document of that Organization, in id order: `id`, `name`,
+ * `state` and `epoch`, read as {@link DOCUMENT_GET} reads them. The playbook drops a hit unless
+ * `state = 'ready'` and `epoch` equals the vector's epoch, so a deleted or replaced (older epoch)
+ * document is dropped. Another Organization's ids, unknown ids, an empty array and a null array give
+ * no row. **The statement reads at most {@link MAX_DOCUMENT_SEARCH_STATE_IDS} ids**: it takes the first
+ * 100 and does not refuse the rest (a plain statement cannot raise), so the caller must pass at most
+ * 100. Served by `documents_pkey (organization_id, id)`. Metadata only, no text.
+ */
+export const DOCUMENT_SEARCH_STATE = `select id, name, state, epoch
+from playbook.documents
+where organization_id = $1 and id = any(($2::text[])[1:${MAX_DOCUMENT_SEARCH_STATE_IDS}])
+order by id`
 
 /**
  * Soft delete: hide the document at once and set when it may be purged, in one write. `$1`
@@ -1659,6 +1676,7 @@ export const PLAYBOOK_STATEMENTS = {
   DOCUMENT_INSERT,
   DOCUMENT_BY_HASH,
   DOCUMENT_GET,
+  DOCUMENT_SEARCH_STATE,
   DOCUMENT_LIST,
   DOCUMENT_LIST_DELETED,
   DOCUMENT_SOFT_DELETE,

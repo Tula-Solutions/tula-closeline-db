@@ -38,6 +38,7 @@ import {
   DOCUMENT_RESTORE,
   DOCUMENT_RESTORE_FOR_UPLOAD,
   DOCUMENT_ROW_FIELDS,
+  DOCUMENT_SEARCH_STATE,
   DOCUMENT_SOFT_DELETE,
   IDEMPOTENCY_BEGIN,
   IDEMPOTENCY_COMPLETE,
@@ -52,6 +53,7 @@ import {
   INGESTION_JOB_GIVE_UP_SPENT,
   INGESTION_JOB_HEARTBEAT,
   INGESTION_JOB_RETRY,
+  MAX_DOCUMENT_SEARCH_STATE_IDS,
   PLAYBOOK_STATEMENTS,
   QUOTA_LOCK,
   QUOTA_USAGE,
@@ -3263,6 +3265,154 @@ describe('the playbook schema', () => {
         await runMigrations(url.toString())
       } finally {
         await pool.end()
+      }
+    })
+  })
+
+  describe('DOCUMENT_SEARCH_STATE: what Postgres says about the documents a search hit (v0.22.0)', () => {
+    type State = { id: string; name: string; state: string; epoch: number }
+    const stateOf = async (org: string, ids: string[] | null) =>
+      (await inOrg(org, (c) => c.query(DOCUMENT_SEARCH_STATE, [org, ids]))).rows as State[]
+    const getOne = async (org: string, id: string) =>
+      (await inOrg(org, (c) => c.query(DOCUMENT_GET, [org, id]))).rows[0]
+    /** The row must be DOCUMENT_GET's id, name, state and epoch, field for field. */
+    const expectSameAsGet = async (org: string, id: string) => {
+      const one = await getOne(org, id)
+      const rows = await stateOf(org, [id])
+      expect(rows).toEqual([{ id: one.id, name: one.name, state: one.state, epoch: one.epoch }])
+      return one
+    }
+    const makeReady = (org: string, id: string) =>
+      asOwner(org, (c) =>
+        c.query(`update playbook.documents set state = 'ready' where id = $1`, [id])
+      )
+
+    test('it returns id, name, state and epoch as DOCUMENT_GET does', async () => {
+      const org = newOrg()
+      const a = await mustAdd(org)
+      const b = await mustAdd(org)
+      await makeReady(org, b.id)
+      const rows = await stateOf(org, [b.id, a.id])
+      expect(rows.map((r) => r.id)).toEqual([a.id, b.id].sort())
+      expect(Object.keys(rows[0] as State).sort()).toEqual(['epoch', 'id', 'name', 'state'])
+      for (const r of rows) {
+        await expectSameAsGet(org, r.id)
+      }
+      expect((await getOne(org, b.id)).state).toBe('ready')
+    })
+
+    test('a deleted document is answered as deleted, as DOCUMENT_GET answers it', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await makeReady(org, doc.id)
+      const before = await expectSameAsGet(org, doc.id)
+      await remove(org, doc.id)
+      const after = await expectSameAsGet(org, doc.id)
+      expect(after.state).toBe('deleted')
+      expect(after.epoch).toBeGreaterThan(before.epoch)
+    })
+
+    test('a replaced document (restored) has a higher epoch and is no longer ready, as DOCUMENT_GET says', async () => {
+      const org = newOrg()
+      const doc = await mustAdd(org)
+      await makeReady(org, doc.id)
+      const before = await expectSameAsGet(org, doc.id)
+      await remove(org, doc.id)
+      expect((await restore(org, doc.id, true)).rowCount).toBe(1)
+      const after = await expectSameAsGet(org, doc.id)
+      expect(after.epoch).toBeGreaterThan(before.epoch)
+      expect(after.state).toBe('processing')
+      // Ready again at the new epoch: the old vector's epoch no longer matches.
+      await makeReady(org, doc.id)
+      const again = await expectSameAsGet(org, doc.id)
+      expect(again.state).toBe('ready')
+      expect(again.epoch).toBeGreaterThan(before.epoch)
+    })
+
+    test('another Organization’s ids return no rows, in both directions', async () => {
+      const mine = newOrg()
+      const theirs = newOrg()
+      const a = await mustAdd(mine)
+      const b = await mustAdd(theirs)
+      expect((await stateOf(mine, [a.id, b.id])).map((r) => r.id)).toEqual([a.id])
+      expect(await stateOf(mine, [b.id])).toEqual([])
+      expect(await stateOf(theirs, [a.id])).toEqual([])
+    })
+
+    test('unknown ids, an empty array and a null array return nothing', async () => {
+      const org = newOrg()
+      await mustAdd(org)
+      expect(await stateOf(org, [newDoc(), newDoc()])).toEqual([])
+      expect(await stateOf(org, [])).toEqual([])
+      expect(await stateOf(org, null)).toEqual([])
+    })
+
+    test('the statement reads at most MAX_DOCUMENT_SEARCH_STATE_IDS ids: the first 100 are answered, the rest are not', async () => {
+      const org = newOrg()
+      const real = await mustAdd(org)
+      const padding = Array.from({ length: MAX_DOCUMENT_SEARCH_STATE_IDS }, () => newDoc())
+      // The real document is 101st: past the cap, so it is not read.
+      expect(await stateOf(org, [...padding, real.id])).toEqual([])
+      expect((await stateOf(org, [real.id, ...padding.slice(1)])).map((r) => r.id)).toEqual([
+        real.id,
+      ])
+      expect(MAX_DOCUMENT_SEARCH_STATE_IDS).toBe(100)
+    })
+
+    // The plan is a property: the read is bound by the ids as well as the Organization, so one index
+    // condition must hold both. A plan that scans every document of the Organization and filters the
+    // ids fails. A realistic spread is seeded and analyzed first.
+    test('it reads documents through one index condition on the Organization and the ids', async () => {
+      interface Node {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Cond'?: string
+        Plans?: Node[]
+      }
+      const walk = (n: Node): Node[] => [n, ...(n.Plans ?? []).flatMap(walk)]
+      for (let n = 0; n < 4; n++) {
+        const seeded = newOrg()
+        await asOwner(seeded, (c) =>
+          c.query(
+            `insert into playbook.documents (id, organization_id, name, state, content_hash, size_bytes,
+               declared_type, detected_type, uploaded_by, object_key)
+             select 'doc_' || lpad(to_hex(g), 32, '0'), $1, 'Playbook.pdf', 'uploaded', sha256(g::text::bytea),
+                    1000, 'application/pdf', 'pdf', $2, $1 || '/' || g
+               from generate_series(1, 600) g`,
+            [seeded, newUser()]
+          )
+        )
+      }
+      await owner.query('analyze playbook.documents')
+      const org = newOrg()
+      const plan = await inOrg(org, async (c) => {
+        await c.query('set local plan_cache_mode = force_generic_plan')
+        await c.query('set local enable_seqscan = off')
+        await c.query(`prepare plan_probe(text, text[]) as ${DOCUMENT_SEARCH_STATE}`)
+        try {
+          const r = await c.query(
+            `explain (format json, costs off) execute plan_probe('${org}', array['doc_x'])`
+          )
+          return r.rows[0]['QUERY PLAN'][0].Plan as Node
+        } finally {
+          await c.query('deallocate plan_probe')
+        }
+      })
+      const dump = JSON.stringify(plan, null, 1)
+      const scans = walk(plan).filter((n) => n['Relation Name'] === 'documents')
+      if (scans.length === 0 || scans.some((n) => n['Node Type'] === 'Seq Scan')) {
+        throw new Error(`documents is not read through an index in ${dump}`)
+      }
+      // A Bitmap Heap Scan keeps its condition on the Bitmap Index Scan below it, so look there too.
+      const bounded = scans
+        .flatMap(walk)
+        .some(
+          (n) =>
+            /\borganization_id =/.test(n['Index Cond'] ?? '') &&
+            /\bid = ANY\b/i.test(n['Index Cond'] ?? '')
+        )
+      if (!bounded) {
+        throw new Error(`the read is not bound by the Organization and the ids in ${dump}`)
       }
     })
   })

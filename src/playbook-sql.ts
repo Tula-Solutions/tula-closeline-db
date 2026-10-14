@@ -16,6 +16,9 @@ export const INGESTION_MAX_RETRY_DELAY_MS = 3_600_000
 /** The most documents one {@link DOCUMENT_LIST} or {@link DOCUMENT_LIST_DELETED} page returns, whatever limit is asked for. */
 export const DOCUMENT_LIST_MAX_PAGE = 100
 
+/** The most document ids {@link DOCUMENT_SEARCH_STATE} reads in one call: the search over-fetch window (topK 100). */
+export const MAX_DOCUMENT_SEARCH_STATE_IDS = 100
+
 /**
  * The most rows any batch statement takes, whatever size is passed in: the purge claim, the job
  * claim, the give-up, and the two purges. A null, zero or negative size is raised to 1.
