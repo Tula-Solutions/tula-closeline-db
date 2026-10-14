@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { CALL_ROW_FIELDS, CALL_STATEMENTS } from '../playbook-call-statements'
+import {
+  CALL_ROW_FIELDS,
+  CALL_STATEMENTS,
+  type CallJobClaimRow,
+  claimedCallJobs,
+} from '../playbook-call-statements'
 import {
   CALL_CHANNELS,
   CALL_FAILURE_REASONS,
@@ -252,6 +257,38 @@ describe('the Call tables', () => {
     ] as const) {
       expect(CALL_STATEMENTS[name]).toContain('vendor_sends')
     }
+  })
+
+  test('the claim returns the job’s created_at and the Call’s content hash, and the signal row has them null', () => {
+    const text = CALL_STATEMENTS.CALL_JOB_CLAIM
+    expect(text).toContain('cl.job_created_at')
+    expect(text).toContain('m.content_hash')
+    expect(text).toContain('null::timestamptz')
+    expect(text).toContain('null::bytea')
+    const row: CallJobClaimRow = {
+      id: 'cjob_1',
+      call_id: 'call_1',
+      job_kind: 'transcribe',
+      epoch: 0,
+      rep_seq: 0,
+      attempts: 1,
+      claim_token: 't',
+      call_kind: 'recording',
+      media_type: 'audio/mpeg',
+      size_bytes: '1',
+      object_key: 'k',
+      transcript_key: null,
+      rep_by: null,
+      rep_label: null,
+      rep_channel: null,
+      speaker_labels: [],
+      sent_to_vendor_at: null,
+      job_created_at: new Date(0),
+      content_hash: Buffer.alloc(32),
+      cancelled: 0,
+      lost: 0,
+    }
+    expect(claimedCallJobs([row]).jobs[0]?.content_hash?.length).toBe(32)
   })
 
   test('one active job per Call, and the job kinds and states', () => {

@@ -134,8 +134,8 @@ ins as (
   from go
   returning id, state, epoch, rep_seq),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
   from ins)
 select 'created' as result, id, state, null::text as failure_reason from ins
 union all
@@ -252,8 +252,8 @@ x as (
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, deletion_seq, state, rep_seq),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
   from x where state <> 'awaiting_rep')
 select id, state, epoch, deletion_seq, true as changed from x
 union all
@@ -303,9 +303,9 @@ x as (
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, rep_seq, kind, transcript_key),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
   select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,
-    epoch, rep_seq, clock_timestamp()
+    epoch, rep_seq, clock_timestamp(), clock_timestamp()
   from x)
 select id, 'uploaded' as state, epoch, true as changed from x
 union all
@@ -368,8 +368,8 @@ u as (
   where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0
   returning c.id, c.rep_seq, c.epoch),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp(), clock_timestamp() from u)
 select 'changed' as result, id, 'processing'::text as state, rep_seq from u
 union all
 select result, id, state, rep_seq from v where result <> 'changed'`
@@ -398,6 +398,8 @@ const CLAIM_COLUMNS = [
   'rep_channel',
   'speaker_labels',
   'sent_to_vendor_at',
+  'job_created_at',
+  'content_hash',
 ] as const
 
 /**
@@ -411,7 +413,8 @@ const CLAIM_COLUMNS = [
  * `transcribing` or `processing`. A job with all ${CALL_JOB_MAX_ATTEMPTS} attempts used is never
  * claimed ({@link CALL_JOB_GIVE_UP_SPENT} resolves it). Locks: job rows (`skip locked`), then the
  * Call row, the order everywhere. Rows are the claimed jobs with what the worker needs (the Call's
- * kind, keys, Rep and labels, and `sent_to_vendor_at`); every row carries `cancelled` and `lost`
+ * kind, keys, Rep and labels, `sent_to_vendor_at`, the job's own `job_created_at` and the Call's
+ * audio `content_hash`: the sha256 as a Buffer, null only on the signal row); every row carries `cancelled` and `lost`
  * as for documents, and one signal row with a null `id` comes back when neither a job was claimed
  * nor nothing was due. Run it with a short `lock_timeout`; no publish or network call inside the
  * transaction.
@@ -438,7 +441,7 @@ claimed as (
       next_attempt_at = clock_timestamp() + ${LEASE('$3')}, updated_at = clock_timestamp()
   from due
   where j.organization_id = $1 and j.id = due.id and due.live
-  returning j.id, j.call_id, j.kind, j.epoch, j.rep_seq, j.attempts, j.claim_token),
+  returning j.id, j.call_id, j.kind, j.epoch, j.rep_seq, j.attempts, j.claim_token, j.created_at as job_created_at),
 moved as (
   update playbook.calls c
   set state = case claimed.kind when 'transcribe' then 'transcribing' when 'process' then 'processing' else c.state end,
@@ -447,15 +450,16 @@ moved as (
   where c.organization_id = $1 and c.id = claimed.call_id
     and ${LIVE('claimed', 'c')}
   returning c.id, c.kind as call_kind, c.media_type, c.size_bytes, c.object_key, c.transcript_key,
-            c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.sent_to_vendor_at)
+            c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.sent_to_vendor_at, c.content_hash)
 select cl.id, cl.call_id, cl.kind as job_kind, cl.epoch, cl.rep_seq, cl.attempts, cl.claim_token,
   m.call_kind, m.media_type, m.size_bytes, m.object_key, m.transcript_key, m.rep_by, m.rep_label,
   m.rep_channel, m.speaker_labels, m.sent_to_vendor_at,
+  cl.job_created_at, m.content_hash,
   (select count(*) from stale)::int as cancelled,
   ((select count(*) from claimed) - (select count(*) from moved))::int as lost
 from claimed cl join moved m on m.id = cl.call_id
 union all
-select ${CLAIM_COLUMNS.map((column) => (column === 'epoch' || column === 'rep_seq' || column === 'attempts' ? 'null::int' : column === 'claim_token' ? 'null::uuid' : column === 'size_bytes' ? 'null::bigint' : column === 'speaker_labels' ? 'null::text[]' : column === 'sent_to_vendor_at' ? 'null::timestamptz' : 'null::text')).join(', ')},
+select ${CLAIM_COLUMNS.map((column) => (column === 'epoch' || column === 'rep_seq' || column === 'attempts' ? 'null::int' : column === 'claim_token' ? 'null::uuid' : column === 'size_bytes' ? 'null::bigint' : column === 'speaker_labels' ? 'null::text[]' : column === 'sent_to_vendor_at' || column === 'job_created_at' ? 'null::timestamptz' : column === 'content_hash' ? 'null::bytea' : 'null::text')).join(', ')},
   (select count(*) from stale)::int, ((select count(*) from claimed) - (select count(*) from moved))::int
 where not exists (select 1 from claimed cl join moved m on m.id = cl.call_id)
   and ((select count(*) from stale) > 0 or (select count(*) from claimed) > 0)`
@@ -479,12 +483,19 @@ export interface CallJobClaimRow {
   rep_channel: 'left' | 'right' | null
   speaker_labels: string[] | null
   sent_to_vendor_at: Date | null
+  job_created_at: Date | null
+  content_hash: Buffer | null
   cancelled: number
   lost: number
 }
 
 /** A claimed Call job as {@link claimedCallJobs} returns it: a claim row whose `id` is known to be set. */
-export type ClaimedCallJob = CallJobClaimRow & { id: string; call_id: string }
+export type ClaimedCallJob = CallJobClaimRow & {
+  id: string
+  call_id: string
+  job_created_at: Date
+  content_hash: Buffer
+}
 
 /** Read the rows of {@link CALL_JOB_CLAIM}: the claimed jobs and the counts it `cancelled` and `lost`; claim again at once when either is above zero. */
 export function claimedCallJobs(rows: readonly CallJobClaimRow[]): {
@@ -637,8 +648,8 @@ c as (
   where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'
   returning id, state, epoch, rep_seq),
 q as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp(), clock_timestamp() from c where state = 'processing')
 select id, state from c`
 
 /**

@@ -1989,8 +1989,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       from go
       returning id, state, epoch, rep_seq),
     queued as (
-      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-      select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+      select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
       from ins)
     select 'created' as result, id, state, null::text as failure_reason from ins
     union all
@@ -2117,8 +2117,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         and (select count(*) from j) >= 0
       returning organization_id, id, epoch, deletion_seq, state, rep_seq),
     queued as (
-      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-      select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+      select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
       from x where state <> 'awaiting_rep')
     select id, state, epoch, deletion_seq, true as changed from x
     union all
@@ -2144,8 +2144,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         and (select count(*) from j) >= 0
       returning organization_id, id, epoch, deletion_seq, state, rep_seq),
     queued as (
-      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-      select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+      select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
       from x where state <> 'awaiting_rep')
     select id, state, epoch, deletion_seq, true as changed from x
     union all
@@ -2173,9 +2173,9 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         and (select count(*) from j) >= 0
       returning organization_id, id, epoch, rep_seq, kind, transcript_key),
     queued as (
-      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
       select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,
-        epoch, rep_seq, clock_timestamp()
+        epoch, rep_seq, clock_timestamp(), clock_timestamp()
       from x)
     select id, 'uploaded' as state, epoch, true as changed from x
     union all
@@ -2224,8 +2224,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0
       returning c.id, c.rep_seq, c.epoch),
     queued as (
-      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-      select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+      select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp(), clock_timestamp() from u)
     select 'changed' as result, id, 'processing'::text as state, rep_seq from u
     union all
     select result, id, state, rep_seq from v where result <> 'changed'
@@ -2259,7 +2259,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
           next_attempt_at = clock_timestamp() + make_interval(secs => greatest(coalesce($3::float8, 0), 1000) / 1000), updated_at = clock_timestamp()
       from due
       where j.organization_id = $1 and j.id = due.id and due.live
-      returning j.id, j.call_id, j.kind, j.epoch, j.rep_seq, j.attempts, j.claim_token),
+      returning j.id, j.call_id, j.kind, j.epoch, j.rep_seq, j.attempts, j.claim_token, j.created_at as job_created_at),
     moved as (
       update playbook.calls c
       set state = case claimed.kind when 'transcribe' then 'transcribing' when 'process' then 'processing' else c.state end,
@@ -2271,15 +2271,16 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
         or (claimed.kind = 'process' and c.state in ('uploaded', 'processing'))
         or (claimed.kind = 'rebuild' and c.state = 'processing' and c.rep_seq = claimed.rep_seq)))
       returning c.id, c.kind as call_kind, c.media_type, c.size_bytes, c.object_key, c.transcript_key,
-                c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.sent_to_vendor_at)
+                c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.sent_to_vendor_at, c.content_hash)
     select cl.id, cl.call_id, cl.kind as job_kind, cl.epoch, cl.rep_seq, cl.attempts, cl.claim_token,
       m.call_kind, m.media_type, m.size_bytes, m.object_key, m.transcript_key, m.rep_by, m.rep_label,
       m.rep_channel, m.speaker_labels, m.sent_to_vendor_at,
+      cl.job_created_at, m.content_hash,
       (select count(*) from stale)::int as cancelled,
       ((select count(*) from claimed) - (select count(*) from moved))::int as lost
     from claimed cl join moved m on m.id = cl.call_id
     union all
-    select null::text, null::text, null::text, null::int, null::int, null::int, null::uuid, null::text, null::text, null::bigint, null::text, null::text, null::text, null::text, null::text, null::text[], null::timestamptz,
+    select null::text, null::text, null::text, null::int, null::int, null::int, null::uuid, null::text, null::text, null::bigint, null::text, null::text, null::text, null::text, null::text, null::text[], null::timestamptz, null::timestamptz, null::bytea,
       (select count(*) from stale)::int, ((select count(*) from claimed) - (select count(*) from moved))::int
     where not exists (select 1 from claimed cl join moved m on m.id = cl.call_id)
       and ((select count(*) from stale) > 0 or (select count(*) from claimed) > 0)
@@ -2371,8 +2372,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'
       returning id, state, epoch, rep_seq),
     q as (
-      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-      select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')
+      insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+      select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp(), clock_timestamp() from c where state = 'processing')
     select id, state from c
     ```
 
@@ -3094,3 +3095,23 @@ committed snapshots): treat that error on `CALL_VENDOR_ID_RECORD` as `conflict`.
 `error.detail` of these statements; for 23505 it contains the id.
 Listing the vendor's jobs by client reference is the transcriber adapter's job and is unverified for
 AssemblyAI.
+
+## Claimed rows carry the job's creation time and the audio hash (v0.18.0, no migration)
+
+`CALL_JOB_CLAIM` returns two more fields on every claimed row; the signal row has both null. Both
+columns already exist, so there is no migration.
+
+- `job_created_at` is the job's own `created_at`, taken with `clock_timestamp()` (the database
+  clock) in the statement that inserts the job, **after** the Call's row lock: every statement that
+  creates a Call job (`CALL_INSERT`, `CALL_RESTORE` and `CALL_RESTORE_FOR_UPLOAD`, `CALL_REQUEUE`,
+  `CALL_SET_REP`, `CALL_JOB_TRANSCRIBED`) inserts from the row its own update returned, so the insert
+  waits behind `CALL_SENT_TO_VENDOR`, which writes `sent_to_vendor_at` with `clock_timestamp()` under
+  the same lock. A transaction that began earlier and waited (on `QUOTA_LOCK`, say) therefore cannot
+  date a new job before a send made meanwhile. (`CALL_INSERT` creates the Call in the same statement,
+  so it has no earlier send.) A send is made during this job when the Call's `sent_to_vendor_at` is at
+  or after `job_created_at`, and left over from an earlier job when it is before it. Compare the two
+  as `Date`s from the same database; never with the worker's clock.
+- `content_hash` is the Call's stored sha256 of the audio, a 32-byte `Buffer` (the `bytea` column).
+  The transcribe job keys a resend by this hash instead of by size.
+
+`ClaimedCallJob` types them as `Date` and `Buffer`; `CallJobClaimRow` as nullable.
