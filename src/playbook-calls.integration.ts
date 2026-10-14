@@ -1655,6 +1655,60 @@ describe('sales history, part two: Calls', () => {
       expect(second.job_created_at.getTime()).toBeGreaterThan(sentAt.getTime())
     })
 
+    // The job's created_at is taken after the Call row lock, so a transaction that started earlier and
+    // waited cannot date a new job before a send made in the meantime.
+    describe('a new job is dated after a send made while its transaction was open', () => {
+      const sentAtOf = async (org: string, id: string) =>
+        (
+          await asOwner(org, (c) =>
+            c.query('select sent_to_vendor_at from playbook.calls where id = $1', [id])
+          )
+        ).rows[0]?.sent_to_vendor_at as Date
+
+      test('a requeue', async () => {
+        const org = await newConfirmedOrg()
+        const rec = await mustAdd(org, recording())
+        const job = await claimOf(org, rec.id)
+        const held = await open(org)
+        try {
+          await held.client.query('select 1')
+          await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+          await q(org, CALL_JOB_FAIL, [org, job.id, job.claim_token, 'transcription_failed'])
+          expect(
+            (await held.client.query(CALL_REQUEUE, [org, rec.id, newCjob()])).rows[0]
+          ).toMatchObject({ changed: true })
+          await held.client.query('commit')
+        } finally {
+          await finish(held)
+        }
+        const sentAt = await sentAtOf(org, rec.id)
+        const next = await claimOf(org, rec.id)
+        expect(next.job_created_at.getTime()).toBeGreaterThan(sentAt.getTime())
+      })
+
+      test('a restore', async () => {
+        const org = await newConfirmedOrg()
+        const rec = await mustAdd(org, recording())
+        const job = await claimOf(org, rec.id)
+        const held = await open(org)
+        try {
+          await held.client.query('select 1')
+          await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+          await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+          await lapseJobs(org)
+          expect(
+            (await held.client.query(CALL_RESTORE, [org, rec.id, newCjob()])).rows[0]
+          ).toMatchObject({ changed: true })
+          await held.client.query('commit')
+        } finally {
+          await finish(held)
+        }
+        const sentAt = await sentAtOf(org, rec.id)
+        const next = await claimOf(org, rec.id)
+        expect(next.job_created_at.getTime()).toBeGreaterThan(sentAt.getTime())
+      })
+    })
+
     // F1 (round 1 of PR 16). Fails before the change: CALL_REQUEUE queues a job that can only answer sent false.
     test('at 20 sends a failed Call is not re-queued: the answer is unchanged and no job is created', async () => {
       const org = await newConfirmedOrg()

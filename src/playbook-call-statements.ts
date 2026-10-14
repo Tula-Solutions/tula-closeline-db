@@ -134,8 +134,8 @@ ins as (
   from go
   returning id, state, epoch, rep_seq),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $15::text, $1, id, case when $7::text = 'recording' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
   from ins)
 select 'created' as result, id, state, null::text as failure_reason from ins
 union all
@@ -252,8 +252,8 @@ x as (
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, deletion_seq, state, rep_seq),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp()
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $3::text, organization_id, id, case when state = 'uploaded' then 'transcribe' else 'process' end, epoch, rep_seq, clock_timestamp(), clock_timestamp()
   from x where state <> 'awaiting_rep')
 select id, state, epoch, deletion_seq, true as changed from x
 union all
@@ -303,9 +303,9 @@ x as (
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, rep_seq, kind, transcript_key),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
   select $3::text, organization_id, id, case when kind = 'recording' and transcript_key is null then 'transcribe' else 'process' end,
-    epoch, rep_seq, clock_timestamp()
+    epoch, rep_seq, clock_timestamp(), clock_timestamp()
   from x)
 select id, 'uploaded' as state, epoch, true as changed from x
 union all
@@ -368,8 +368,8 @@ u as (
   where c.organization_id = $1 and c.id = v.id and v.result = 'changed' and (select count(*) from j) >= 0
   returning c.id, c.rep_seq, c.epoch),
 queued as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp() from u)
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $6::text, $1, id, 'rebuild', epoch, rep_seq, clock_timestamp(), clock_timestamp() from u)
 select 'changed' as result, id, 'processing'::text as state, rep_seq from u
 union all
 select result, id, state, rep_seq from v where result <> 'changed'`
@@ -648,8 +648,8 @@ c as (
   where organization_id = $1 and id = (select call_id from j) and epoch = (select epoch from j) and state = 'transcribing'
   returning id, state, epoch, rep_seq),
 q as (
-  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at)
-  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp() from c where state = 'processing')
+  insert into playbook.call_jobs (id, organization_id, call_id, kind, epoch, rep_seq, next_attempt_at, created_at)
+  select $4::text, $1, id, 'process', epoch, rep_seq, clock_timestamp(), clock_timestamp() from c where state = 'processing')
 select id, state from c`
 
 /**
