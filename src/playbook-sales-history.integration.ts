@@ -292,7 +292,11 @@ describe('sales history, part one', () => {
       const first = (await q(org, DEAL_LIST, [org, 'infinity', '', 3])).rows
       expect(first.length).toBe(3)
       const last = first[2]
-      const rest = (await q(org, DEAL_LIST, [org, last.created_at, last.id, 50])).rows
+      // The cursor carries the database's own text form: a JS Date would drop the microseconds.
+      const text = (
+        await q(org, 'select created_at::text as t from playbook.deals where id = $1', [last.id])
+      ).rows[0].t
+      const rest = (await q(org, DEAL_LIST, [org, text, last.id, 50])).rows
       expect(first.length + rest.length).toBe(4)
       expect(new Set([...first, ...rest].map((r) => r.id)).size).toBe(4)
       expect((await q(org, DEAL_LIST_BY_OUTCOME, [org, 'infinity', '', 50, 'won'])).rowCount).toBe(
@@ -761,18 +765,12 @@ describe('sales history, part one', () => {
 
     test('erasure keeps the v0.13.0 evidence: an import upload attempt still makes the Organization reported for the orphan sweep', async () => {
       const org = newOrg()
-      await inOrg(org, async (c) => {
-        await c.query(IDEMPOTENCY_BEGIN, [
-          org,
-          newUser(),
-          'deal_imports.upload',
-          `k-${hex()}`,
-          hashOf('x'),
-        ])
-      })
+      // An attempt 30 hours old; the owner writes it, since a key's identity is final once made.
       await asOwner(org, (c) =>
         c.query(
-          `update playbook.idempotency_keys set created_at = clock_timestamp() - interval '30 hours'`
+          `insert into playbook.idempotency_keys (organization_id, user_id, route, key, request_hash, created_at)
+           values ($1, $2, 'deal_imports.upload', $3, $4, clock_timestamp() - interval '30 hours')`,
+          [org, newUser(), `k-${hex()}`, hashOf('x')]
         )
       )
       expect(

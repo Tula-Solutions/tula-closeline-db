@@ -232,6 +232,16 @@ describe('work discovery, erasure and spent purges', () => {
   /** Ask for one page of Organizations with work, outside any Organization's scope. */
   const rawPage = async (kind: string, after: string | null, batch: number | null) =>
     (await playbook.query<WorkDiscoveryRow>(ORGANIZATIONS_WITH_WORK, [kind, after, batch])).rows
+  /** A Deal import as the owner can write one, due `due` from now (a Postgres interval text). */
+  const insertImport = (org: string, due: string) =>
+    asOwner(org, (c) =>
+      c.query(
+        `insert into playbook.deal_imports (id, organization_id, uploaded_by, object_key, size_bytes, next_attempt_at)
+         values ($1, $2, $3, $4, 1000, clock_timestamp() + $5::interval)`,
+        [`dimp_${hex()}`, org, newUser(), `obj-${hex()}`, due]
+      )
+    )
+
   const page = async (kind: string, after: string | null, batch: number | null) =>
     discoveredOrganizations(await rawPage(kind, after, batch)).organizations
 
@@ -428,6 +438,24 @@ describe('work discovery, erasure and spent purges', () => {
         },
         finish: async (org) => {
           await inOrg(org, (c) => c.query(ORPHAN_SWEEP_DONE, [org, new Date()]))
+        },
+      },
+      {
+        kind: 'import_apply',
+        // An uploaded import is due from its next_attempt_at; one due in the future is not.
+        due: async (org) => {
+          await insertImport(org, '-1 hour')
+        },
+        notDue: async (org) => {
+          await insertImport(org, '+2 hours')
+        },
+        finish: async (org) => {
+          await asOwner(org, (c) =>
+            c.query(
+              `update playbook.deal_imports
+                  set state = 'failed', failure_reason = 'processing_failed', finished_at = clock_timestamp()`
+            )
+          )
         },
       },
     ]
@@ -643,6 +671,7 @@ describe('work discovery, erasure and spent purges', () => {
         'note_consumed_work',
         'note_document_work',
         'note_idempotency_work',
+        'note_import_work',
         'note_job_work',
         'note_work',
       ])
@@ -1061,7 +1090,10 @@ describe('work discovery, erasure and spent purges', () => {
       // The rest goes only once no document is left.
       const status = () => inOrg(org, (c) => c.query(ORGANIZATION_REMOVAL_STATUS, [org]))
       expect((await status()).rows[0]).toEqual({
+        no_deals: true,
         no_documents: true,
+        no_imports: true,
+        no_rights: true,
         no_settings: false,
         no_usage: false,
         no_messages: false,
@@ -1072,7 +1104,10 @@ describe('work discovery, erasure and spent purges', () => {
       )
       expect(rest.rows[0]).toEqual({ removed: true })
       expect((await status()).rows[0]).toEqual({
+        no_deals: true,
         no_documents: true,
+        no_imports: true,
+        no_rights: true,
         no_settings: true,
         no_usage: true,
         no_messages: true,
