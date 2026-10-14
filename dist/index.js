@@ -703,14 +703,14 @@ var CALL_REQUEUE = `with j as (
   where organization_id = $1 and call_id = $2 and state in ('queued', 'running')
     and exists (select 1 from playbook.calls x where x.organization_id = $1 and x.id = $2 and x.state = 'failed'
                 and x.failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
-                and x.vendor_send_seq < 20)
+                and x.vendor_send_seq < ${CALL_MAX_VENDOR_SENDS2})
   returning id),
 x as (
   update playbook.calls
   set state = 'uploaded', failure_reason = null, epoch = epoch + 1, updated_at = clock_timestamp()
   where organization_id = $1 and id = $2 and state = 'failed'
     and failure_reason in ('transcription_failed', 'transcription_timed_out', 'processing_failed')
-    and vendor_send_seq < 20
+    and vendor_send_seq < ${CALL_MAX_VENDOR_SENDS2}
     and (select count(*) from j) >= 0
   returning organization_id, id, epoch, rep_seq, kind, transcript_key),
 queued as (

@@ -3056,11 +3056,15 @@ purge rows below.
   counted and the answer has `sent` false: do not send, fail the job with the reason
   `transcription_failed`. `CALL_REQUEUE` does not requeue a Call at the bound: a re-upload of it
   answers the Call unchanged (`changed` false, no job, nothing written), so it cannot loop until its
-  purge. Whether that deserves a dedicated failure reason is a contract question for the owner.
+  purge. A deleted Recording at the bound can still be restored, after which its single transcribe job
+  fails once with the same reason. Whether that deserves a dedicated failure reason is a contract question for the owner.
   **The migration refuses rather than caps**: a guard at its top raises an exception when any Call has
   `vendor_send_seq` above 20 (the message names only how many Calls), so the deploy stops and a person
   decides. Capping would silently drop the record of sends 21 and beyond, and the purge would never list
   their vendor copies. Check first: `select count(*) from playbook.calls where vendor_send_seq > 20`.
+  The guard and the backfill read `calls` as the owner, which has no BYPASSRLS, so forced row-level
+  security is lifted on `calls` for the migration (inside its transaction) and forced again after the
+  backfill, as `0014` does for `idempotency_keys`.
 - `CALL_VENDOR_ID_RECORD` (after the vendor accepts) records the id of send `seq`: `recorded`,
   `unchanged` (the same id again), `conflict` (a different id is never written over a recorded one,
   and an id another send of the Organization already holds is not taken twice),

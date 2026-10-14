@@ -1,6 +1,11 @@
 -- Hand-written, first: the bound of 20 sends is new in this migration. A Call counted past it would make
 -- the CHECK below fail, and capping its count would silently drop the record of sends 21 and beyond,
 -- whose copies at the vendor the purge would then never list. So the migration refuses and a person decides.
+-- closeline_owner has no BYPASSRLS and calls has forced row-level security, so without
+-- app.organization_id the owner sees no row. Forcing is lifted on calls for this migration only (as 0014
+-- does on idempotency_keys), inside its transaction, and restored right after the backfill.
+ALTER TABLE "playbook"."calls" NO FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
 DO $$
 DECLARE n integer;
 BEGIN
@@ -41,6 +46,8 @@ ALTER TABLE "playbook"."calls" ADD CONSTRAINT "calls_vendor_send_seq_max" CHECK 
 INSERT INTO "playbook"."call_vendor_sends" ("organization_id", "call_id", "seq")
 SELECT c."organization_id", c."id", g.n
 FROM "playbook"."calls" c, generate_series(1, c."vendor_send_seq") AS g(n);
+--> statement-breakpoint
+ALTER TABLE "playbook"."calls" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 
 ALTER TABLE "playbook"."call_vendor_sends" ENABLE ROW LEVEL SECURITY;

@@ -227,6 +227,13 @@ describe('the Call tables', () => {
       vendorMigration.indexOf('CREATE TABLE')
     )
     expect(vendorMigration).toContain('"vendor_send_seq" > 20')
+    expect(vendorMigration.indexOf('"calls" NO FORCE ROW LEVEL SECURITY')).toBeLessThan(
+      vendorMigration.indexOf('RAISE EXCEPTION')
+    )
+    expect(vendorMigration.lastIndexOf('"calls" FORCE ROW LEVEL SECURITY')).toBeGreaterThan(
+      vendorMigration.indexOf('INSERT INTO "playbook"."call_vendor_sends"')
+    )
+    expect(CALL_STATEMENTS.CALL_REQUEUE).toContain(`vendor_send_seq < ${CALL_MAX_VENDOR_SENDS}`)
     expect(vendorMigration).not.toMatch(/LEAST|UPDATE "playbook"\."calls"/)
   })
 
