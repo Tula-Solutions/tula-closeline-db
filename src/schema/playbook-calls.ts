@@ -331,6 +331,14 @@ export const calls = playbookSchema.table(
     index('calls_deal_list_idx')
       .on(t.organizationId, t.dealRecordId, t.createdAt, t.id)
       .where(sql`${t.state} <> 'deleted'`),
+    // A Deal's Calls in one state, newest first: the equality columns come before the order.
+    index('calls_deal_state_list_idx').on(
+      t.organizationId,
+      t.dealRecordId,
+      t.state,
+      t.createdAt,
+      t.id
+    ),
     index('calls_purge_idx')
       .on(t.organizationId, t.purgeDueAt, t.id)
       .where(

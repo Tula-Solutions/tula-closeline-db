@@ -2477,6 +2477,10 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
     where organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int
       and sent_to_vendor_at is not null
+      and not exists (
+        select 1 from playbook.call_jobs j
+        where j.organization_id = $1 and j.call_id = $2
+          and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())
     returning id
     ```
 
@@ -2513,7 +2517,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
       and vectors_removed_seq = deletion_seq
       and (sent_to_vendor_at is null or vendor_removed_at is not null)
-      and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
+      and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())
     returning id, size_bytes
     ```
 
@@ -2835,7 +2839,9 @@ is found by `DEAL_LIST_PENDING_RETAG` (`retag_through < outcome_seq`, partial in
 `CALL_RETAGGED` after it rewrote the Moments' Outcome), and finishes with two statements in one
 transaction: `DEAL_RETAG_LOCK` takes the Deal row, then `DEAL_RETAG_DONE` sets `retag_through` only
 if no ready Call is stale, reading a fresh snapshot. `CALL_JOB_COMPLETE` takes the same Deal row
-**first and always** (`for no key update`) and reads `outcome_seq` from that locked row, so a
+**before it writes the Call** (`for no key update`; the Call update reads that locked row, so it
+waits for it; Postgres does not order the parts of a statement textually, and none holds a Deal row
+while waiting for a job or Call row, so either order is safe) and reads `outcome_seq` from that locked row, so a
 completion that is open while the Outcome moves holds the change and its re-tag back until it
 commits, and one that waits behind them tags against the newer sequence; a Call can never become
 `ready` with a stale tag unseen. (`for share` would let two completions deadlock when both then
@@ -2845,7 +2851,7 @@ Deal's ready Calls, once per re-tag. `DEAL_RETAG_BATCH` reads the Deal's ready C
 keyset and skips those already tagged: across the batches of one re-tag that is one pass over the
 Deal's Calls (bounded by the quota, never by the Organization), and each batch's own write is its
 `limit`. `calls_retag_idx` does not carry the tag, because a comparison to another table's column
-cannot narrow an index range; the skipped rows cost an index read, not a heap write.
+cannot narrow an index range; a skipped row costs an index entry and a heap read, not a write.
 
 **Delete, restore, purge.** Delete bumps `deletion_seq` once and starts the purge clock; restore (by a
 member or by an upload) returns the Call to `uploaded` and `transcribe` if it was never transcribed,
@@ -2882,7 +2888,7 @@ and Call; an import apply holds the same lock; `DEAL_SET_OUTCOME` locks only the
 upload's foreign key takes `KEY SHARE`, which `NO KEY UPDATE` does not conflict with (so
 `DEAL_SET_OUTCOME` and `DEAL_RETAG_LOCK` lock the Deal `for no key update`, never `for update`, and an
 Outcome change does not hold up an upload). A Rep change and a claim both lock job rows before the
-Call row; a completion locks the Deal row first, and no statement that holds a Deal row (an Outcome
+Call row; a completion locks the Deal row before it writes the Call, and no statement that holds a Deal row (an Outcome
 change, `DEAL_RETAG_LOCK`, an import apply) then waits for a job or Call row, so that order cannot
 close a cycle; a claim skips job rows another transaction holds, so it never waits for an uncommitted Rep
 change, and a Rep change on a Call whose job a claim holds waits for the claim. Erasure locks Calls then Deals. No path takes
@@ -2892,9 +2898,19 @@ two of these in the other direction, so no cycle forms.
 `sent_to_vendor_at` and clears `vendor_removed_at`, so a Recording sent again after a restore needs
 its own confirmation; `CALL_VENDOR_REMOVED` takes the sequence of the send it confirms (the purge
 claim and the erase rows return the current one), so a late confirmation of an earlier copy never
-confirms a later one. The row holds a count, not the vendor's ids: the service keeps the vendor
-reference of each send under its number, and **deletes the earlier copy before it overwrites that
-reference**. A Call that erasure (or a delete) reaches is purged only after the latest send is
+confirms a later one. The row holds a count, not the vendor's ids, and a crash after the vendor
+accepted a send but before the service stored the vendor's id would leave a copy nothing can name.
+So **every send carries a client reference derived from the Call id and `vendor_send_seq`** (for
+example `<call id>:<n>`), which lets the service find and delete every counted send at the vendor
+without a stored id; a confirmation for sequence `n` means every copy with reference 1 to `n` is
+gone, not only the one whose id was stored. This needs the vendor to support a client reference or
+a lookup, which is unverified for AssemblyAI and belongs to the transcriber adapter ticket.
+Delete and erasure cancel a Call's job but keep its lease, and a worker that already recorded a send
+may still be mid-request: `CALL_VENDOR_REMOVED` and `CALL_PURGE_COMPLETE` return no row while a
+`running` job, or a `cancelled` one whose `next_attempt_at` has not passed, exists (as
+`CALL_CLEANUP_BEGIN` already treated it). The confirmation is refused too, not only the purge,
+because a confirmation taken before the in-flight request lands is itself the false statement. Retry
+after the lease. A Call that erasure (or a delete) reaches is purged only after the latest send is
 confirmed gone.
 
 **Deleting.** `closeline_playbook` may delete a Call only once its purge has started and it is

@@ -42,7 +42,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-j7vy5gdj.js";
+} from "./shared/chunk-zzhn1pyk.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -962,6 +962,10 @@ var CALL_VENDOR_REMOVED = `update playbook.calls
 set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int
   and sent_to_vendor_at is not null
+  and not exists (
+    select 1 from playbook.call_jobs j
+    where j.organization_id = $1 and j.call_id = $2
+      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())
 returning id`;
 var CALL_PURGE_CLAIM = `with due as (
   select id from playbook.calls
@@ -988,7 +992,7 @@ delete from playbook.calls
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
   and vectors_removed_seq = deletion_seq
   and (sent_to_vendor_at is null or vendor_removed_at is not null)
-  and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
+  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())
 returning id, size_bytes`;
 var CALL_LIST_SPENT_PURGES = `select id, kind, object_key, transcript_key, deletion_seq, vectors_removed_seq,
   sent_to_vendor_at, vendor_send_seq, vendor_removed_at, deleted_at, purge_due_at, purge_started_at, purge_lease_until, purge_attempts

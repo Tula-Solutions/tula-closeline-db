@@ -260,6 +260,13 @@ describe('sales history, part two: Calls', () => {
       state: string
       rep_seq: number
     }
+  /** Let the lease of every job of the Organization pass (rows are aged, not waited for). */
+  const lapseJobs = (org: string) =>
+    asOwner(org, (c) =>
+      c.query(
+        `update playbook.call_jobs set next_attempt_at = clock_timestamp() - interval '1 second'`
+      )
+    )
   const named = async (org: string, kind: string) =>
     (await playbook.query(ORGANIZATIONS_WITH_WORK, [kind, org.slice(0, -1), 500])).rows.some(
       (r: { organization_id: string | null }) => r.organization_id === org
@@ -758,6 +765,7 @@ describe('sales history, part two: Calls', () => {
           `update playbook.calls set purge_lease_until = clock_timestamp() - interval '1 second'`
         )
       )
+      await lapseJobs(org) // a delete leaves the cancelled job's lease; let it pass
       expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
       expect((await get(org, rec.id)) ?? null).toBeNull()
@@ -1006,7 +1014,6 @@ describe('sales history, part two: Calls', () => {
   })
 
   describe('review round 1', () => {
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
     const ageAllDeleted = (org: string) =>
       asOwner(org, (c) =>
         c.query(`update playbook.calls set purge_due_at = deleted_at where state = 'deleted'`)
@@ -1021,6 +1028,7 @@ describe('sales history, part two: Calls', () => {
         (await q(org, CALL_SENT_TO_VENDOR, [org, first.id, first.claim_token])).rows[0]
       ).toMatchObject({ vendor_send_seq: 1 })
       await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await lapseJobs(org) // a delete leaves the cancelled job's lease; let it pass
       expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
       // Restored before a Transcript exists: back to uploaded with a transcribe job.
       expect((await q(org, CALL_RESTORE, [org, rec.id, newCjob()])).rows[0]).toMatchObject({
@@ -1047,6 +1055,7 @@ describe('sales history, part two: Calls', () => {
       // A late confirmation of the first copy confirms nothing about the second.
       expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(0)
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+      await lapseJobs(org) // a delete leaves the cancelled job's lease; let it pass
       expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 2])).rowCount).toBe(1)
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
     })
@@ -1061,6 +1070,7 @@ describe('sales history, part two: Calls', () => {
       const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
       await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+      await lapseJobs(org) // a delete leaves the cancelled job's lease; let it pass
       await q(org, CALL_VENDOR_REMOVED, [org, rec.id, claimed.vendor_send_seq])
       expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
     })
@@ -1076,26 +1086,31 @@ describe('sales history, part two: Calls', () => {
       const completer = await open(org)
       let changed = false
       let change: Promise<void> | undefined
+      const changer = await open(org)
       try {
         expect(
           (await completer.client.query(CALL_JOB_COMPLETE, [org, job.id, job.claim_token, 0]))
             .rowCount
         ).toBe(1)
         change = (async () => {
-          await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'won', null, false])
-          await inOrg(org, async (c) => {
-            await c.query(DEAL_RETAG_LOCK, [org, deal.id])
-            await c.query(DEAL_RETAG_DONE, [org, deal.id, 1])
-          })
+          await changer.client.query(DEAL_SET_OUTCOME, [org, deal.id, 'won', null, false])
+          await changer.client.query(DEAL_RETAG_LOCK, [org, deal.id])
+          await changer.client.query(DEAL_RETAG_DONE, [org, deal.id, 1])
+          await changer.client.query('commit')
           changed = true
         })()
-        await sleep(400)
+        // On fcea62e the change does not wait, so this never blocks and the test fails here.
+        await untilBlocked(changer.pid)
         expect(changed).toBe(false)
         await completer.client.query('commit')
       } finally {
         await finish(completer)
       }
-      await change
+      try {
+        await change
+      } finally {
+        await finish(changer)
+      }
       const row = (
         await asOwner(org, (c) =>
           c.query(
@@ -1218,6 +1233,7 @@ describe('sales history, part two: Calls', () => {
       'Relation Name'?: string
       'Index Name'?: string
       'Scan Direction'?: string
+      Filter?: string
       Plans?: PlanNode[]
     }
     const walk = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(walk)]
@@ -1265,7 +1281,7 @@ describe('sales history, part two: Calls', () => {
       [
         'CALL_LIST_BY_DEAL_STATE',
         CALL_LIST_BY_DEAL_STATE,
-        'calls_state_list_idx',
+        'calls_deal_state_list_idx',
         'text, timestamptz, text, int, text, text',
         `'infinity', '', 50, 'deal_x', 'deleted'`,
         'Backward',
@@ -1304,6 +1320,11 @@ describe('sales history, part two: Calls', () => {
         const scans = nodes.filter((n) => n['Relation Name'] === 'calls')
         expect([scans.map((n) => n['Index Name']), dump]).toEqual([[index], dump])
         expect([scans[0]?.['Scan Direction'], dump]).toEqual([direction, dump])
+        // F12: the Deal is an index condition, never a filter over the Organization's Calls.
+        expect([String(scans[0]?.Filter ?? '').includes('deal_record_id'), dump]).toEqual([
+          false,
+          dump,
+        ])
         expect([nodes.some((n) => n['Node Type'] === 'Sort'), dump]).toEqual([false, dump])
       }
     )
@@ -1327,5 +1348,60 @@ describe('sales history, part two: Calls', () => {
         expect([walk(plan).some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([false, dump])
       }
     )
+  })
+
+  describe('review round 2', () => {
+    const lapse = lapseJobs
+    const dueNow = (org: string) =>
+      asOwner(org, (c) =>
+        c.query(`update playbook.calls set purge_due_at = deleted_at where state = 'deleted'`)
+      )
+
+    // F9. Fails on fcea62e..bf1e7c6: the cancelled job's lease is ignored, so the purge completes
+    // at once and the confirmation is accepted while the worker may still be mid-request.
+    test.each(['delete', 'erase'] as const)(
+      'F9: after a %s, the purge and the vendor confirmation wait for the cancelled job’s lease',
+      async (how) => {
+        const org = await newConfirmedOrg()
+        const rec = await mustAdd(org, recording())
+        const job = await claimOf(org, rec.id)
+        const sent = (await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])).rows[0]
+        if (how === 'delete') {
+          await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+          await dueNow(org)
+        } else {
+          await q(org, CALL_ERASE_BATCH, [org, 10, ERASER])
+        }
+        const claimed = (await q(org, CALL_PURGE_CLAIM, [org, 10, 60_000])).rows[0]
+        await q(org, CALL_CLEANUP_DONE, [org, rec.id, claimed.deletion_seq])
+        const jobs = await asOwner(org, (c) =>
+          c.query('select state from playbook.call_jobs where call_id = $1', [rec.id])
+        )
+        expect(jobs.rows).toEqual([{ state: 'cancelled' }])
+        // The confirmation is refused while the lease lives, and so is the purge even if the
+        // confirmation was somehow recorded.
+        expect(
+          (await q(org, CALL_VENDOR_REMOVED, [org, rec.id, sent.vendor_send_seq])).rowCount
+        ).toBe(0)
+        await asOwner(org, (c) =>
+          c.query('update playbook.calls set vendor_removed_at = clock_timestamp() where id = $1', [
+            rec.id,
+          ])
+        )
+        expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(0)
+        await lapse(org)
+        expect((await q(org, CALL_PURGE_COMPLETE, [org, rec.id])).rowCount).toBe(1)
+      }
+    )
+
+    test('F9: the confirmation is accepted once the cancelled job’s lease has passed', async () => {
+      const org = await newConfirmedOrg()
+      const rec = await mustAdd(org, recording())
+      const job = await claimOf(org, rec.id)
+      await q(org, CALL_SENT_TO_VENDOR, [org, job.id, job.claim_token])
+      await q(org, CALL_SOFT_DELETE, [org, rec.id, newUser(), 0])
+      await lapse(org)
+      expect((await q(org, CALL_VENDOR_REMOVED, [org, rec.id, 1])).rowCount).toBe(1)
+    })
   })
 })

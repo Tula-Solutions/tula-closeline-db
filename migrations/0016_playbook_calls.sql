@@ -139,6 +139,7 @@ CREATE UNIQUE INDEX "calls_content_hash_key" ON "playbook"."calls" USING btree (
 CREATE INDEX "calls_list_idx" ON "playbook"."calls" USING btree ("organization_id","created_at","id") WHERE "playbook"."calls"."state" <> 'deleted';--> statement-breakpoint
 CREATE INDEX "calls_state_list_idx" ON "playbook"."calls" USING btree ("organization_id","state","created_at","id");--> statement-breakpoint
 CREATE INDEX "calls_deal_list_idx" ON "playbook"."calls" USING btree ("organization_id","deal_record_id","created_at","id") WHERE "playbook"."calls"."state" <> 'deleted';--> statement-breakpoint
+CREATE INDEX "calls_deal_state_list_idx" ON "playbook"."calls" USING btree ("organization_id","deal_record_id","state","created_at","id");--> statement-breakpoint
 CREATE INDEX "calls_purge_idx" ON "playbook"."calls" USING btree ("organization_id","purge_due_at","id") WHERE "playbook"."calls"."state" = 'deleted' and "playbook"."calls"."purge_attempts" < 20;--> statement-breakpoint
 CREATE INDEX "calls_unbarred_idx" ON "playbook"."calls" USING btree ("organization_id","id") WHERE "playbook"."calls"."restore_barred_at" is null;--> statement-breakpoint
 CREATE INDEX "calls_cleanup_idx" ON "playbook"."calls" USING btree ("organization_id","deleted_at","id") WHERE state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq);--> statement-breakpoint

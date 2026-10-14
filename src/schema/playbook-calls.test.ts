@@ -162,6 +162,20 @@ describe('the Call tables', () => {
     expect(CALL_STATEMENTS.CALL_VENDOR_REMOVED).toContain('vendor_send_seq = $3::int')
   })
 
+  test('a cancelled job with a live lease holds back the vendor confirmation and the purge', () => {
+    const live = "j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp()"
+    expect(CALL_STATEMENTS.CALL_VENDOR_REMOVED).toContain(live)
+    expect(CALL_STATEMENTS.CALL_PURGE_COMPLETE).toContain(
+      "jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp()"
+    )
+  })
+
+  test('a Deal’s Calls in one state have an index with the Deal before the state', () => {
+    expect(getTableConfig(calls).indexes.map((i) => i.config.name)).toContain(
+      'calls_deal_state_list_idx'
+    )
+  })
+
   test('a completion locks the Deal row for no key update and reads the sequence from it', () => {
     const text = CALL_STATEMENTS.CALL_JOB_COMPLETE
     expect(text).toMatch(/^with dk as \(\n[\s\S]*for no key update\),\nj as/)

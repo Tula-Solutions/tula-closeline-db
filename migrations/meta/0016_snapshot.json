@@ -1,5 +1,5 @@
 {
-  "id": "777c6318-1abc-4a2b-859f-7d3ddfbd690a",
+  "id": "24e03ded-d198-40e4-b5bb-ebc943996dbc",
   "prevId": "88987ade-20ff-450a-a3f7-f50ef3d822ce",
   "version": "7",
   "dialect": "postgresql",
@@ -7489,6 +7489,45 @@
           ],
           "isUnique": false,
           "where": "\"playbook\".\"calls\".\"state\" <> 'deleted'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "calls_deal_state_list_idx": {
+          "name": "calls_deal_state_list_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "deal_record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -1749,6 +1749,7 @@ var calls2 = playbookSchema2.table("calls", {
   index26("calls_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql20`${t.state} <> 'deleted'`),
   index26("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id),
   index26("calls_deal_list_idx").on(t.organizationId, t.dealRecordId, t.createdAt, t.id).where(sql20`${t.state} <> 'deleted'`),
+  index26("calls_deal_state_list_idx").on(t.organizationId, t.dealRecordId, t.state, t.createdAt, t.id),
   index26("calls_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql20`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql20.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
   index26("calls_unbarred_idx").on(t.organizationId, t.id).where(sql20`${t.restoreBarredAt} is null`),
   index26("calls_cleanup_idx").on(t.organizationId, t.deletedAt, t.id).where(sql20.raw(CALL_PENDING_CLEANUP_PREDICATE2)),

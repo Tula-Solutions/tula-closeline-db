@@ -187,8 +187,10 @@ ${LIST_END}`
 
 /**
  * {@link CALL_LIST} for one Deal (`$5`) in one state (`$6`, any of the seven; `deleted` lists the
- * Deal's Calls that can still be restored). On `calls_state_list_idx`, the Deal as a filter: the
- * Calls in one state of one Organization are the bounded set a Deal's are read from.
+ * Deal's Calls that can still be restored). On `calls_deal_state_list_idx`, whose equality columns
+ * are the Organization, the Deal and the state, so the page is read in order with no filter.
+ * (`calls_deal_list_idx` stays: it serves {@link CALL_LIST_BY_DEAL}, which spans every state but
+ * `deleted` and so needs the Deal's Calls in one `created_at` order.)
  */
 export const CALL_LIST_BY_DEAL_STATE = `select ${READ_COLUMNS}, c.created_at::text as cursor_at
 ${FROM_CALL}
@@ -511,9 +513,12 @@ returning id, attempts`
  * `vendor_send_seq`, refreshes `sent_to_vendor_at` and clears `vendor_removed_at`, so a copy sent
  * again after an earlier one was confirmed gone needs its own confirmation. Returns `id` and the
  * new `vendor_send_seq`: the service keeps its vendor reference for that send under this number,
- * and **deletes the vendor's earlier copy (its reference from the previous send) before it
- * overwrites that reference**, because the row holds a count, not the vendor's ids. No row: the
- * claim was lost or the Call is not live.
+ * and **sends a client reference derived from the Call id and this number** (for example
+ * `<call id>:<n>`), so every counted send can be found and deleted at the vendor even when the
+ * service crashed after the vendor accepted it and before it stored the vendor's id; a
+ * confirmation for number `n` means every copy with reference 1 to `n` is gone. That needs the
+ * vendor to support a client reference or a lookup, which is unverified for AssemblyAI and belongs
+ * to the transcriber adapter ticket. No row: the claim was lost or the Call is not live.
  */
 export const CALL_SENT_TO_VENDOR = `update playbook.calls c
 set sent_to_vendor_at = clock_timestamp(), vendor_send_seq = c.vendor_send_seq + 1,
@@ -575,10 +580,13 @@ select id, state from c`
  * before it built them). It applies only while the Call is `processing` at the job's epoch, has a
  * Rep (and, for a speaker, a label among its labels: else the service fails it with
  * `rep_label_not_found`), and for a `rebuild` only while the stored `rep_seq` equals the job's. It
- * **takes the Deal row first, always** (`for no key update`, the mode of an Outcome change and of
+ * **locks the Deal row** (`for no key update`, the mode of an Outcome change and of
  * {@link DEAL_RETAG_LOCK}, which conflicts with neither the foreign-key `KEY SHARE` of an upload
- * nor a reader) and reads `outcome_seq` from the locked, newest row, never from the statement's
- * snapshot. It records the tag (never above that sequence) and, when the tag is behind it, lowers
+ * nor a reader) **before the Call is written**, because the Call update reads that locked row and
+ * so waits for it, and reads `outcome_seq` from the locked, newest row, never from the statement's
+ * snapshot. (Postgres does not order the data-modifying parts of a statement textually, so the
+ * lock is not promised to come before the job row's; it need not: no statement that holds a Deal
+ * row waits for a job or Call row, so either order is safe.) It records the tag (never above that sequence) and, when the tag is behind it, lowers
  * the Deal's `retag_through` in the same write. Because the re-tag's lock and an Outcome change
  * queue on the same row, a completion that is open while the Outcome moves holds the change (and
  * so the re-tag's `DONE`) back until it commits, and a completion that waits behind them tags
@@ -705,13 +713,20 @@ returning id`
  * Record that the vendor confirmed it deleted its copy of a Recording. `$1` Organization, `$2` Call,
  * `$3` the `vendor_send_seq` of the send whose copy is gone (the purge claim and the erase rows
  * carry the current one). Only for a `deleted` Call whose latest send is that number, so a late
- * confirmation of an earlier copy confirms nothing about a later one; idempotent.
- * {@link CALL_PURGE_COMPLETE} waits for it.
+ * confirmation of an earlier copy confirms nothing about a later one; idempotent. **No row while a
+ * job of the Call still holds a live lease** (`running`, or `cancelled` with `next_attempt_at` in
+ * the future, as delete and erasure leave it): a worker that already recorded the send may still be
+ * mid-request, so a confirmation taken now could be made before its copy lands, which would be a
+ * false statement. Retry after the lease. {@link CALL_PURGE_COMPLETE} waits for both.
  */
 export const CALL_VENDOR_REMOVED = `update playbook.calls
 set vendor_removed_at = coalesce(vendor_removed_at, clock_timestamp()), updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and state = 'deleted' and vendor_send_seq = $3::int
   and sent_to_vendor_at is not null
+  and not exists (
+    select 1 from playbook.call_jobs j
+    where j.organization_id = $1 and j.call_id = $2
+      and j.state in ('cancelled', 'running') and j.next_attempt_at > clock_timestamp())
 returning id`
 
 /**
@@ -744,7 +759,9 @@ returning c.id, c.kind, c.object_key, c.transcript_key, c.size_bytes, c.deletion
  * Finish a Call purge: remove the row (its jobs go by cascade and the counts fall in the same
  * transaction). `$1` Organization, `$2` Call. Only for a `deleted` Call whose purge was claimed, whose
  * current deletion's cleanup is recorded and whose vendor copy, if one was made, is recorded removed,
- * and with no running job lease. Locks the Call's job rows first (the lock order everywhere).
+ * and with no live job lease: a `running` job, or a `cancelled` one (delete and erasure cancel a job
+ * but keep its lease) whose `next_attempt_at` has not passed, may still have a request in flight,
+ * as {@link CALL_CLEANUP_BEGIN} also treats it. Locks the Call's job rows first (the lock order everywhere).
  */
 export const CALL_PURGE_COMPLETE = `with jl as (
   select state, next_attempt_at from playbook.call_jobs
@@ -754,7 +771,7 @@ delete from playbook.calls
 where organization_id = $1 and id = $2 and state = 'deleted' and purge_started_at is not null
   and vectors_removed_seq = deletion_seq
   and (sent_to_vendor_at is null or vendor_removed_at is not null)
-  and not exists (select 1 from jl where jl.state = 'running' and jl.next_attempt_at > clock_timestamp())
+  and not exists (select 1 from jl where jl.state in ('running', 'cancelled') and jl.next_attempt_at > clock_timestamp())
 returning id, size_bytes`
 
 /** List the Calls whose purge reached the attempt bound, one page by id: `$1` Organization, `$2` last id (`''` first), `$3` page size. On `calls_spent_purge_idx`. */
