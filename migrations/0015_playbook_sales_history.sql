@@ -466,4 +466,19 @@ REVOKE ALL ON FUNCTION "playbook"."require_upload_lock"(text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION "playbook"."require_upload_lock"(text) TO closeline_playbook;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION "playbook"."track_deal_usage"(), "playbook"."refuse_deal_change"(), "playbook"."note_import_work"() FROM PUBLIC;
+-- Every Deal insert holds the Organization upload lock, enforced once per statement: a statement-level
+-- trigger over the transition table checks each distinct Organization of the inserted rows (one pg_locks
+-- read per Organization, not per row). The Call upload and any other inserter must take the lock first.
+CREATE FUNCTION "playbook"."require_deal_insert_lock"() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  PERFORM "playbook"."require_upload_lock"(o."organization_id")
+    FROM (SELECT DISTINCT "organization_id" FROM inserted_deals) o;
+  RETURN NULL;
+END
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "deals_require_lock" AFTER INSERT ON "playbook"."deals"
+  REFERENCING NEW TABLE AS inserted_deals FOR EACH STATEMENT EXECUTE FUNCTION "playbook"."require_deal_insert_lock"();
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION "playbook"."track_deal_usage"(), "playbook"."refuse_deal_change"(), "playbook"."note_import_work"(), "playbook"."require_deal_insert_lock"() FROM PUBLIC;

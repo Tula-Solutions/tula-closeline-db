@@ -1695,11 +1695,19 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       select id, report_through, playbook.require_upload_lock($1) as lock_held from playbook.deal_imports
       where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
       for update),
+    raw as (
+      select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+      from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+    refuse as (
+      select case
+        when exists (select 1 from raw where row_number is null or row_number not between 2 and 50001) then 'row_number_range'
+        when exists (select 1 from raw group by row_number having count(*) > 1) then 'row_number_repeated'
+      end as why),
     sent as (
-      select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name,
-        imp.report_through as base, dense_rank() over (order by x.row_number) as rk
-      from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)
-      where x.row_number > imp.report_through),
+      select raw.row_number, raw.deal_id, raw.reason, raw.outcome, raw.closed_at, raw.amount, raw.currency, raw.name,
+        imp.report_through as base, dense_rank() over (order by raw.row_number) as rk
+      from imp, raw
+      where raw.row_number > imp.report_through and (select why from refuse) is null),
     b as (
       select row_number, deal_id, reason, outcome, closed_at, amount, currency, name
       from sent where row_number = base + rk
@@ -1767,10 +1775,11 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
       (select count(*) from b)::int as taken,
       (select count(*) from rep where result = 'applied')::int as applied,
       (select count(*) from rep where result = 'rejected')::int as rejected,
-      (select report_through from cnt) as through
+      (select report_through from cnt) as through,
+      (select why from refuse) as refusal
     where exists (select 1 from imp)
     union all
-    select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null from upd u where u.bumped
+    select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null, null from upd u where u.bumped
     ```
 
     `DEAL_IMPORT_FINISH`:
@@ -1968,7 +1977,8 @@ and returns `changed` false (publish nothing). The lists are keyset on `(created
 each on its own index; the first page passes `'infinity'` and any id. **Every list row carries `cursor_at`, the text of
 `created_at`: pass that back as the next page's cursor, never a JavaScript Date**, which drops the microseconds
 (Deals created by one statement share a `created_at`, and a truncated cursor skips rows at a page boundary).
-`DEAL_IMPORT_LIST` does the same. No Deal is created here by a Call:
+`DEAL_IMPORT_LIST` does the same. A malformed cursor text raises SQLSTATE 22007, which the service maps to
+a validation error. No Deal is created here by a Call:
 the Call upload statement of the next migration does, for an unknown deal id, under the upload lock.
 
 **Imports.** The upload route runs `IDEMPOTENCY_BEGIN` and then `DEAL_IMPORT_INSERT` in one transaction.
@@ -1984,8 +1994,17 @@ steps, and an import has none of them. The lease is the same (`next_attempt_at`,
 the report in one statement. **Run `QUOTA_LOCK` first in the same transaction**: the statement refuses
 (`playbook.upload_lock`, no customer text) when the transaction does not hold the Organization upload lock
 (it checks `pg_locks` for the transaction's own advisory lock; a session-level lock on the same key would
-also pass). Two imports of one Organization then apply one at a time and every Deal insert, which holds the
+also pass). `require_upload_lock` reads `pg_locks` once per call, and the apply calls it once per statement.
+Two imports of one Organization then apply one at a time and every Deal insert, which holds the
 same lock, is seen.
+
+**Every Deal insert must hold the upload lock, and SQL enforces it.** A statement-level `AFTER INSERT`
+trigger on `playbook.deals` (`deals_require_lock`, over a transition table of the inserted rows) calls
+`require_upload_lock` once for each distinct Organization in the statement, so an inserter that forgot
+`QUOTA_LOCK` fails with `playbook.upload_lock` instead of making an import abort on a unique violation. It
+is per statement, not per row: an apply of 500 new Deals checks once. There is no bypass for any role,
+the owner included. **For issue 68:** the Call upload statement that creates a Deal for an unknown deal id
+must run `QUOTA_LOCK` in its transaction first.
 
 **Order.** The report is always contiguous from row 2 (row 1 is the header): the import row keeps
 `report_through`, the highest row number in the report, and a check ties `applied_count + rejected_count`
@@ -1997,7 +2016,15 @@ left undecided:** the statement locks the Deals the batch names (`for update`, i
 newest committed version after waiting for a concurrent Outcome change, and decides every row it takes from
 that (a Deal decided meanwhile gives `outcome_already_decided`). A row that could not be decided would break
 the check above and abort the statement with nothing recorded. `DEAL_IMPORT_FINISH` takes the CSV's row
-count and completes only when `report_through` is that count plus one.
+count and completes only when `report_through` is that count plus one (a count too high or too low returns
+no row).
+
+**What the service must do.** It counts the CSV's records itself and fails the import with `too_many_rows`
+before applying anything; it sends each row number once per batch; and it passes the true data-row count to
+`DEAL_IMPORT_FINISH`. A row number outside 2 to 50001 or repeated within a batch is refused cleanly: nothing
+is taken or recorded and the `summary` row's `refusal` is `row_number_range` or `row_number_repeated`.
+A malformed JSON array or a non-integer row number raises a data exception (SQLSTATE class 22), a
+programming error.
 
 The rules, per row in row order: a deal id seen earlier in the file is `duplicate_in_file`, whatever else
 is wrong with the repeat; the row's own rejection from the contract's `checkDealImportRow` is kept; a `won`

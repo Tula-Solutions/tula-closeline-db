@@ -1059,11 +1059,19 @@ var DEAL_IMPORT_APPLY = `with imp as (
   select id, report_through, playbook.require_upload_lock($1) as lock_held from playbook.deal_imports
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
   for update),
+raw as (
+  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+refuse as (
+  select case
+    when exists (select 1 from raw where row_number is null or row_number not between 2 and ${DEAL_IMPORT_MAX_ROWS2 + 1}) then 'row_number_range'
+    when exists (select 1 from raw group by row_number having count(*) > 1) then 'row_number_repeated'
+  end as why),
 sent as (
-  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name,
-    imp.report_through as base, dense_rank() over (order by x.row_number) as rk
-  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)
-  where x.row_number > imp.report_through),
+  select raw.row_number, raw.deal_id, raw.reason, raw.outcome, raw.closed_at, raw.amount, raw.currency, raw.name,
+    imp.report_through as base, dense_rank() over (order by raw.row_number) as rk
+  from imp, raw
+  where raw.row_number > imp.report_through and (select why from refuse) is null),
 b as (
   select row_number, deal_id, reason, outcome, closed_at, amount, currency, name
   from sent where row_number = base + rk
@@ -1131,10 +1139,11 @@ select 'summary' as kind, null::text as deal_record_id, null::int as outcome_seq
   (select count(*) from b)::int as taken,
   (select count(*) from rep where result = 'applied')::int as applied,
   (select count(*) from rep where result = 'rejected')::int as rejected,
-  (select report_through from cnt) as through
+  (select report_through from cnt) as through,
+  (select why from refuse) as refusal
 where exists (select 1 from imp)
 union all
-select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null from upd u where u.bumped`;
+select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null, null from upd u where u.bumped`;
 var DEAL_IMPORT_FINISH = `update playbook.deal_imports
 set state = 'completed', claim_token = null, row_count = applied_count + rejected_count,
     object_removed_at = clock_timestamp(), finished_at = clock_timestamp(), updated_at = clock_timestamp()

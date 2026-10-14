@@ -60,7 +60,11 @@ import {
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
   RIGHTS_CONFIRM,
 } from './playbook-statements'
-import { DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_MAX_ATTEMPTS } from './schema/playbook-sales-history'
+import {
+  DEAL_IMPORT_APPLY_BATCH,
+  DEAL_IMPORT_MAX_ATTEMPTS,
+  DEAL_IMPORT_MAX_ROWS,
+} from './schema/playbook-sales-history'
 import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schema/playbook-tables'
 import { WORK_KINDS } from './schema/playbook-work-hints'
 
@@ -605,7 +609,7 @@ describe('sales history, part one', () => {
       'when f.outcome <> d.outcome or coalesce(f.closed_at, d.closed_at) is distinct from d.closed_at then 1 else 0'
     )
     // Only the contiguous rows after the report are read, so a repeat changes nothing and order holds.
-    expect(DEAL_IMPORT_APPLY).toContain('where x.row_number > imp.report_through')
+    expect(DEAL_IMPORT_APPLY).toContain('where raw.row_number > imp.report_through')
     expect(DEAL_IMPORT_APPLY).toContain('from sent where row_number = base + rk')
     // The Deals the batch names are locked first, so no row is left undecided, and the insert has no
     // conflict clause that could drop a row.
@@ -616,6 +620,13 @@ describe('sales history, part one', () => {
     expect(DEAL_IMPORT_APPLY).toContain(
       'report_through = report_through + (select count(*) from b)'
     )
+  })
+
+  test('the apply refuses a row number out of range or repeated in one batch, taking nothing', () => {
+    expect(DEAL_IMPORT_APPLY).toContain("then 'row_number_range'")
+    expect(DEAL_IMPORT_APPLY).toContain("then 'row_number_repeated'")
+    expect(DEAL_IMPORT_APPLY).toContain('(select why from refuse) is null')
+    expect(DEAL_IMPORT_APPLY).toContain(`not between 2 and ${DEAL_IMPORT_MAX_ROWS + 1}`)
   })
 
   test('the Deal and import lists return the cursor as text', () => {

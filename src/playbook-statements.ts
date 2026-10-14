@@ -1,4 +1,8 @@
-import { DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_MAX_ATTEMPTS } from './schema/playbook-sales-history'
+import {
+  DEAL_IMPORT_APPLY_BATCH,
+  DEAL_IMPORT_MAX_ATTEMPTS,
+  DEAL_IMPORT_MAX_ROWS,
+} from './schema/playbook-sales-history'
 import {
   DOCUMENT_PURGE_MAX_ATTEMPTS,
   INGESTION_JOB_MAX_ATTEMPTS,
@@ -1198,7 +1202,8 @@ where organization_id = $1 and deal_id = $2::text`
 /**
  * List the Deals, newest first, one page by keyset. `$1` Organization, `$2` and `$3` the
  * `cursor_at` (text, never a Date) and `id` of the last row of the previous page (`'infinity'` and
- * `''` for the first). Each row carries `cursor_at`, the text of `created_at` to pass back,
+ * `''` for the first). A malformed cursor text raises SQLSTATE 22007 (`invalid_datetime_format`): the
+ * service maps it to a validation error. Each row carries `cursor_at`, the text of `created_at` to pass back,
  * `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. On `deals_list_idx`, read
  * backwards.
  */
@@ -1376,7 +1381,15 @@ returning id, attempts`
  * is limited by `DEAL_MAX_SEQ` (the column is a 32-bit integer; a Deal whose sequence is at the
  * ceiling cannot take another Outcome change, and the write fails rather than wraps).
  *
- * The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`) and one
+ * **What the service must do.** It counts the CSV's records itself and enforces `too_many_rows`
+ * ({@link DEAL_IMPORT_MAX_ROWS}) before applying anything, sends each row number once per batch, and
+ * passes the true data-row count to {@link DEAL_IMPORT_FINISH}. A row number outside 2 to
+ * `DEAL_IMPORT_MAX_ROWS + 1` or repeated within one batch is refused cleanly: the batch takes
+ * nothing, records nothing, and the `summary` row's `refusal` is `row_number_range` or
+ * `row_number_repeated` (null otherwise). A malformed `$4` JSON or a non-integer row number
+ * raises a data exception (SQLSTATE class 22): a programming error, not data.
+ *
+ * The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`, `refusal`) and one
  * `outcome_changed` row per Deal this statement moved (`deal_record_id`, `outcome_seq`, read from the
  * locked row the import changed, so a portal change made meanwhile never makes a second message):
  * publish the Outcome-changed message for each.
@@ -1385,11 +1398,19 @@ export const DEAL_IMPORT_APPLY = `with imp as (
   select id, report_through, playbook.require_upload_lock($1) as lock_held from playbook.deal_imports
   where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'processing' and erased_at is null
   for update),
+raw as (
+  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name
+  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)),
+refuse as (
+  select case
+    when exists (select 1 from raw where row_number is null or row_number not between 2 and ${DEAL_IMPORT_MAX_ROWS + 1}) then 'row_number_range'
+    when exists (select 1 from raw group by row_number having count(*) > 1) then 'row_number_repeated'
+  end as why),
 sent as (
-  select x.row_number, x.deal_id, x.reason, x.outcome, x.closed_at, x.amount, x.currency, x.name,
-    imp.report_through as base, dense_rank() over (order by x.row_number) as rk
-  from imp, jsonb_to_recordset($4::jsonb) as x(row_number int, deal_id text, reason text, outcome text, closed_at timestamptz, amount numeric, currency text, name text)
-  where x.row_number > imp.report_through),
+  select raw.row_number, raw.deal_id, raw.reason, raw.outcome, raw.closed_at, raw.amount, raw.currency, raw.name,
+    imp.report_through as base, dense_rank() over (order by raw.row_number) as rk
+  from imp, raw
+  where raw.row_number > imp.report_through and (select why from refuse) is null),
 b as (
   select row_number, deal_id, reason, outcome, closed_at, amount, currency, name
   from sent where row_number = base + rk
@@ -1457,10 +1478,11 @@ select 'summary' as kind, null::text as deal_record_id, null::int as outcome_seq
   (select count(*) from b)::int as taken,
   (select count(*) from rep where result = 'applied')::int as applied,
   (select count(*) from rep where result = 'rejected')::int as rejected,
-  (select report_through from cnt) as through
+  (select report_through from cnt) as through,
+  (select why from refuse) as refusal
 where exists (select 1 from imp)
 union all
-select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null from upd u where u.bumped`
+select 'outcome_changed', u.id, u.outcome_seq, null, null, null, null, null from upd u where u.bumped`
 
 /**
  * Finish an import whose rows are all reported: `$1` Organization, `$2` the import, `$3` the claim

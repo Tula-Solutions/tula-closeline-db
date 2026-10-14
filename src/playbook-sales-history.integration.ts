@@ -35,6 +35,7 @@ import {
   RIGHTS_CONFIRM,
   RIGHTS_GET,
 } from './playbook-statements'
+import { DEAL_IMPORT_MAX_ROWS } from './schema/playbook-sales-history'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 // Every test works in Organizations of its own (random ids), so no test sees another's rows.
@@ -284,12 +285,13 @@ describe('sales history, part one', () => {
         row(4, 'L-3', { outcome: 'lost' }),
       ])
       // A Deal no CSV named, as a Call upload will make one.
-      await asOwner(org, (c) =>
-        c.query(
+      await asOwner(org, async (c) => {
+        await c.query(QUOTA_LOCK, [org])
+        await c.query(
           `insert into playbook.deals (id, organization_id, deal_id) values ($1, $2, 'typo')`,
           [newDealId(), org]
         )
-      )
+      })
       const first = (await q(org, DEAL_LIST, [org, 'infinity', '', 3])).rows
       expect(first.length).toBe(3)
       const last = first[2]
@@ -784,6 +786,120 @@ describe('sales history, part one', () => {
         }
       }
       expect(Number((await q(org, DEAL_USAGE, [org])).rows[0].deal_count)).toBe(0)
+    })
+  })
+
+  describe('what the statements refuse', () => {
+    const insertDeal = (c: PoolClient, org: string) =>
+      c.query(`insert into playbook.deals (id, organization_id, deal_id) values ($1, $2, $3)`, [
+        newDealId(),
+        org,
+        `T-${hex()}`,
+      ])
+
+    test('a Deal insert without the upload lock fails with playbook.upload_lock, for the role and the owner; with it, it succeeds', async () => {
+      const org = newOrg()
+      expect(await rejectionOf(inOrg(org, (c) => insertDeal(c, org)))).toContain(
+        'playbook.upload_lock'
+      )
+      expect(await rejectionOf(asOwner(org, (c) => insertDeal(c, org)))).toContain(
+        'playbook.upload_lock'
+      )
+      await inOrg(org, async (c) => {
+        await c.query(QUOTA_LOCK, [org])
+        await insertDeal(c, org)
+      })
+      expect(Number((await q(org, DEAL_USAGE, [org])).rows[0].deal_count)).toBe(1)
+      // The check is one statement-level trigger, not one per row.
+      const trigger = await owner.query(
+        `select (tgtype & 1) as per_row from pg_trigger where tgname = 'deals_require_lock'`
+      )
+      expect(trigger.rows).toEqual([{ per_row: 0 }])
+    })
+
+    test('an apply of 500 new Deals passes the check once and creates them all', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      const rows = Array.from({ length: 500 }, (_, i) => row(i + 2, `BIG-${i}`))
+      expect(summary((await apply(org, id, job.claim_token, rows, 1000)).rows)).toMatchObject({
+        taken: 500,
+        applied: 500,
+        through: 501,
+      })
+      expect(Number((await q(org, DEAL_USAGE, [org])).rows[0].deal_count)).toBe(500)
+    })
+
+    test('a row number above the limit or repeated in a batch is refused, taking and recording nothing', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      const refusal = async (rows: CsvRow[]) => {
+        const result = (await apply(org, id, job.claim_token, rows)).rows[0]
+        return [result.kind, result.taken, result.refusal]
+      }
+      expect(await refusal([row(DEAL_IMPORT_MAX_ROWS + 2, 'Z')])).toEqual([
+        'summary',
+        0,
+        'row_number_range',
+      ])
+      expect(await refusal([row(2, 'Z'), row(2, 'Y')])).toEqual([
+        'summary',
+        0,
+        'row_number_repeated',
+      ])
+      expect(await reportOf(org, id)).toEqual([])
+      expect((await q(org, DEAL_BY_DEAL_ID, [org, 'Z'])).rowCount).toBe(0)
+      expect(await refusal([row(2, 'Z'), row(3, 'Y')])).toEqual(['summary', 2, null])
+    })
+
+    test('finishing with a row count too high or too low returns no row, and the exact count completes', async () => {
+      const org = newOrg()
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      await apply(org, id, job.claim_token, [row(2, 'Z'), row(3, 'Y')])
+      for (const count of [3, 1, 0]) {
+        expect((await q(org, DEAL_IMPORT_FINISH, [org, id, job.claim_token, count])).rowCount).toBe(
+          0
+        )
+      }
+      expect((await q(org, DEAL_IMPORT_FINISH, [org, id, job.claim_token, 2])).rowCount).toBe(1)
+    })
+
+    test('a malformed cursor text raises SQLSTATE 22007', async () => {
+      const org = newOrg()
+      const error = await q(org, DEAL_LIST, [org, 'x', '', 10]).then(
+        () => undefined,
+        (e: { code?: string }) => e
+      )
+      expect(error?.code).toBe('22007')
+    })
+
+    test('an Organization whose lock key hash is negative: the apply succeeds with the lock and raises without it', async () => {
+      let org = newOrg()
+      for (let tries = 0; tries < 200; tries++) {
+        const negative = await owner.query('select hashtextextended($1, 0) < 0 as negative', [org])
+        if (negative.rows[0].negative) {
+          break
+        }
+        org = newOrg()
+      }
+      const id = await addImport(org)
+      const [job] = await claim(org)
+      const bare = inOrg(org, (c) =>
+        c.query(DEAL_IMPORT_APPLY, [
+          org,
+          id,
+          job.claim_token,
+          JSON.stringify([row(2, 'N')]),
+          100,
+          500,
+        ])
+      )
+      expect(await rejectionOf(bare)).toContain('playbook.upload_lock')
+      expect(summary((await apply(org, id, job.claim_token, [row(2, 'N')])).rows)).toMatchObject({
+        applied: 1,
+      })
     })
   })
 

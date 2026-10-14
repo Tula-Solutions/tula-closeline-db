@@ -11462,7 +11462,8 @@ declare const DEAL_BY_DEAL_ID = "select id, deal_id, name, outcome, outcome_seq,
 /**
 * List the Deals, newest first, one page by keyset. `$1` Organization, `$2` and `$3` the
 * `cursor_at` (text, never a Date) and `id` of the last row of the previous page (`'infinity'` and
-* `''` for the first). Each row carries `cursor_at`, the text of `created_at` to pass back,
+* `''` for the first). A malformed cursor text raises SQLSTATE 22007 (`invalid_datetime_format`): the
+* service maps it to a validation error. Each row carries `cursor_at`, the text of `created_at` to pass back,
 * `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. On `deals_list_idx`, read
 * backwards.
 */
@@ -11567,7 +11568,15 @@ declare const DEAL_IMPORT_RETRY = "update playbook.deal_imports\\nset state = 'u
 * is limited by `DEAL_MAX_SEQ` (the column is a 32-bit integer; a Deal whose sequence is at the
 * ceiling cannot take another Outcome change, and the write fails rather than wraps).
 *
-* The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`) and one
+* **What the service must do.** It counts the CSV's records itself and enforces `too_many_rows`
+* ({@link DEAL_IMPORT_MAX_ROWS}) before applying anything, sends each row number once per batch, and
+* passes the true data-row count to {@link DEAL_IMPORT_FINISH}. A row number outside 2 to
+* `DEAL_IMPORT_MAX_ROWS + 1` or repeated within one batch is refused cleanly: the batch takes
+* nothing, records nothing, and the `summary` row's `refusal` is `row_number_range` or
+* `row_number_repeated` (null otherwise). A malformed `$4` JSON or a non-integer row number
+* raises a data exception (SQLSTATE class 22): a programming error, not data.
+*
+* The answer: one `summary` row (`taken`, `applied`, `rejected`, `through`, `refusal`) and one
 * `outcome_changed` row per Deal this statement moved (`deal_record_id`, `outcome_seq`, read from the
 * locked row the import changed, so a portal change made meanwhile never makes a second message):
 * publish the Outcome-changed message for each.
