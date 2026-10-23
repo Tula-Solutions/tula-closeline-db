@@ -152,6 +152,14 @@ export const CALL_PENDING_CLEANUP_PREDICATE =
   "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)"
 
 /**
+ * Who authored the Moments a Call produces: `imported` for a Call uploaded as sales history,
+ * `rep` for a Call a Rep made, `agent` for one an Agent made. Mirrors the contract's
+ * `MOMENT_ORIGINS`. Moments live in the vector index, so the origin is stored on their Call and
+ * stamped on each Moment when it is built.
+ */
+export const CALL_ORIGINS = ['imported', 'rep', 'agent'] as const
+
+/**
  * A Call of an Organization (ADR 0018): the record of an uploaded Transcript or Recording and the
  * Deal it belongs to. **Metadata only**: the file is in object storage under `object_key`, the
  * Transcript a Recording produced under `transcript_key`, and the turns and Moments in the vector
@@ -207,6 +215,8 @@ export const calls = playbookSchema.table(
     deletionSeq: integer('deletion_seq').notNull().default(0),
     vectorsRemovedSeq: integer('vectors_removed_seq'),
     taggedOutcomeSeq: integer('tagged_outcome_seq').notNull().default(0),
+    // Who authored the Call's Moments; every existing row is an import.
+    origin: text('origin', { enum: CALL_ORIGINS }).notNull().default('imported'),
     sentToVendorAt: ts('sent_to_vendor_at'),
     // Counts the sends to the vendor, so each copy needs its own confirmed removal.
     vendorSendSeq: integer('vendor_send_seq').notNull().default(0),
@@ -256,6 +266,7 @@ export const calls = playbookSchema.table(
       sql`${t.durationSeconds} is null or (${t.durationSeconds} between 1 and ${sql.raw(String(CALL_MAX_RECORDING_SECONDS))}
         and ${t.kind} = 'recording')`
     ),
+    check('calls_origin_known', sql`${t.origin} in (${list(CALL_ORIGINS)})`),
     check('calls_state_known', sql`${t.state} in (${list(CALL_STATES)})`),
     check('calls_failure_reason_known', sql`${t.failureReason} in (${list(CALL_FAILURE_REASONS)})`),
     check(

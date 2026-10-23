@@ -72,6 +72,14 @@ const CONTROL_TABLES = [
   'export_jobs',
   'export_parts',
 ]
+const ANALYTICS_TABLES = [
+  'assessment_findings',
+  'assessments',
+  'conversation_summaries',
+  'rollup_daily',
+  'source_performance',
+  'touches',
+]
 const NO_ACCESS = [
   'consent_form_directory',
   'invitation_directory',
@@ -80,7 +88,7 @@ const NO_ACCESS = [
 ]
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
       [
         ...NO_ACCESS,
@@ -91,6 +99,7 @@ describe('the core schema', () => {
         ...CONSENT_TABLES,
         ...CRM_TABLES,
         ...CONTROL_TABLES,
+        ...ANALYTICS_TABLES,
       ].sort()
     )
   })

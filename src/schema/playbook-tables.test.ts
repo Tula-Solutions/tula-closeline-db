@@ -27,6 +27,7 @@ const orphanMigration = read('0014_playbook_pending_cleanup_orphans.sql')
 const salesMigration = read('0015_playbook_sales_history.sql')
 const callsMigration = read('0016_playbook_calls.sql') + read('0018_call_vendor_sends.sql')
 const sweepEmbedMigration = read('0032_playbook_sweep_cursor_embed_usage.sql')
+const analyticsMigration = read('0038_core_analytics_playbook_suggestions.sql')
 
 const NAMES = [
   'call_jobs',
@@ -44,10 +45,11 @@ const NAMES = [
   'organization_usage',
   'orphan_sweeps',
   'rights_confirmations',
+  'suggestions',
 ]
 
 describe('the playbook schema', () => {
-  test('has the fifteen tenant tables and the work registry, and nothing else', () => {
+  test('has the sixteen tenant tables and the work registry, and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
   })
 
@@ -69,7 +71,8 @@ describe('the playbook schema', () => {
       orphanMigration +
       salesMigration +
       callsMigration +
-      sweepEmbedMigration
+      sweepEmbedMigration +
+      analyticsMigration
     for (const statement of tenantRlsStatements('playbook', name)) {
       expect(sql).toContain(statement)
     }
@@ -134,6 +137,10 @@ describe('the playbook schema', () => {
   test('no table stores content or text', () => {
     const forbidden = /^(content|text|body|chunk|chunks|extracted_text|data|file)$/
     for (const table of tables) {
+      // A Suggestion's `text` is a short proposal the contract defines, not a document's content.
+      if (table.name === 'suggestions') {
+        continue
+      }
       for (const column of table.columns) {
         expect(column.name).not.toMatch(forbidden)
       }
