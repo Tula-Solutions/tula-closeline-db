@@ -264,6 +264,8 @@ async function closePool(pool, clients, timeoutMs) {
     clearTimeout(timer);
   }
 }
+// src/core-crm-statements.ts
+var CRM_CONNECTION_FOR_ACCOUNT = "select organization_id, connection_id from core.crm_connection_for_account($1, $2)";
 // src/core-demo-requests.ts
 import { sql } from "drizzle-orm";
 var DEMO_RATE_ADDRESS_HASH_BYTES = 32;
@@ -416,6 +418,8 @@ import { sql as sql5 } from "drizzle-orm";
 // src/roles.ts
 var OWNER_ROLE = "closeline_owner";
 var SEARCH_ROLE = "closeline_core_search";
+var CRM_LOOKUP_ROLE = "closeline_core_crm_lookup";
+var DEFINER_ROLES = [SEARCH_ROLE, CRM_LOOKUP_ROLE];
 
 // src/tenant.ts
 import { sql as sql4 } from "drizzle-orm";
@@ -569,17 +573,18 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       gaps.push({ schema: row.schema, table: row.table, reason });
     }
   }
+  const definerRoles = sql5.join(DEFINER_ROLES.map((role) => sql5`${role}`), sql5`, `);
   const roles = await db.execute(sql5`
     select rolname as role, rolcanlogin as can_login from pg_roles
      where rolname like 'closeline\\_%'
-       and (rolsuper or (rolbypassrls and rolname <> ${SEARCH_ROLE})
-            or (rolname = ${SEARCH_ROLE} and rolcanlogin))
+       and (rolsuper or (rolbypassrls and rolname not in (${definerRoles}))
+            or (rolname in (${definerRoles}) and rolcanlogin))
      order by rolname`);
   for (const { role, can_login } of roles.rows) {
     gaps.push({
       schema: "pg_roles",
       table: role,
-      reason: role === SEARCH_ROLE && can_login ? "can log in, so its BYPASSRLS would be reachable by a session" : "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
+      reason: DEFINER_ROLES.includes(role) && can_login ? "can log in, so its BYPASSRLS would be reachable by a session" : "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
     });
   }
   const memberships = await db.execute(sql5`
@@ -2219,6 +2224,8 @@ export {
   CONTROL_PLANE_TABLE_REASONS,
   COUNTER_MIN_PERIOD_MS,
   COUNTER_PURGE_BATCH,
+  CRM_CONNECTION_FOR_ACCOUNT,
+  CRM_LOOKUP_ROLE,
   DB_TYPES,
   DEAL_BY_DEAL_ID,
   DEAL_ERASE_BATCH,
@@ -2265,6 +2272,7 @@ export {
   DEAL_SET_OUTCOME,
   DEAL_USAGE,
   DEFAULT_POOL_OPTIONS,
+  DEFINER_ROLES,
   DEMO_NOTICE_CLAIM_MAX,
   DEMO_PURGE_BATCH_MAX,
   DEMO_RATE_PURGE_BATCH_MAX,

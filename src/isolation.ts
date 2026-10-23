@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING } from './environment'
-import { OWNER_ROLE, SEARCH_ROLE } from './roles'
+import { DEFINER_ROLES, OWNER_ROLE } from './roles'
 import { ORGANIZATION_SETTING, TENANT_POLICY_EXPRESSION } from './tenant'
 
 /**
@@ -276,18 +276,22 @@ export async function findTenantIsolationGaps(
   // closeline_core_search bypasses row-level security on purpose (migration 0030): it owns the
   // Prospect search functions and nothing reaches it but its owner. It is exempt from the BYPASSRLS
   // rule only, and only while it cannot log in and is no superuser.
+  const definerRoles = sql.join(
+    DEFINER_ROLES.map((role) => sql`${role}`),
+    sql`, `
+  )
   const roles = await db.execute<RoleRow & { can_login?: boolean }>(sql`
     select rolname as role, rolcanlogin as can_login from pg_roles
      where rolname like 'closeline\\_%'
-       and (rolsuper or (rolbypassrls and rolname <> ${SEARCH_ROLE})
-            or (rolname = ${SEARCH_ROLE} and rolcanlogin))
+       and (rolsuper or (rolbypassrls and rolname not in (${definerRoles}))
+            or (rolname in (${definerRoles}) and rolcanlogin))
      order by rolname`)
   for (const { role, can_login } of roles.rows) {
     gaps.push({
       schema: 'pg_roles',
       table: role,
       reason:
-        role === SEARCH_ROLE && can_login
+        (DEFINER_ROLES as readonly string[]).includes(role) && can_login
           ? 'can log in, so its BYPASSRLS would be reachable by a session'
           : 'is a superuser or has BYPASSRLS, so it ignores every row-level security policy',
     })

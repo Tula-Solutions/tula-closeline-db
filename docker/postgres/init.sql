@@ -30,5 +30,12 @@ CREATE ROLE closeline_core_search NOLOGIN
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
 GRANT closeline_core_search TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 
+-- closeline_core_crm_lookup  owns core.crm_connection_for_account (migration 0033), the lookup a
+--                  CRM webhook runs before it knows the Organization. Same shape as the role
+--                  above, but it can read four routing columns of crm_connection and no token.
+CREATE ROLE closeline_core_crm_lookup NOLOGIN
+  NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_crm_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+
 -- The owner role owns this database, so it can create the schemas in migration 0000.
 SELECT format('ALTER DATABASE %I OWNER TO closeline_owner', current_database()) \gexec

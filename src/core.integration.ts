@@ -1914,6 +1914,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       claim_demo_notices: [true, false, true],
       consent_channels_valid: [false, false, true],
       consent_form_for_token: [true, false, true],
+      crm_connection_for_account: [true, false, true],
       has_expired: [false, false, true],
       limit_field_history: [false, true, false],
       prospect_merged_ids_valid: [false, false, true],
@@ -1990,10 +1991,15 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         // The two Prospect searches are owned by the role that bypasses row-level security (0030);
         // roles.integration.ts and core-prospect-search.integration.ts pin their other properties.
         const searchFn = SEARCH_FUNCTION_NAMES.includes(fn.name)
-        expect([fn.name, fn.owner]).toEqual([
-          fn.name,
-          searchFn ? 'closeline_core_search' : 'closeline_owner',
-        ])
+        // The CRM webhook lookup (0033) is owned by its own bypass role and pinned to
+        // 'pg_catalog, core, pg_temp'; core-crm-webhook-lookup.integration.ts pins the rest.
+        const crmFn = fn.name === 'crm_connection_for_account'
+        const expectedOwner = searchFn
+          ? 'closeline_core_search'
+          : crmFn
+            ? 'closeline_core_crm_lookup'
+            : 'closeline_owner'
+        expect([fn.name, fn.owner]).toEqual([fn.name, expectedOwner])
         // The directory writers also pin their plans to one per key (see the migration).
         const planPinned =
           fn.name === 'sync_membership_directory' || fn.name === 'sync_invitation_directory'
@@ -2001,9 +2007,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           fn.name,
           searchFn
             ? ['search_path=pg_catalog, core, public, pg_temp', 'plan_cache_mode=force_custom_plan']
-            : planPinned
-              ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
-              : ['search_path=pg_catalog, pg_temp'],
+            : crmFn
+              ? ['search_path=pg_catalog, core, pg_temp']
+              : planPinned
+                ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
+                : ['search_path=pg_catalog, pg_temp'],
         ])
         expect([fn.name, fn.definer]).toEqual([fn.name, definer])
         expect([fn.name, fn.trigger]).toEqual([fn.name, trigger])
@@ -2015,6 +2023,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         organization_of_user: 's',
         invitation_for_token: 's',
         consent_form_for_token: 's',
+        crm_connection_for_account: 's',
         consent_channels_valid: 'i',
         has_expired: 'i',
         prospect_merged_ids_valid: 'i',
