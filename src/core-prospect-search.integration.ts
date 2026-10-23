@@ -157,7 +157,23 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
   }, 600_000)
 
   afterAll(async () => {
-    await owner.query('delete from core.organizations where organization_id = $1', [orgId])
+    // Row-level security binds the owner too: without the setting the delete matches nothing and
+    // the rows stay behind, so the Organization is scoped, then the count is checked.
+    const c = await owner.connect()
+    try {
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      await c.query('alter table core.prospect_fields disable trigger user')
+      await c.query('delete from core.organizations where organization_id = $1', [orgId])
+      await c.query('commit')
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      const left = await c.query('select count(*)::int as n from core.prospects')
+      await c.query('rollback')
+      expect(left.rows[0].n).toBe(0)
+    } finally {
+      c.release()
+    }
     await dropStaleTestObjects(owner, env.owner)
     await Promise.all([owner.end(), core.end()])
   }, 600_000)
