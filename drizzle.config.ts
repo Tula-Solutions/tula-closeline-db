@@ -5,7 +5,7 @@ export default defineConfig({
   dialect: 'postgresql',
   schema: './src/schema/index.ts',
   out: './migrations',
-  schemaFilter: ['auth', 'core', 'playbook', 'voice'],
+  schemaFilter: ['auth', 'core', 'playbook', 'voice', 'outbound'],
   dbCredentials: { url: process.env.DATABASE_URL ?? '' },
   strict: true,
   verbose: true,

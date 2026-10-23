@@ -18,6 +18,7 @@ const SERVICES: Service[] = [
   { schema: 'core', role: 'closeline_core', url: env.core },
   { schema: 'playbook', role: 'closeline_playbook', url: env.playbook },
   { schema: 'voice', role: 'closeline_voice', url: env.voice },
+  { schema: 'outbound', role: 'closeline_outbound', url: env.outbound },
 ]
 
 const crossings = SERVICES.flatMap((from) =>

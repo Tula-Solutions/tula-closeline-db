@@ -13,6 +13,7 @@ const NAMES = [
   'DATABASE_URL_CORE',
   'DATABASE_URL_PLAYBOOK',
   'DATABASE_URL_VOICE',
+  'DATABASE_URL_OUTBOUND',
   'DATABASE_URL_ADMIN',
   'ALLOW_NON_LOCAL_TEST_DATABASE',
   'POSTGRES_PORT',
@@ -38,7 +39,7 @@ afterEach(() => {
 })
 
 const setServiceUrls = (host = '127.0.0.1') => {
-  for (const name of NAMES.slice(0, 5)) {
+  for (const name of NAMES.slice(0, 6)) {
     process.env[name] = `postgres://u:p@${host}:5432/closeline`
   }
 }
@@ -78,12 +79,12 @@ describe('adminUrl', () => {
     expect(() => adminUrl()).toThrow()
   })
 
-  test('all five service variables without DATABASE_URL_ADMIN are refused', () => {
+  test('all six service variables without DATABASE_URL_ADMIN are refused', () => {
     setServiceUrls()
     expect(() => adminUrl()).toThrow('DATABASE_URL_ADMIN')
   })
 
-  test('DATABASE_URL_ADMIN with all five service variables is returned', () => {
+  test('DATABASE_URL_ADMIN with all six service variables is returned', () => {
     setServiceUrls()
     process.env.DATABASE_URL_ADMIN = 'postgres://postgres:x@127.0.0.1:5432/closeline'
     expect(adminUrl()).toBe('postgres://postgres:x@127.0.0.1:5432/closeline')
