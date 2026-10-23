@@ -205,6 +205,11 @@ export const prospectCompanies = coreSchema.table(
       .on(t.organizationId, t.domain)
       .where(sql`${t.domain} is not null`),
     index('prospect_companies_list_idx').on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+    // Serves the Prospect and Company list filter `q` (`name ilike '%text%'`); see pg_trgm in 0029.
+    index('prospect_companies_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
+    index('prospect_companies_domain_trgm_idx')
+      .using('gin', t.domain.op('gin_trgm_ops'))
+      .where(sql`${t.domain} is not null`),
   ]
 )
 
@@ -420,6 +425,10 @@ export const prospectFields = coreSchema.table(
       t.setAt.desc(),
       t.seq.desc()
     ),
+    // Serves the Prospect list filter `q` (`value ilike '%text%'` on current values); see 0029.
+    index('prospect_fields_value_trgm_idx')
+      .using('gin', t.value.op('gin_trgm_ops'))
+      .where(sql`${t.state} = 'current'`),
   ]
 )
 

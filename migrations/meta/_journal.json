@@ -204,6 +204,13 @@
       "when": 1792730798887,
       "tag": "0028_core_company_enrichment",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792731407618,
+      "tag": "0029_core_prospect_trigram_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -1443,7 +1443,9 @@ var prospectCompanies2 = coreSchema2.table("prospect_companies", {
   check13("prospect_companies_employee_count_shape", sql18`${t.employeeCount} is null or ${t.employeeCount} >= 0`),
   check13("prospect_companies_technologies_shape", sql18`${t.technologies} is null or core.prospect_technologies_valid(${t.technologies})`),
   uniqueIndex3("prospect_companies_domain_key").on(t.organizationId, t.domain).where(sql18`${t.domain} is not null`),
-  index24("prospect_companies_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc())
+  index24("prospect_companies_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+  index24("prospect_companies_name_trgm_idx").using("gin", t.name.op("gin_trgm_ops")),
+  index24("prospect_companies_domain_trgm_idx").using("gin", t.domain.op("gin_trgm_ops")).where(sql18`${t.domain} is not null`)
 ]);
 var prospects2 = coreSchema2.table("prospects", {
   id: text33("id").notNull(),
@@ -1545,7 +1547,8 @@ var prospectFields2 = coreSchema2.table("prospect_fields", { ...fieldHistoryColu
     foreignColumns: [prospects2.organizationId, prospects2.id]
   }).onDelete("cascade"),
   uniqueIndex3("prospect_fields_current_key").on(t.organizationId, t.prospectId, t.fieldName).where(sql18`${t.state} = 'current'`),
-  index24("prospect_fields_history_idx").on(t.organizationId, t.prospectId, t.fieldName, t.setAt.desc(), t.seq.desc())
+  index24("prospect_fields_history_idx").on(t.organizationId, t.prospectId, t.fieldName, t.setAt.desc(), t.seq.desc()),
+  index24("prospect_fields_value_trgm_idx").using("gin", t.value.op("gin_trgm_ops")).where(sql18`${t.state} = 'current'`)
 ]);
 var prospectCompanyFields2 = coreSchema2.table("prospect_company_fields", { ...fieldHistoryColumns(), companyId: text33("company_id").notNull() }, (t) => [
   primaryKey4({ name: "prospect_company_fields_pkey", columns: [t.organizationId, t.seq] }),
