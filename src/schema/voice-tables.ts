@@ -170,6 +170,36 @@ export const voiceLines = voiceSchema.table(
 )
 
 /**
+ * Which Organization and Line a dialled number reaches, for Lines that are not released. The
+ * inbound webhook knows only the number, so this cannot sit behind row-level security: it is a
+ * no-access table like `core.consent_form_directory`. It holds the number, the Organization id,
+ * the Line id and the Line's state, nothing else. `closeline_voice` reaches it only through the
+ * `SECURITY DEFINER` function `voice.line_for_number(number)` (one row for one exact key, joined
+ * to `core.organization_state` so only an `active` Line of an `active` Organization answers); the
+ * trigger `lines_sync_directory` on `lines` keeps it, and no service role holds any privilege on
+ * it.
+ */
+export const voiceLineDirectory = voiceSchema.table(
+  'line_directory',
+  {
+    number: text('number').primaryKey(),
+    organizationId: text('organization_id').notNull(),
+    lineId: text('line_id').notNull(),
+    state: text('state', { enum: LINE_STATES }).notNull(),
+  },
+  (t) => [
+    check(
+      'line_directory_number_shape',
+      sql`${t.number} ~ '${sql.raw(IDENTITY_VALUE_PATTERNS.phone)}'`
+    ),
+    check('line_directory_organization_id_shape', orgShape),
+    check('line_directory_organization_not_global', notGlobal),
+    check('line_directory_line_id_shape', idShape('line_id', 'line')),
+    check('line_directory_state_known', sql`${t.state} in ('porting', 'active')`),
+  ]
+)
+
+/**
  * A Call placed or taken in the Softphone. `prospect_number` is E.164 and tenant data (never
  * logged); `rep_membership_id` is null on a missed inbound Call nobody answered. The checks are the
  * contract's state machine: a `live` or `ended` Call has played its Disclosure (wording version

@@ -241,6 +241,8 @@ export {
 export { PENDING_CLEANUP_PREDICATE } from './schema/playbook-tables'
 export { WORK_KINDS } from './schema/playbook-work-hints'
 export { ORGANIZATION_SETTING, tenantRlsStatements, withOrganization } from './tenant'
+export type { LineForNumber } from './voice-lookups'
+export { lineForNumber } from './voice-lookups'
 
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 export const PACKAGE = 'tula-closeline-db'

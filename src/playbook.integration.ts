@@ -3277,8 +3277,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        // 0000 to 0025: the nine before the playbook (0000 to 0008) plus 0009 to 0025.
-        expect(applied.rows[0].n).toBe(27)
+        // 0000 to 0027: the nine before the playbook (0000 to 0008) plus 0009 to 0027.
+        expect(applied.rows[0].n).toBe(28)
         await runMigrations(url.toString())
       } finally {
         await pool.end()
