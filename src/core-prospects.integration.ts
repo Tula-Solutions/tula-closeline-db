@@ -607,6 +607,77 @@ describe('core prospect tables', () => {
     )
   })
 
+  describe('company enrichment fields', () => {
+    const update = (a: Seeded, set: string, value: unknown) =>
+      run(a.orgId, `update core.prospect_companies set ${set} = $1 where id = $2`, [
+        value,
+        a.companyId,
+      ])
+
+    test('are null on a new Company and accept good values', async () => {
+      const a = await seed()
+      const fresh = await run(
+        a.orgId,
+        'select industry, employee_count, region, technologies from core.prospect_companies where id = $1',
+        [a.companyId]
+      )
+      expect(fresh.rows[0]).toEqual({
+        industry: null,
+        employee_count: null,
+        region: null,
+        technologies: null,
+      })
+      await run(
+        a.orgId,
+        "update core.prospect_companies set industry = 'Software', employee_count = 0, region = 'EMEA', technologies = $1 where id = $2",
+        [['postgres', 'x'.repeat(100)], a.companyId]
+      )
+      await update(
+        a,
+        'technologies',
+        Array.from({ length: 50 }, (_, i) => `t${i}`)
+      )
+      await update(a, 'technologies', [])
+    })
+
+    test.each([
+      ['industry', ''],
+      ['industry', ' padded '],
+      ['industry', 'x'.repeat(201)],
+      ['region', ''],
+      ['region', 'x '],
+      ['region', 'x'.repeat(201)],
+      ['employee_count', -1],
+      ['technologies', Array.from({ length: 51 }, (_, i) => `t${i}`)],
+      ['technologies', ['x'.repeat(101)]],
+      ['technologies', ['']],
+      ['technologies', ['ok', null]],
+    ])('refuses %s = %p', async (column, value) => {
+      const a = await seed()
+      const refused = await refusal(update(a, column as string, value))
+      expect(refused.code).toBe(CHECK_VIOLATION)
+    })
+
+    test('history entries accept the new field names and refuse unknown ones', async () => {
+      const a = await seed()
+      for (const field of ['industry', 'employee_count', 'region', 'technologies']) {
+        await run(
+          a.orgId,
+          "insert into core.prospect_company_fields (organization_id, company_id, field_name, state, value, source, set_at) values ($1, $2, $3, 'current', 'v', 'enrichment:acme', now())",
+          [a.orgId, a.companyId, field]
+        )
+      }
+      const refused = await refusal(
+        run(
+          a.orgId,
+          "insert into core.prospect_company_fields (organization_id, company_id, field_name, state, value, source, set_at) values ($1, $2, 'revenue', 'current', 'v', 'manual', now())",
+          [a.orgId, a.companyId]
+        )
+      )
+      expect(refused.code).toBe(CHECK_VIOLATION)
+    })
+  })
+
   describe('imports', () => {
     const COUNT_COLUMNS =
       'state, row_count, created_count, updated_count, skipped_count, rejected_count'

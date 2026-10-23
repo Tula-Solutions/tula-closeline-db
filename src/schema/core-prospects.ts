@@ -40,7 +40,20 @@ export const PROSPECT_FIELD_NAMES = [
   'linkedin_url',
 ] as const
 /** The Prospect Company fields that carry a Source. Mirrors the contract's `PROSPECT_COMPANY_FIELD_NAMES`. */
-export const PROSPECT_COMPANY_FIELD_NAMES = ['name', 'domain'] as const
+export const PROSPECT_COMPANY_FIELD_NAMES = [
+  'name',
+  'domain',
+  'industry',
+  'employee_count',
+  'region',
+  'technologies',
+] as const
+/** The longest Prospect Company industry or region, in characters. */
+export const MAX_PROSPECT_COMPANY_TEXT_LENGTH = 200
+/** The most technologies one Prospect Company carries. */
+export const MAX_PROSPECT_COMPANY_TECHNOLOGIES = 50
+/** The longest technology, in characters. */
+export const MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH = 100
 /** The states of a field history entry. Mirrors the contract's `FIELD_HISTORY_STATES`. */
 export const FIELD_HISTORY_STATES = ['current', 'superseded', 'suggested'] as const
 /** The most history entries kept per field. Mirrors the contract's `MAX_FIELD_HISTORY_ENTRIES`. */
@@ -132,8 +145,9 @@ const textArray = customType<{ data: string[]; driverData: string[] }>({
 })
 
 /**
- * A Prospect Company of an Organization. `name` and `domain` are the current values; their
- * Sources and history are in `prospect_company_fields`. `domain` is the normalised domain
+ * A Prospect Company of an Organization. `name`, `domain` and the enrichment fields (`industry`,
+ * `employee_count`, `region`, `technologies`, all nullable) are the current values; their
+ * Sources and history are in `prospect_company_fields`, which keeps each value as text. `domain` is the normalised domain
  * (ASCII-folded host), unique per Organization when set.
  *
  * Lists served (keyset `(created_at, id)`, newest first): `prospect_companies_list_idx`. Lookup by
@@ -148,6 +162,10 @@ export const prospectCompanies = coreSchema.table(
       .references(() => organizations.organizationId, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     domain: text('domain'),
+    industry: text('industry'),
+    employeeCount: integer('employee_count'),
+    region: text('region'),
+    technologies: textArray('technologies'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -164,6 +182,22 @@ export const prospectCompanies = coreSchema.table(
       'prospect_companies_domain_shape',
       sql`${t.domain} is null or (char_length(${t.domain}) between 3 and 253
         and ${t.domain} collate "C" ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$')`
+    ),
+    check(
+      'prospect_companies_industry_shape',
+      sql`${t.industry} is null or (char_length(${t.industry}) between 1 and ${sql.raw(String(MAX_PROSPECT_COMPANY_TEXT_LENGTH))} and ${t.industry} = btrim(${t.industry}))`
+    ),
+    check(
+      'prospect_companies_region_shape',
+      sql`${t.region} is null or (char_length(${t.region}) between 1 and ${sql.raw(String(MAX_PROSPECT_COMPANY_TEXT_LENGTH))} and ${t.region} = btrim(${t.region}))`
+    ),
+    check(
+      'prospect_companies_employee_count_shape',
+      sql`${t.employeeCount} is null or ${t.employeeCount} >= 0`
+    ),
+    check(
+      'prospect_companies_technologies_shape',
+      sql`${t.technologies} is null or core.prospect_technologies_valid(${t.technologies})`
     ),
     uniqueIndex('prospect_companies_domain_key')
       .on(t.organizationId, t.domain)
@@ -378,7 +412,8 @@ export const prospectFields = coreSchema.table(
 
 /**
  * One entry of a Prospect Company field's history, as {@link prospectFields} is for a Prospect.
- * The fields are `name` and `domain`.
+ * The fields are `name`, `domain`, `industry`, `employee_count`, `region` and `technologies`; a
+ * value is kept as text (a `technologies` value as its entries joined by the service).
  */
 export const prospectCompanyFields = coreSchema.table(
   'prospect_company_fields',
