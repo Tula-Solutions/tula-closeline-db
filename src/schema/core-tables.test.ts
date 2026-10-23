@@ -55,6 +55,13 @@ const CONSENT_TABLES = [
   'contact_consent_event',
   'suppression_entry',
 ]
+const CRM_TABLES = [
+  'crm_connection',
+  'crm_external_ref',
+  'crm_mapping',
+  'crm_sync_run',
+  'crm_webhook_receipt',
+]
 const NO_ACCESS = [
   'consent_form_directory',
   'invitation_directory',
@@ -63,7 +70,7 @@ const NO_ACCESS = [
 ]
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the five consent tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
       [
         ...NO_ACCESS,
@@ -72,6 +79,7 @@ describe('the core schema', () => {
         ...TENANT,
         ...PROSPECT_TABLES,
         ...CONSENT_TABLES,
+        ...CRM_TABLES,
       ].sort()
     )
   })
