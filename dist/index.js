@@ -1000,6 +1000,13 @@ set state = 'queued', claim_token = null,
     updated_at = clock_timestamp()
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
 returning id, attempts`;
+var CALL_JOB_MAX_DEFER_DELAY_MS = 90000000;
+var CALL_JOB_DEFER = `update playbook.call_jobs
+set state = 'queued', claim_token = null, attempts = greatest(attempts - 1, 0),
+    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), ${CALL_JOB_MAX_DEFER_DELAY_MS}) / 1000),
+    updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+returning id, attempts`;
 var CALL_SENT_TO_VENDOR = `with live as (
   select c.id, c.vendor_send_seq from playbook.calls c
   join playbook.call_jobs j on j.organization_id = c.organization_id and j.call_id = c.id
@@ -1296,6 +1303,7 @@ var CALL_STATEMENTS = {
   CALL_JOB_CLAIM,
   CALL_JOB_HEARTBEAT,
   CALL_JOB_RETRY,
+  CALL_JOB_DEFER,
   CALL_SENT_TO_VENDOR,
   CALL_JOB_RECORD,
   CALL_JOB_TRANSCRIBED,
@@ -2169,11 +2177,13 @@ export {
   CALL_INSERT,
   CALL_JOB_CLAIM,
   CALL_JOB_COMPLETE,
+  CALL_JOB_DEFER,
   CALL_JOB_FAIL,
   CALL_JOB_GIVE_UP_SPENT,
   CALL_JOB_HEARTBEAT,
   CALL_JOB_KINDS2 as CALL_JOB_KINDS,
   CALL_JOB_MAX_ATTEMPTS2 as CALL_JOB_MAX_ATTEMPTS,
+  CALL_JOB_MAX_DEFER_DELAY_MS,
   CALL_JOB_RECORD,
   CALL_JOB_RETRY,
   CALL_JOB_STATES2 as CALL_JOB_STATES,
