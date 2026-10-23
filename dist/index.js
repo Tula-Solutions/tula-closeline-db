@@ -47,7 +47,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-3g5na2bn.js";
+} from "./shared/chunk-ezqz23ys.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -260,9 +260,13 @@ async function closePool(pool, clients, timeoutMs) {
 }
 // src/core-demo-requests.ts
 import { sql } from "drizzle-orm";
+var DEMO_RATE_ADDRESS_HASH_BYTES = 32;
+var DEMO_RATE_WINDOW_SECONDS_MAX = 86400;
+var INT4_MAX = 2147483647;
 var DEMO_REQUEST_ID = /^dreq_[0-9a-f]{32}$/;
 var DEMO_NOTICE_CLAIM_MAX = 100;
 var DEMO_PURGE_BATCH_MAX = 1000;
+var DEMO_RATE_PURGE_BATCH_MAX = 1000;
 
 class DemoRequestRefusedError extends Error {
   code;
@@ -329,6 +333,24 @@ async function settleDemoNotice(db, id, status) {
 async function purgeDemoRequests(db, limit) {
   assertLimit("purgeDemoRequests", limit);
   const { rows } = await db.execute(sql`select core.purge_demo_requests(${limit}) as purged`);
+  return Number(rows[0]?.purged ?? 0);
+}
+async function hitDemoRateLimit(db, hit) {
+  if (!(hit.addressHash instanceof Uint8Array) || hit.addressHash.length !== DEMO_RATE_ADDRESS_HASH_BYTES) {
+    throw new Error(`hitDemoRateLimit: addressHash must be ${DEMO_RATE_ADDRESS_HASH_BYTES} bytes`);
+  }
+  if (!Number.isInteger(hit.windowSeconds) || hit.windowSeconds < 1 || hit.windowSeconds > DEMO_RATE_WINDOW_SECONDS_MAX) {
+    throw new Error(`hitDemoRateLimit: windowSeconds must be a whole number from 1 to ${DEMO_RATE_WINDOW_SECONDS_MAX}`);
+  }
+  if (!Number.isInteger(hit.limit) || hit.limit < 1 || hit.limit > INT4_MAX) {
+    throw new Error("hitDemoRateLimit: limit must be a positive integer");
+  }
+  const { rows } = await db.execute(sql`select core.hit_demo_rate_limit(${Buffer.from(hit.addressHash)}, ${hit.windowSeconds}, ${hit.limit}) as allowed`);
+  return rows[0]?.allowed === true;
+}
+async function purgeDemoRateCounters(db, limit) {
+  assertLimit("purgeDemoRateCounters", limit);
+  const { rows } = await db.execute(sql`select core.purge_demo_rate_counters(${limit}) as purged`);
   return Number(rows[0]?.purged ?? 0);
 }
 // src/core-lookups.ts
@@ -452,6 +474,7 @@ var CONTROL_PLANE_TABLE_REASONS = {
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
+  "core.demo_rate_counter": "a per-address request counter for the public demo-request route, held by Closeline itself and not by any Organization, so it has no organization_id; it holds only an HMAC of an address, a window and a count, is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read it",
   "core.demo_request": "a Visitor's Demo Request, held by Closeline itself and not by any Organization, so it has no organization_id; it is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read a Visitor's name, email or message",
   "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
   "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in",
@@ -2179,6 +2202,7 @@ export {
   DEFAULT_POOL_OPTIONS,
   DEMO_NOTICE_CLAIM_MAX,
   DEMO_PURGE_BATCH_MAX,
+  DEMO_RATE_PURGE_BATCH_MAX,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
@@ -2259,8 +2283,10 @@ export {
   createDb,
   discoveredOrganizations,
   findTenantIsolationGaps,
+  hitDemoRateLimit,
   invitationForToken,
   organizationOfUser,
+  purgeDemoRateCounters,
   purgeDemoRequests,
   repChangeAllowed2 as repChangeAllowed,
   reportConnectionError,

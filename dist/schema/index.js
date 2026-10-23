@@ -56,6 +56,8 @@ import {
   webhookDeliveries2,
   webhookDeliveryAttempts2,
   coreSchema2,
+  DEMO_RATE_ADDRESS_HASH_BYTES2,
+  demoRateCounters2,
   DEMO_NOTIFICATION_STATUSES2,
   DEMO_REQUEST_NAME_MAX2,
   DEMO_REQUEST_MESSAGE_MAX2,
@@ -152,7 +154,7 @@ import {
   playbookOrphanSweeps2,
   WORK_KINDS2,
   playbookWorkHints2
-} from "../shared/chunk-3g5na2bn.js";
+} from "../shared/chunk-ezqz23ys.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -200,6 +202,7 @@ export {
   DEAL_NAME_MAX_LENGTH2 as DEAL_NAME_MAX_LENGTH,
   DEAL_OUTCOMES2 as DEAL_OUTCOMES,
   DEMO_NOTIFICATION_STATUSES2 as DEMO_NOTIFICATION_STATUSES,
+  DEMO_RATE_ADDRESS_HASH_BYTES2 as DEMO_RATE_ADDRESS_HASH_BYTES,
   DEMO_REQUEST_KEY_LENGTH2 as DEMO_REQUEST_KEY_LENGTH,
   DEMO_REQUEST_MESSAGE_MAX2 as DEMO_REQUEST_MESSAGE_MAX,
   DEMO_REQUEST_NAME_MAX2 as DEMO_REQUEST_NAME_MAX,
@@ -261,6 +264,7 @@ export {
   dealImportRows2 as dealImportRows,
   dealImports2 as dealImports,
   deals2 as deals,
+  demoRateCounters2 as demoRateCounters,
   demoRequests2 as demoRequests,
   documents2 as documents,
   environmentSettings2 as environmentSettings,

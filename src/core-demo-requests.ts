@@ -2,12 +2,18 @@ import { sql } from 'drizzle-orm'
 import type { Database } from './client'
 import type { DEMO_NOTIFICATION_STATUSES } from './schema'
 
+const DEMO_RATE_ADDRESS_HASH_BYTES = 32
+const DEMO_RATE_WINDOW_SECONDS_MAX = 86_400
+const INT4_MAX = 2_147_483_647
 const DEMO_REQUEST_ID = /^dreq_[0-9a-f]{32}$/
 
 /** The most notices one claim returns; the database caps a larger limit to this. */
 export const DEMO_NOTICE_CLAIM_MAX = 100
 /** The most Demo Requests one purge deletes; the database caps a larger limit to this. */
 export const DEMO_PURGE_BATCH_MAX = 1000
+
+/** The most rate counters one purge deletes; the database caps a larger limit to this. */
+export const DEMO_RATE_PURGE_BATCH_MAX = 1000
 
 /** What a Visitor submitted, as `core.submit_demo_request` takes it; the service has validated it. */
 export interface DemoRequestInput {
@@ -55,6 +61,16 @@ export interface ClaimedDemoNotice {
   submittedAt: Date
   /** The attempt this claim made, counting it (1 on the first). */
   attempts: number
+}
+
+/** What one request counts against: the hashed address, the window length and the most allowed. */
+export interface DemoRateLimitHit {
+  /** An HMAC-SHA256 of the address: exactly 32 bytes. A raw address is never sent. */
+  addressHash: Uint8Array
+  /** The window length in seconds, 1 to 86400. Windows are aligned to this length. */
+  windowSeconds: number
+  /** The most requests allowed per window, at least 1. */
+  limit: number
 }
 
 /** The state a notice settles in. */
@@ -230,6 +246,65 @@ export async function purgeDemoRequests(
   assertLimit('purgeDemoRequests', limit)
   const { rows } = await db.execute<{ purged: number }>(
     sql`select core.purge_demo_requests(${limit}) as purged`
+  )
+  return Number(rows[0]?.purged ?? 0)
+}
+
+/**
+ * Count one request against an address and say whether it is within the limit. The count is one
+ * atomic upsert in `core.hit_demo_rate_limit`, so concurrent calls never let more than `limit`
+ * through; a request over the limit still counts. The window is the fixed one, aligned to
+ * `windowSeconds`, that contains now. Run it on the pooled handle: the table has no Organization.
+ *
+ * @param db - A database handle connected as `closeline_core`.
+ * @param hit - The hashed address, the window length and the limit.
+ * @returns True while the window's count is at most `limit`; false once it is over.
+ * @throws If the hash is not 32 bytes, or a number is not a whole number in range (before any query runs).
+ */
+export async function hitDemoRateLimit(
+  db: Pick<Database, 'execute'>,
+  hit: DemoRateLimitHit
+): Promise<boolean> {
+  if (
+    !(hit.addressHash instanceof Uint8Array) ||
+    hit.addressHash.length !== DEMO_RATE_ADDRESS_HASH_BYTES
+  ) {
+    throw new Error(`hitDemoRateLimit: addressHash must be ${DEMO_RATE_ADDRESS_HASH_BYTES} bytes`)
+  }
+  if (
+    !Number.isInteger(hit.windowSeconds) ||
+    hit.windowSeconds < 1 ||
+    hit.windowSeconds > DEMO_RATE_WINDOW_SECONDS_MAX
+  ) {
+    throw new Error(
+      `hitDemoRateLimit: windowSeconds must be a whole number from 1 to ${DEMO_RATE_WINDOW_SECONDS_MAX}`
+    )
+  }
+  if (!Number.isInteger(hit.limit) || hit.limit < 1 || hit.limit > INT4_MAX) {
+    throw new Error('hitDemoRateLimit: limit must be a positive integer')
+  }
+  const { rows } = await db.execute<{ allowed: boolean }>(
+    sql`select core.hit_demo_rate_limit(${Buffer.from(hit.addressHash)}, ${hit.windowSeconds}, ${hit.limit}) as allowed`
+  )
+  return rows[0]?.allowed === true
+}
+
+/**
+ * Delete rate counters whose window started more than a day ago, oldest first, in one bounded
+ * batch. Repeat until it returns less than `limit`. It calls `core.purge_demo_rate_counters`.
+ *
+ * @param db - A database handle connected as `closeline_core`.
+ * @param limit - The most to delete, at least 1; the database caps it at {@link DEMO_RATE_PURGE_BATCH_MAX}.
+ * @returns How many were deleted.
+ * @throws If `limit` is not a positive whole number (before any query runs).
+ */
+export async function purgeDemoRateCounters(
+  db: Pick<Database, 'execute'>,
+  limit: number
+): Promise<number> {
+  assertLimit('purgeDemoRateCounters', limit)
+  const { rows } = await db.execute<{ purged: number }>(
+    sql`select core.purge_demo_rate_counters(${limit}) as purged`
   )
   return Number(rows[0]?.purged ?? 0)
 }

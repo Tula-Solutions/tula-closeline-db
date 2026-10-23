@@ -3259,3 +3259,26 @@ wrappers exported from the package; run them on the pooled handle, since the tab
 field breaks a table check, never the driver's error, whose text holds the Visitor's name, email and
 message. Notice delivery is at least once: a claimed row is retried once its backoff passes, so the
 worker must cap `attempts` itself and settle the row `failed` past its cap.
+
+## Demo rate counter (v0.24.0, migration `0022`)
+
+`core.demo_rate_counter` counts requests per address for the public demo-request route, so core
+rate-limits in Postgres and not in process memory. Like `core.demo_request` it has no
+`organization_id`, sits outside row-level security, is on the allowlist, and is revoked from
+`closeline_core`; only the two `SECURITY DEFINER` functions below reach it.
+
+| Column | Rule |
+| --- | --- |
+| `address_hash` | `bytea`, exactly 32 bytes: an HMAC-SHA256 of the address, made by core. A raw address is never sent or stored |
+| `window_start` | `timestamptz`, the start of the fixed window, aligned to the window length |
+| `hits` | at least 1; every request in the window counts, including those over the limit |
+
+The primary key is `(address_hash, window_start)`; `demo_rate_counters_window_start_idx` serves the purge.
+
+| Function | Wrapper | Does |
+| --- | --- | --- |
+| `core.hit_demo_rate_limit(address_hash, window_seconds, limit)` | `hitDemoRateLimit(db, { addressHash, windowSeconds, limit })` | one atomic `insert … on conflict do update set hits = hits + 1`; true while `hits <= limit`, so concurrent calls never let more than `limit` through. `windowSeconds` is 1 to 86400, `limit` at least 1 |
+| `core.purge_demo_rate_counters(limit)` | `purgeDemoRateCounters(db, limit)` | deletes up to `limit` (capped at `DEMO_RATE_PURGE_BATCH_MAX`, 1000) counters whose window started over a day ago, oldest first; loop until it returns less than `limit` |
+
+Windows are at most a day long, so a window that started over a day ago has ended. Both wrappers
+check their input before any query; the functions check it again and raise `22023`.
