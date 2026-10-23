@@ -1580,11 +1580,11 @@ var assessments2 = coreSchema2.table("assessments", {
   check13("assessments_organization_id_shape", orgShape),
   check13("assessments_organization_not_global", notGlobal),
   check13("assessments_subject_kind_known", sql18`${t.subjectKind} in (${list2(ASSESSMENT_SUBJECT_KINDS2)})`),
-  check13("assessments_subject_columns", sql18`(${t.subjectKind} = 'draft' and ${t.draftId} ~ '^drf_[0-9a-f]{32}$'
-          and ${t.draftVersion} between 1 and ${num(MAX_ASSESSED_NUMBER2)}
+  check13("assessments_subject_columns", sql18`(${t.subjectKind} = 'draft' and ${t.draftId} is not null and ${t.draftId} ~ '^drf_[0-9a-f]{32}$'
+          and ${t.draftVersion} is not null and ${t.draftVersion} between 1 and ${num(MAX_ASSESSED_NUMBER2)}
           and ${t.callId} is null and ${t.turnIndex} is null)
-        or (${t.subjectKind} = 'call_turn' and ${t.callId} ~ '^call_[0-9a-f]{32}$'
-          and ${t.turnIndex} between 0 and ${num(MAX_ASSESSED_NUMBER2)}
+        or (${t.subjectKind} = 'call_turn' and ${t.callId} is not null and ${t.callId} ~ '^call_[0-9a-f]{32}$'
+          and ${t.turnIndex} is not null and ${t.turnIndex} between 0 and ${num(MAX_ASSESSED_NUMBER2)}
           and ${t.draftId} is null and ${t.draftVersion} is null)`),
   check13("assessments_prospect_id_shape", sql18`${t.prospectId} is null or ${t.prospectId} ~ '^prs_[0-9a-f]{32}$'`),
   check13("assessments_agent_kind_known", sql18`${t.agentKind} in (${list2(TOUCH_AGENT_KINDS2)})`),

@@ -292,6 +292,27 @@ describe('core analytics, assessment and summary tables', () => {
     )
   })
 
+  test('an Assessment cannot omit its subject key (a NULL must not pass the check)', async () => {
+    const { orgId } = await seed()
+    const cases: [string, string, unknown[]][] = [
+      ['draft_id, draft_version', "'draft', null, 1", []],
+      ['draft_id, draft_version', "'draft', $3, null", [newId('drf')]],
+      ['call_id, turn_index', "'call_turn', null, 0", []],
+      ['call_id, turn_index', "'call_turn', $3, null", [newId('call')]],
+    ]
+    for (const [columns, values, extra] of cases) {
+      const error = await refusal(
+        run(
+          orgId,
+          `insert into core.assessments (id, organization_id, subject_kind, ${columns}, agent_kind, verdict)
+           values ($1, $2, ${values}, 'inbound', 'pass')`,
+          [newId('asm'), orgId, ...extra]
+        )
+      )
+      expect(error.code).toBe(CHECK_VIOLATION)
+    }
+  })
+
   test('a failed Assessment needs a severity and a passed one has none', async () => {
     const { orgId } = await seed()
     const failNoRank = await refusal(

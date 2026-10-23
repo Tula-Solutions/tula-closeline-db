@@ -48,11 +48,11 @@ CREATE TABLE "core"."assessments" (
 	CONSTRAINT "assessments_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
 	CONSTRAINT "assessments_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
 	CONSTRAINT "assessments_subject_kind_known" CHECK ("core"."assessments"."subject_kind" in ('draft', 'call_turn')),
-	CONSTRAINT "assessments_subject_columns" CHECK (("core"."assessments"."subject_kind" = 'draft' and "core"."assessments"."draft_id" ~ '^drf_[0-9a-f]{32}$'
-          and "core"."assessments"."draft_version" between 1 and 100000
+	CONSTRAINT "assessments_subject_columns" CHECK (("core"."assessments"."subject_kind" = 'draft' and "core"."assessments"."draft_id" is not null and "core"."assessments"."draft_id" ~ '^drf_[0-9a-f]{32}$'
+          and "core"."assessments"."draft_version" is not null and "core"."assessments"."draft_version" between 1 and 100000
           and "core"."assessments"."call_id" is null and "core"."assessments"."turn_index" is null)
-        or ("core"."assessments"."subject_kind" = 'call_turn' and "core"."assessments"."call_id" ~ '^call_[0-9a-f]{32}$'
-          and "core"."assessments"."turn_index" between 0 and 100000
+        or ("core"."assessments"."subject_kind" = 'call_turn' and "core"."assessments"."call_id" is not null and "core"."assessments"."call_id" ~ '^call_[0-9a-f]{32}$'
+          and "core"."assessments"."turn_index" is not null and "core"."assessments"."turn_index" between 0 and 100000
           and "core"."assessments"."draft_id" is null and "core"."assessments"."draft_version" is null)),
 	CONSTRAINT "assessments_prospect_id_shape" CHECK ("core"."assessments"."prospect_id" is null or "core"."assessments"."prospect_id" ~ '^prs_[0-9a-f]{32}$'),
 	CONSTRAINT "assessments_agent_kind_known" CHECK ("core"."assessments"."agent_kind" in ('inbound', 'outbound')),

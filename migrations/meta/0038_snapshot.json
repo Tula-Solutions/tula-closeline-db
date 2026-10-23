@@ -1,5 +1,5 @@
 {
-  "id": "6a70a464-5de1-424c-87c2-9ac11bed4690",
+  "id": "56816506-d8ba-4ba0-a1be-45faeb26c421",
   "prevId": "14c2fce6-7c30-43b1-9238-2b6579306174",
   "version": "7",
   "dialect": "postgresql",
@@ -6414,7 +6414,7 @@
         },
         "assessments_subject_columns": {
           "name": "assessments_subject_columns",
-          "value": "(\"core\".\"assessments\".\"subject_kind\" = 'draft' and \"core\".\"assessments\".\"draft_id\" ~ '^drf_[0-9a-f]{32}$'\n          and \"core\".\"assessments\".\"draft_version\" between 1 and 100000\n          and \"core\".\"assessments\".\"call_id\" is null and \"core\".\"assessments\".\"turn_index\" is null)\n        or (\"core\".\"assessments\".\"subject_kind\" = 'call_turn' and \"core\".\"assessments\".\"call_id\" ~ '^call_[0-9a-f]{32}$'\n          and \"core\".\"assessments\".\"turn_index\" between 0 and 100000\n          and \"core\".\"assessments\".\"draft_id\" is null and \"core\".\"assessments\".\"draft_version\" is null)"
+          "value": "(\"core\".\"assessments\".\"subject_kind\" = 'draft' and \"core\".\"assessments\".\"draft_id\" is not null and \"core\".\"assessments\".\"draft_id\" ~ '^drf_[0-9a-f]{32}$'\n          and \"core\".\"assessments\".\"draft_version\" is not null and \"core\".\"assessments\".\"draft_version\" between 1 and 100000\n          and \"core\".\"assessments\".\"call_id\" is null and \"core\".\"assessments\".\"turn_index\" is null)\n        or (\"core\".\"assessments\".\"subject_kind\" = 'call_turn' and \"core\".\"assessments\".\"call_id\" is not null and \"core\".\"assessments\".\"call_id\" ~ '^call_[0-9a-f]{32}$'\n          and \"core\".\"assessments\".\"turn_index\" is not null and \"core\".\"assessments\".\"turn_index\" between 0 and 100000\n          and \"core\".\"assessments\".\"draft_id\" is null and \"core\".\"assessments\".\"draft_version\" is null)"
         },
         "assessments_prospect_id_shape": {
           "name": "assessments_prospect_id_shape",

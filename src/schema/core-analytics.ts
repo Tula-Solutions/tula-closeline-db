@@ -310,11 +310,11 @@ export const assessments = coreSchema.table(
     ),
     check(
       'assessments_subject_columns',
-      sql`(${t.subjectKind} = 'draft' and ${t.draftId} ~ '^drf_[0-9a-f]{32}$'
-          and ${t.draftVersion} between 1 and ${num(MAX_ASSESSED_NUMBER)}
+      sql`(${t.subjectKind} = 'draft' and ${t.draftId} is not null and ${t.draftId} ~ '^drf_[0-9a-f]{32}$'
+          and ${t.draftVersion} is not null and ${t.draftVersion} between 1 and ${num(MAX_ASSESSED_NUMBER)}
           and ${t.callId} is null and ${t.turnIndex} is null)
-        or (${t.subjectKind} = 'call_turn' and ${t.callId} ~ '^call_[0-9a-f]{32}$'
-          and ${t.turnIndex} between 0 and ${num(MAX_ASSESSED_NUMBER)}
+        or (${t.subjectKind} = 'call_turn' and ${t.callId} is not null and ${t.callId} ~ '^call_[0-9a-f]{32}$'
+          and ${t.turnIndex} is not null and ${t.turnIndex} between 0 and ${num(MAX_ASSESSED_NUMBER)}
           and ${t.draftId} is null and ${t.draftVersion} is null)`
     ),
     check(
