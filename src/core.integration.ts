@@ -266,6 +266,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           'core.demo_request',
           'playbook.work_hints',
           'voice.line_directory',
+          'voice.twilio_directory',
         ].sort()
       )
       const without = await findTenantIsolationGaps(handle.db, [])

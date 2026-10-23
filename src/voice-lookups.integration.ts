@@ -321,7 +321,12 @@ describe('the voice line lookup', () => {
       line_for_number: [true, false, true],
       refuse_idempotency_rewrite: [false, true, false],
       refuse_truncate: [false, true, false],
+      refuse_twilio_call_identity_change: [false, true, false],
+      refuse_twilio_truncate: [false, true, false],
       sync_line_directory: [true, true, false],
+      sync_twilio_call_directory: [true, true, false],
+      sync_twilio_recording_directory: [true, true, false],
+      twilio_owner: [true, false, true],
     }
 
     interface FunctionRow {
@@ -369,7 +374,7 @@ describe('the voice line lookup', () => {
         expect([fn.name, fn.trigger]).toEqual([fn.name, trigger])
         expect([fn.name, fn.volatility]).toEqual([
           fn.name,
-          fn.name === 'line_for_number' ? 's' : 'v',
+          fn.name === 'line_for_number' || fn.name === 'twilio_owner' ? 's' : 'v',
         ])
       }
     })
