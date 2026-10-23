@@ -39,8 +39,10 @@ GRANT UPDATE ("embedded_moments", "skipped_moments") ON "playbook"."calls" TO cl
 --> statement-breakpoint
 
 -- Claim an Organization's orphan sweep for p_claim_ms (raised to 1 second, cut to 1 hour): returns
--- claimed true with the swept-through time and the saved cursor (null when the last sweep
--- completed), or claimed false, with nulls, while another instance holds a claim whose deadline has
+-- claimed true with the swept-through time, the saved cursor (null when the last sweep
+-- completed) and claim_token, the exact claim deadline it set: a fencing token that
+-- orphan_sweep_page_done requires, so a holder whose claim expired and was taken over cannot touch
+-- the new holder's claim or cursor. Or claimed false, with nulls, while another instance holds a claim whose deadline has
 -- not passed. The row is taken FOR UPDATE SKIP LOCKED, so a claimant never waits for another and two
 -- concurrent claims have one winner. It must run in the Organization's scope, like orphan_sweep_done.
 -- A row is created if there is none (swept_through -infinity, as erasure does to lock it); the
@@ -48,12 +50,13 @@ GRANT UPDATE ("embedded_moments", "skipped_moments") ON "playbook"."calls" TO cl
 -- takes the row and nothing else, so it fits the lock order of orphan_sweep_done (row, then hint)
 -- and of erasure (row first).
 CREATE FUNCTION "playbook"."orphan_sweep_claim"(p_organization_id text, p_claim_ms integer)
-  RETURNS TABLE ("claimed" boolean, "swept_through" timestamptz, "sweep_cursor" text) LANGUAGE plpgsql SECURITY DEFINER
+  RETURNS TABLE ("claimed" boolean, "swept_through" timestamptz, "sweep_cursor" text, "claim_token" timestamptz) LANGUAGE plpgsql SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_column
 DECLARE
   v_swept timestamptz;
   v_cursor text;
+  v_token timestamptz;
   v_found boolean;
 BEGIN
   IF p_organization_id IS NULL OR p_organization_id !~ '^org_[0-9a-f]{32}$'
@@ -79,26 +82,30 @@ BEGIN
           WHERE l."organization_id" = p_organization_id
             AND (l."sweep_claim_until" IS NULL OR l."sweep_claim_until" <= clock_timestamp())
           FOR UPDATE SKIP LOCKED)
-    RETURNING s."swept_through", s."sweep_cursor" INTO v_swept, v_cursor;
+    RETURNING s."swept_through", s."sweep_cursor", s."sweep_claim_until" INTO v_swept, v_cursor, v_token;
   v_found := FOUND;
   IF v_found THEN
-    RETURN QUERY SELECT true, v_swept, v_cursor;
+    RETURN QUERY SELECT true, v_swept, v_cursor, v_token;
   ELSE
-    RETURN QUERY SELECT false, NULL::timestamptz, NULL::text;
+    RETURN QUERY SELECT false, NULL::timestamptz, NULL::text, NULL::timestamptz;
   END IF;
 END
 $$;
 --> statement-breakpoint
 
--- Finish one visit of an Organization's orphan sweep and release its claim. p_cursor is the last
--- object key listed when the listing was cut short: it is saved, swept_through is left alone and the
--- work hint stays (the attempts it stands for are still unswept), and `more` is true. With a null
--- p_cursor the listing completed: the cursor is cleared and orphan_sweep_done runs, which advances
--- swept_through to p_through (cut to 25 hours before now, never back) and decides the hint and
--- `more`. A cursor is 1 to 1024 bytes (the table refuses any other). Scope as orphan_sweep_done.
+-- Finish one visit of an Organization's orphan sweep and release its claim, but only for the holder:
+-- p_token must equal the sweep_claim_until that orphan_sweep_claim returned and must still be in the
+-- future. Otherwise (expired, taken over, released, never claimed) nothing is changed and the one
+-- row returned has held false and nulls. A late caller can therefore neither release another
+-- instance's claim nor overwrite its cursor. p_cursor is the last object key listed when the
+-- listing was cut short: it is saved, swept_through is left alone and the work hint stays (the
+-- attempts it stands for are still unswept), and `more` is true. With a null p_cursor the listing
+-- completed: the cursor is cleared and orphan_sweep_done runs, which advances swept_through to
+-- p_through (cut to 25 hours before now, never back) and decides the hint and `more`. A cursor is 1
+-- to 1024 bytes (the table refuses any other). Scope as orphan_sweep_done.
 -- Lock order: the orphan_sweeps row, then (completed) the hint, as orphan_sweep_done does.
-CREATE FUNCTION "playbook"."orphan_sweep_page_done"(p_organization_id text, p_through timestamptz, p_cursor text)
-  RETURNS TABLE ("swept_through" timestamptz, "more" boolean, "sweep_cursor" text) LANGUAGE plpgsql SECURITY DEFINER
+CREATE FUNCTION "playbook"."orphan_sweep_page_done"(p_organization_id text, p_through timestamptz, p_cursor text, p_token timestamptz)
+  RETURNS TABLE ("held" boolean, "swept_through" timestamptz, "more" boolean, "sweep_cursor" text) LANGUAGE plpgsql SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_column
 DECLARE
@@ -111,18 +118,21 @@ BEGIN
   IF current_setting('app.organization_id', true) IS DISTINCT FROM p_organization_id THEN
     RAISE EXCEPTION 'playbook.orphan_sweep_scope: the transaction is not scoped to this Organization' USING ERRCODE = 'insufficient_privilege';
   END IF;
+  UPDATE "playbook"."orphan_sweeps" s
+    SET "sweep_cursor" = p_cursor, "sweep_claim_until" = NULL
+    WHERE s."organization_id" = p_organization_id
+      AND p_token IS NOT NULL AND s."sweep_claim_until" = p_token AND p_token > clock_timestamp()
+    RETURNING s."swept_through" INTO v_swept;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT false, NULL::timestamptz, NULL::boolean, NULL::text;
+    RETURN;
+  END IF;
   IF p_cursor IS NULL THEN
-    UPDATE "playbook"."orphan_sweeps" s SET "sweep_cursor" = NULL, "sweep_claim_until" = NULL
-      WHERE s."organization_id" = p_organization_id;
-    RETURN QUERY SELECT d."swept_through", d."more", NULL::text
+    RETURN QUERY SELECT true, d."swept_through", d."more", NULL::text
       FROM "playbook"."orphan_sweep_done"(p_organization_id, p_through) d;
     RETURN;
   END IF;
-  INSERT INTO "playbook"."orphan_sweeps" AS s ("organization_id", "swept_through", "sweep_cursor")
-    VALUES (p_organization_id, '-infinity', p_cursor)
-    ON CONFLICT ("organization_id") DO UPDATE SET "sweep_cursor" = EXCLUDED."sweep_cursor", "sweep_claim_until" = NULL
-    RETURNING s."swept_through" INTO v_swept;
-  RETURN QUERY SELECT v_swept, true, p_cursor;
+  RETURN QUERY SELECT true, v_swept, true, p_cursor;
 END
 $$;
 --> statement-breakpoint
@@ -191,6 +201,6 @@ BEGIN
 END
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION "playbook"."orphan_sweep_claim"(text, integer), "playbook"."orphan_sweep_page_done"(text, timestamptz, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "playbook"."orphan_sweep_claim"(text, integer), "playbook"."orphan_sweep_page_done"(text, timestamptz, text, timestamptz) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION "playbook"."orphan_sweep_claim"(text, integer), "playbook"."orphan_sweep_page_done"(text, timestamptz, text) TO closeline_playbook;
+GRANT EXECUTE ON FUNCTION "playbook"."orphan_sweep_claim"(text, integer), "playbook"."orphan_sweep_page_done"(text, timestamptz, text, timestamptz) TO closeline_playbook;

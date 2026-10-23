@@ -895,9 +895,12 @@ the hint and the Organization has no idempotency key and no document left, it re
 pages across visits. The service runs `ORPHAN_SWEEP_CLAIM` first (`$2` the claim length in milliseconds,
 1 second to 1 hour): it returns `claimed` true with `swept_through` and the saved `sweep_cursor` (the last
 object key listed, null at the start of a sweep), or `claimed` false while another instance holds an
-unexpired claim; of concurrent claims exactly one wins and none waits (`for update skip locked`), and a
+unexpired claim, and `claim_token`, the exact deadline it set (text, microseconds); of concurrent claims exactly one wins and none waits (`for update skip locked`), and a
 crashed holder is replaced once its deadline passes. It then lists from the cursor and finishes with
-`ORPHAN_SWEEP_PAGE_DONE`: with a cursor (`$3`) the listing was cut short, so the cursor is saved,
+`ORPHAN_SWEEP_PAGE_DONE`, passing the token as `$4`. It is fenced: unless `$4` equals the stored deadline and
+the deadline is still in the future it changes nothing and returns `held` false with nulls, so a holder
+whose claim expired and was taken over can neither release the new claim nor overwrite its cursor. Held,
+with a cursor (`$3`) the listing was cut short, so the cursor is saved,
 `swept_through` and the hint are left alone and `more` is true; with `$3` null the listing completed, the
 cursor is cleared and it does what `ORPHAN_SWEEP_DONE` does. Take `$2` when the sweep starts, once, and
 pass the same value on the visits that continue it. `ORPHAN_SWEEP_STATE` reads the three columns. The
@@ -1572,13 +1575,13 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     `ORPHAN_SWEEP_CLAIM`:
 
     ```sql
-    select claimed, swept_through, sweep_cursor from playbook.orphan_sweep_claim($1::text, $2::int)
+    select claimed, swept_through, sweep_cursor, claim_token::text as claim_token from playbook.orphan_sweep_claim($1::text, $2::int)
     ```
 
     `ORPHAN_SWEEP_PAGE_DONE`:
 
     ```sql
-    select swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text)
+    select held, swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)
     ```
 
     `ORPHAN_SWEEP_STATE`:

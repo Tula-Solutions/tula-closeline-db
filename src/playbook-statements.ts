@@ -1126,27 +1126,34 @@ export const ORPHAN_SWEEP_DONE = `select swept_through, more from playbook.orpha
  * `-infinity` if none) and `sweep_cursor` (the last object key listed by a sweep that was cut short,
  * null when none), or `claimed` false with nulls while another instance holds a claim whose
  * deadline has not passed. The row is taken `for update skip locked`, so a claimant never waits and
- * of any number of concurrent claims one wins. Finish with {@link ORPHAN_SWEEP_PAGE_DONE}, which
- * releases the claim; a crashed holder is replaced once its deadline passes. It is
+ * of any number of concurrent claims one wins. `claim_token` (null when not claimed) is the exact
+ * deadline it set, as text with microseconds: a fencing token to hand back, unchanged, to
+ * {@link ORPHAN_SWEEP_PAGE_DONE}, which releases the claim; a crashed holder is replaced once its
+ * deadline passes, and the old holder's token then no longer works. It is
  * `playbook.orphan_sweep_claim`, `SECURITY DEFINER`.
  */
-export const ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor from playbook.orphan_sweep_claim($1::text, $2::int)`
+export const ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor, claim_token::text as claim_token from playbook.orphan_sweep_claim($1::text, $2::int)`
 
 /**
  * Finish one visit of an Organization's orphan sweep (hub issue 109): `$1` Organization, `$2` the
  * time the sweep started (as for {@link ORPHAN_SWEEP_DONE}), `$3` the last object key listed when
- * the listing was cut short, null when it completed. Run it in that Organization's scope. Cut short
- * (`$3` set, 1 to 1024 bytes): the cursor is saved, `swept_through` and the work hint are left
- * alone, the claim is released and `more` is true. Completed (`$3` null): the cursor is cleared, the
- * claim released and {@link ORPHAN_SWEEP_DONE} runs for `$2`, so `swept_through` advances and `more`
- * says whether the hint stays. Returns `swept_through`, `more` and `sweep_cursor` (what is now
- * saved: `$3`, or null). It is `playbook.orphan_sweep_page_done`, `SECURITY DEFINER`.
- * The service's duties: pass the **first** visit's start as `$2` on every visit of one sweep (keep it
- * with the cursor, and begin again from nothing if the sweep is older than the 25 hour window);
- * finish before the claim's deadline, because this call does not check that the caller still holds
- * the claim (a late call after another instance reclaimed would release that claim).
+ * the listing was cut short, null when it completed, `$4` the `claim_token` that
+ * {@link ORPHAN_SWEEP_CLAIM} returned. Run it in that Organization's scope.
+ * **Fenced:** it acts only while the claim is still the caller's, that is when `$4` equals the
+ * stored claim deadline and that deadline has not passed. Otherwise (expired, taken over by another
+ * instance, already released, no token) it changes nothing and returns one row with `held` false and
+ * the other columns null, so a late caller can neither release the new holder's claim nor overwrite
+ * its cursor. Treat `held` false as "stop, someone else owns the sweep".
+ * Held, cut short (`$3` set, 1 to 1024 bytes): the cursor is saved, `swept_through` and the work
+ * hint are left alone, the claim is released and `more` is true. Held, completed (`$3` null): the
+ * cursor is cleared, the claim released and {@link ORPHAN_SWEEP_DONE} runs for `$2`, so
+ * `swept_through` advances and `more` says whether the hint stays. Returns `held`,
+ * `swept_through`, `more` and `sweep_cursor` (what is now saved: `$3`, or null). It is
+ * `playbook.orphan_sweep_page_done`, `SECURITY DEFINER`.
+ * The service's duty: pass the **first** visit's start as `$2` on every visit of one sweep (keep it
+ * with the cursor, and begin again from nothing if the sweep is older than the 25 hour window).
  */
-export const ORPHAN_SWEEP_PAGE_DONE = `select swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text)`
+export const ORPHAN_SWEEP_PAGE_DONE = `select held, swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)`
 
 /**
  * Read an Organization's orphan sweep state: `$1` Organization. One row, `swept_through`,

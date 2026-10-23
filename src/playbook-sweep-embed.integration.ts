@@ -64,6 +64,11 @@ describe('the orphan sweep cursor, the embed usage counter and the Call Moment c
       inOrg(org, async (c) => (await c.query(ORPHAN_SWEEP_CLAIM, [org, ms])).rows[0])
     const state = (org: string) =>
       inOrg(org, async (c) => (await c.query(ORPHAN_SWEEP_STATE, [org])).rows[0])
+    const pageDone = (org: string, through: Date, cursor: string | null, token: string | null) =>
+      inOrg(
+        org,
+        async (c) => (await c.query(ORPHAN_SWEEP_PAGE_DONE, [org, through, cursor, token])).rows[0]
+      )
 
     test('the first claim wins and sets a deadline; a second finds it held', async () => {
       const org = newOrg()
@@ -137,13 +142,10 @@ describe('the orphan sweep cursor, the embed usage counter and the Call Moment c
       await inOrg(org, (c) =>
         c.query(IDEMPOTENCY_BEGIN, [org, newUser(), 'documents.upload', `k-${hex()}`, hashOf('x')])
       )
-      await claim(org)
+      const mine = await claim(org)
       const before = await state(org)
-      const cut = await inOrg(
-        org,
-        async (c) =>
-          (await c.query(ORPHAN_SWEEP_PAGE_DONE, [org, new Date(), `${org}/docs/a-key`])).rows[0]
-      )
+      const cut = await pageDone(org, new Date(), `${org}/docs/a-key`, mine.claim_token)
+      expect(cut.held).toBe(true)
       expect(cut.more).toBe(true)
       expect(cut.sweep_cursor).toBe(`${org}/docs/a-key`)
       const after = await state(org)
@@ -161,13 +163,12 @@ describe('the orphan sweep cursor, the embed usage counter and the Call Moment c
       await inOrg(org, (c) =>
         c.query(IDEMPOTENCY_BEGIN, [org, newUser(), 'documents.upload', `k-${hex()}`, hashOf('x')])
       )
-      await claim(org)
-      await inOrg(org, (c) => c.query(ORPHAN_SWEEP_PAGE_DONE, [org, new Date(), 'some/key']))
+      const first = await claim(org)
+      await pageDone(org, new Date(), 'some/key', first.claim_token)
+      const second = await claim(org)
       const through = new Date()
-      const done = await inOrg(
-        org,
-        async (c) => (await c.query(ORPHAN_SWEEP_PAGE_DONE, [org, through, null])).rows[0]
-      )
+      const done = await pageDone(org, through, null, second.claim_token)
+      expect(done.held).toBe(true)
       expect(done.sweep_cursor).toBeNull()
       const after = await state(org)
       expect(after.sweep_cursor).toBeNull()
@@ -182,16 +183,65 @@ describe('the orphan sweep cursor, the embed usage counter and the Call Moment c
       expect(done.swept_through).toEqual(after.swept_through)
     })
 
+    test('a late holder with an old token can neither release the new claim nor overwrite its cursor', async () => {
+      const org = newOrg()
+      const a = await claim(org)
+      expect(a.claim_token).toBeTruthy()
+      // A's claim expires and B takes over, then saves a cursor of its own and claims again.
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.orphan_sweeps set sweep_claim_until = clock_timestamp() - interval '1 second'`
+        )
+      )
+      const b = await claim(org)
+      expect(b.claimed).toBe(true)
+      expect(b.claim_token).not.toBe(a.claim_token)
+      const before = await state(org)
+      // A comes back late, with a cursor and then as a completed sweep: both change nothing.
+      for (const cursor of ['a-late-cursor', null]) {
+        const late = await pageDone(org, new Date(), cursor, a.claim_token)
+        expect(late.held).toBe(false)
+        expect(late.swept_through).toBeNull()
+        expect(late.more).toBeNull()
+        expect(late.sweep_cursor).toBeNull()
+      }
+      expect(await state(org)).toEqual(before)
+      expect(new Date(before.sweep_claim_until).getTime()).toBeGreaterThan(Date.now())
+      // B, still holding, finishes normally.
+      const done = await pageDone(org, new Date(), 'b-cursor', b.claim_token)
+      expect(done.held).toBe(true)
+      expect((await state(org)).sweep_cursor).toBe('b-cursor')
+    })
+
+    test('a token is refused when it is missing, expired, already used or never issued', async () => {
+      const org = newOrg()
+      const mine = await claim(org)
+      expect((await pageDone(org, new Date(), 'x', null)).held).toBe(false)
+      expect((await pageDone(org, new Date(), 'x', '2000-01-01 00:00:00+00')).held).toBe(false)
+      expect((await state(org)).sweep_claim_until).not.toBeNull()
+      // The right token works once; the claim is then released, so a repeat changes nothing.
+      expect((await pageDone(org, new Date(), 'first', mine.claim_token)).held).toBe(true)
+      expect((await pageDone(org, new Date(), 'second', mine.claim_token)).held).toBe(false)
+      expect((await state(org)).sweep_cursor).toBe('first')
+      // A token past its own deadline is refused even if the column still holds it.
+      const short = await claim(org, 1000)
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.orphan_sweeps set sweep_claim_until = clock_timestamp() - interval '1 second'`
+        )
+      )
+      expect((await pageDone(org, new Date(), 'late', short.claim_token)).held).toBe(false)
+      expect((await state(org)).sweep_cursor).toBe('first')
+    })
+
     test('a cursor of zero or more than 1024 bytes is refused', async () => {
       const org = newOrg()
-      await claim(org)
+      const mine = await claim(org)
       for (const cursor of ['', 'k'.repeat(1025), 'é'.repeat(513)]) {
-        const refused = await rejectionOf(
-          inOrg(org, (c) => c.query(ORPHAN_SWEEP_PAGE_DONE, [org, new Date(), cursor]))
-        )
+        const refused = await rejectionOf(pageDone(org, new Date(), cursor, mine.claim_token))
         expect(refused).toMatch(/sweep_cursor|orphan_sweeps_cursor/)
       }
-      await inOrg(org, (c) => c.query(ORPHAN_SWEEP_PAGE_DONE, [org, new Date(), 'é'.repeat(512)]))
+      expect((await pageDone(org, new Date(), 'é'.repeat(512), mine.claim_token)).held).toBe(true)
     })
 
     test("a second Organization cannot read, claim, finish or change the first one's sweep state", async () => {
@@ -200,15 +250,15 @@ describe('the orphan sweep cursor, the embed usage counter and the Call Moment c
       await inOrg(a, (c) =>
         c.query(IDEMPOTENCY_BEGIN, [a, newUser(), 'documents.upload', `k-${hex()}`, hashOf('x')])
       )
-      await claim(a)
-      await inOrg(a, (c) => c.query(ORPHAN_SWEEP_PAGE_DONE, [a, new Date(), 'a-cursor']))
+      const mineA = await claim(a)
+      await pageDone(a, new Date(), 'a-cursor', mineA.claim_token)
       // Reading A's row from B's scope finds nothing.
       expect(await inOrg(b, async (c) => (await c.query(ORPHAN_SWEEP_STATE, [a])).rowCount)).toBe(0)
       // The functions refuse a scope that is not the Organization's.
       for (const query of [
         [ORPHAN_SWEEP_CLAIM, [a, 60_000]],
-        [ORPHAN_SWEEP_PAGE_DONE, [a, new Date(), 'b-cursor']],
-        [ORPHAN_SWEEP_PAGE_DONE, [a, new Date(), null]],
+        [ORPHAN_SWEEP_PAGE_DONE, [a, new Date(), 'b-cursor', mineA.claim_token]],
+        [ORPHAN_SWEEP_PAGE_DONE, [a, new Date(), null, mineA.claim_token]],
       ] as const) {
         const refused = await rejectionOf(inOrg(b, (c) => c.query(query[0], [...query[1]])))
         expect(refused).toContain('orphan_sweep_scope')

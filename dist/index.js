@@ -1752,8 +1752,8 @@ where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts 
 returning id, purge_attempts`;
 var ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
 var ORPHAN_SWEEP_DONE = `select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)`;
-var ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor from playbook.orphan_sweep_claim($1::text, $2::int)`;
-var ORPHAN_SWEEP_PAGE_DONE = `select swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text)`;
+var ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor, claim_token::text as claim_token from playbook.orphan_sweep_claim($1::text, $2::int)`;
+var ORPHAN_SWEEP_PAGE_DONE = `select held, swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)`;
 var ORPHAN_SWEEP_STATE = `select swept_through, sweep_cursor, sweep_claim_until from playbook.orphan_sweeps where organization_id = $1`;
 var EMBED_USAGE_ADD = `insert into playbook.embed_usage as u (organization_id, day, moments)
 values ($1, (clock_timestamp() at time zone 'utc')::date, least(greatest(coalesce($2::int, 0), 0), 1000000))

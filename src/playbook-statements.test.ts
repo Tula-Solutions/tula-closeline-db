@@ -141,7 +141,7 @@ describe('the documented playbook statements', () => {
       }
       if (name === 'ORPHAN_SWEEP_PAGE_DONE') {
         expect(text).toContain(
-          'playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text)'
+          'playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)'
         )
         continue
       }
