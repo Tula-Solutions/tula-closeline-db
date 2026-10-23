@@ -13,3 +13,12 @@ describe('API_KEY_FOR_HASH', () => {
     expect(readme).toContain(API_KEY_FOR_HASH)
   })
 })
+
+describe('release', () => {
+  test('package.json is at 0.37.0 and the README names that release for the key lookup', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+    expect(pkg.version).toBe('0.37.0')
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+    expect(readme).toContain('API key lookup (v0.37.0')
+  })
+})
