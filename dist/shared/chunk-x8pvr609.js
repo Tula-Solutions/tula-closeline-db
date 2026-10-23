@@ -2530,7 +2530,10 @@ var auditEvents2 = coreSchema2.table("audit_events", {
   index27("audit_events_occurred_idx").on(t.organizationId, t.occurredAt.desc(), t.sequence.desc()),
   index27("audit_events_action_idx").on(t.organizationId, t.action, t.sequence.desc()),
   index27("audit_events_subject_idx").on(t.organizationId, t.subjectType, t.subjectId, t.sequence.desc()).where(sql21`${t.subjectId} is not null`),
-  index27("audit_events_prospect_idx").on(t.organizationId, t.prospectId, t.sequence.desc()).where(sql21`${t.prospectId} is not null`)
+  index27("audit_events_prospect_idx").on(t.organizationId, t.prospectId, t.sequence.desc()).where(sql21`${t.prospectId} is not null`),
+  index27("audit_events_actor_member_idx").on(t.organizationId, t.actorMembershipId, t.sequence.desc()).where(sql21`${t.actorMembershipId} is not null`),
+  index27("audit_events_actor_api_key_idx").on(t.organizationId, t.actorApiKeyId, t.sequence.desc()).where(sql21`${t.actorApiKeyId} is not null`),
+  index27("audit_events_actor_agent_idx").on(t.organizationId, t.actorAgentKind, t.sequence.desc()).where(sql21`${t.actorAgentKind} is not null`)
 ]);
 var exportJobs2 = coreSchema2.table("export_jobs", {
   id: text36("id").notNull(),

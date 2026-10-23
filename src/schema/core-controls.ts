@@ -284,7 +284,8 @@ export const agentSettings = coreSchema.table(
  * Lists served, newest first by sequence (keyset `sequence < $cursor`): the whole log on
  * `audit_events_sequence_key`; by date range on `audit_events_occurred_idx`; by action on
  * `audit_events_action_idx`; one subject on `audit_events_subject_idx`; one Prospect (a Manager's
- * view) on `audit_events_prospect_idx`.
+ * view) on `audit_events_prospect_idx`; one actor on the three `audit_events_actor_*_idx`
+ * partial indexes (the filter ORs the three columns, so Postgres can BitmapOr them).
  */
 export const auditEvents = coreSchema.table(
   'audit_events',
@@ -370,6 +371,15 @@ export const auditEvents = coreSchema.table(
     index('audit_events_prospect_idx')
       .on(t.organizationId, t.prospectId, t.sequence.desc())
       .where(sql`${t.prospectId} is not null`),
+    index('audit_events_actor_member_idx')
+      .on(t.organizationId, t.actorMembershipId, t.sequence.desc())
+      .where(sql`${t.actorMembershipId} is not null`),
+    index('audit_events_actor_api_key_idx')
+      .on(t.organizationId, t.actorApiKeyId, t.sequence.desc())
+      .where(sql`${t.actorApiKeyId} is not null`),
+    index('audit_events_actor_agent_idx')
+      .on(t.organizationId, t.actorAgentKind, t.sequence.desc())
+      .where(sql`${t.actorAgentKind} is not null`),
   ]
 )
 
