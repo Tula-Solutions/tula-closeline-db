@@ -48,12 +48,26 @@ const PROSPECT_TABLES = [
   'prospect_merges',
   'prospects',
 ]
+const CONSENT_TABLES = [
+  'consent_form',
+  'consent_wording',
+  'contact_check_log',
+  'contact_consent_event',
+  'suppression_entry',
+]
 const NO_ACCESS = ['invitation_directory', 'membership_directory', 'organization_state']
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the two directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the five consent tables, the two directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
-      [...NO_ACCESS, 'demo_rate_counter', 'demo_request', ...TENANT, ...PROSPECT_TABLES].sort()
+      [
+        ...NO_ACCESS,
+        'demo_rate_counter',
+        'demo_request',
+        ...TENANT,
+        ...PROSPECT_TABLES,
+        ...CONSENT_TABLES,
+      ].sort()
     )
   })
 

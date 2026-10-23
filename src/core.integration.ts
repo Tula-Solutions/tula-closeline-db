@@ -1908,16 +1908,21 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       claim_demo_notices: [true, false, true],
+      consent_channels_valid: [false, false, true],
       has_expired: [false, false, true],
       limit_field_history: [false, true, false],
       prospect_merged_ids_valid: [false, false, true],
       prospect_tags_valid: [false, false, true],
       hit_demo_rate_limit: [true, false, true],
       invitation_for_token: [true, false, true],
+      lock_form_wording: [false, true, false],
       organization_of_user: [true, false, true],
       purge_demo_rate_counters: [true, false, true],
       purge_demo_requests: [true, false, true],
+      refuse_consent_ledger_change: [false, true, false],
+      refuse_consent_ledger_truncate: [false, true, false],
       refuse_idempotency_rewrite: [false, true, false],
+      refuse_locked_wording_change: [false, true, false],
       refuse_region_change: [false, true, false],
       refuse_reopened_invitation: [false, true, false],
       refuse_revived_ownerless_organization: [false, true, false],
@@ -1989,6 +1994,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       const expected: Record<string, string> = {
         organization_of_user: 's',
         invitation_for_token: 's',
+        consent_channels_valid: 'i',
         has_expired: 'i',
         prospect_merged_ids_valid: 'i',
         prospect_tags_valid: 'i',
@@ -2159,7 +2165,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       ['memberships', 'truncate core.memberships cascade'],
       [
         'memberships and team_members',
-        'truncate core.memberships, core.team_members, core.prospects, core.prospect_identities, core.prospect_fields, core.prospect_merges',
+        'truncate core.memberships, core.team_members, core.prospects, core.prospect_identities, core.prospect_fields, core.prospect_merges, core.contact_consent_event',
       ],
       ['invitations', 'truncate core.invitations'],
       ['organizations', 'truncate core.organizations cascade'],
