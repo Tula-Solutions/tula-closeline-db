@@ -39,6 +39,8 @@ export {
   settleDemoNotice,
   submitDemoRequest,
 } from './core-demo-requests'
+export type { ApiKeyForHashRow } from './core-key-statements'
+export { API_KEY_FOR_HASH } from './core-key-statements'
 export type {
   ConsentFormForToken,
   InvitationForToken,
@@ -201,7 +203,13 @@ export {
   RIGHTS_GET,
   type WorkDiscoveryRow,
 } from './playbook-statements'
-export { CRM_LOOKUP_ROLE, DEFINER_ROLES, OWNER_ROLE, SEARCH_ROLE } from './roles'
+export {
+  CRM_LOOKUP_ROLE,
+  DEFINER_ROLES,
+  KEY_LOOKUP_ROLE,
+  OWNER_ROLE,
+  SEARCH_ROLE,
+} from './roles'
 export {
   CALL_CHANNELS,
   CALL_FAILURE_REASONS,

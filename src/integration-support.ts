@@ -197,7 +197,11 @@ export async function resetTestRoles(admin: Pool, adminConnectionUrl: string): P
   assertLocalTestDatabase(adminConnectionUrl)
   await admin.query('alter role closeline_core nobypassrls')
   // The search definer role is NOLOGIN, BYPASSRLS and held by no service role.
-  for (const definer of ['closeline_core_search', 'closeline_core_crm_lookup']) {
+  for (const definer of [
+    'closeline_core_search',
+    'closeline_core_crm_lookup',
+    'closeline_core_key_lookup',
+  ]) {
     await admin.query(`alter role ${definer} nologin nosuperuser bypassrls`)
     const members = await admin.query<{ name: string }>(
       `select m.rolname as name from pg_auth_members am
