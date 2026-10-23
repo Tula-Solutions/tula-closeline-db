@@ -196,6 +196,17 @@ export async function dropStaleTestObjects(owner: Pool, ownerUrl: string): Promi
 export async function resetTestRoles(admin: Pool, adminConnectionUrl: string): Promise<void> {
   assertLocalTestDatabase(adminConnectionUrl)
   await admin.query('alter role closeline_core nobypassrls')
+  // The search definer role is NOLOGIN, BYPASSRLS and held by no service role.
+  await admin.query('alter role closeline_core_search nologin nosuperuser bypassrls')
+  const members = await admin.query<{ name: string }>(
+    `select m.rolname as name from pg_auth_members am
+       join pg_roles m on m.oid = am.member
+       join pg_roles g on g.oid = am.roleid
+      where g.rolname = 'closeline_core_search' and m.rolname <> 'closeline_owner'`
+  )
+  for (const { name } of members.rows) {
+    await admin.query(`revoke closeline_core_search from "${name}"`)
+  }
   const leftover = await admin.query<{ name: string }>(
     `select rolname as name from pg_roles where rolname like 'closeline\\_it\\_super\\_%'`
   )

@@ -20,5 +20,15 @@ CREATE ROLE closeline_playbook LOGIN PASSWORD :'playbook_password'
 CREATE ROLE closeline_voice LOGIN PASSWORD :'voice_password'
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT NOBYPASSRLS;
 
+-- closeline_core_search  owns the Prospect search functions (migration 0030) and nothing else. It
+--                  cannot log in and no service role is a member of it, so only a function it
+--                  owns runs with its BYPASSRLS. That is what lets the trigram indexes serve the
+--                  search: `ilike` is not leakproof, so a role bound by row-level security never
+--                  gets the index. closeline_owner may SET ROLE to it (not inherit it), which is
+--                  what `ALTER FUNCTION ... OWNER TO` needs.
+CREATE ROLE closeline_core_search NOLOGIN
+  NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_search TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+
 -- The owner role owns this database, so it can create the schemas in migration 0000.
 SELECT format('ALTER DATABASE %I OWNER TO closeline_owner', current_database()) \gexec

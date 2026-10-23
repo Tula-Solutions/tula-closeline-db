@@ -30,7 +30,8 @@ bun run db:migrate                  # applies pending migrations as the owner ro
 
 The first start runs `docker/postgres/init.sh`, which creates the owner and service roles from
 `docker/postgres/init.sql` (local passwords only, set in `docker-compose.yml`). To run it again,
-`docker compose down -v`.
+`docker compose down -v`. A volume created before v0.32.0 lacks `closeline_core_search` (below), so
+migration `0030` stops with a message naming it; recreate the volume.
 
 Integration tests need Postgres from the compose file. With none of the five connection
 variables in `.env.example` set they use the compose defaults (port 5432, or `POSTGRES_PORT`), so
@@ -68,7 +69,8 @@ a user-to-Organization mapping or free a user). The `auth` tables are not
 skipped: each is verified under `ENVIRONMENT_SCOPED_TABLES` or `CONTROL_PLANE_TABLES` (see below),
 and an `auth` table in neither is a gap. It scans every schema except `public` and drizzle's own, so a table in a schema that is not `auth`,
 `core` or `playbook` is a gap, and so is a `closeline_*` role that is a superuser or has
-`BYPASSRLS`, or is a member of any role other than `pg_monitor`, `pg_read_all_settings`,
+`BYPASSRLS` (except `closeline_core_search`, below, which is reported if it can log in or is a
+superuser), or is a member of any role other than `pg_monitor`, `pg_read_all_settings`,
 `pg_read_all_stats` and `pg_stat_scan_tables` (`ALLOWED_PREDEFINED_ROLES`; the service roles are
 `NOINHERIT`, so a privilege reached through a role such as `pg_write_all_data` would not show in the
 table checks). Roles are created and granted by an account whose name does not start with
@@ -3282,3 +3284,46 @@ The primary key is `(address_hash, window_start)`; `demo_rate_counters_window_st
 
 Windows are at most a day long, so a window that started over a day ago has ended. Both wrappers
 check their input before any query; the functions check it again and raise `22023`.
+
+## Prospect search through a definer role (v0.32.0, migration `0030`)
+
+Core's search over Prospects (`ilike '%text%'` on field values, Company names and domains) was a
+sequential scan whatever the trigram indexes of `0029`: `ilike` is not leakproof, and Postgres
+will not give an index a clause that is not leakproof while a row-level security policy guards the
+table. A role that bypasses row-level security has no such limit, but `closeline_core` must not be
+that role. The search therefore runs in two `SECURITY DEFINER` functions owned by
+`closeline_core_search`: `NOLOGIN`, `BYPASSRLS`, `NOINHERIT`, a member of no role and held by no
+service role (`closeline_owner` is a member `WITH SET TRUE, INHERIT FALSE`, only so the migration can
+run `ALTER FUNCTION ... OWNER TO`). It holds `USAGE` on `core` and column `SELECT` on three tables
+(`prospects`, `prospect_fields`, `prospect_companies`), nothing else.
+
+| Function | Returns |
+| --- | --- |
+| `core.search_prospect_ids(q text, "after" text, max_rows integer)` | `TABLE(id text)`: the Prospects with a current field value, or a Company name or domain, containing `q` |
+| `core.search_prospect_company_ids(q text, "after" text, max_rows integer)` | `TABLE(id text)`: the Prospect Companies whose name or domain contains `q` |
+
+Both are `STABLE`, with `search_path = pg_catalog, core, public, pg_temp`, `EXECUTE` revoked from
+`PUBLIC` and granted to `closeline_core` alone. Ids are distinct, in id order, strictly after the
+cursor `after` (null starts at the beginning). Core calls them inside `withOrganization`, for
+example `id IN (select id from core.search_prospect_ids($1, $2, $3))`.
+
+- The Organization is never an argument. It is the `app.organization_id` setting that
+  `withOrganization` sets, and every branch filters `organization_id =` it. With the setting unset or
+  empty the functions return no row.
+- `q` is matched literally, case-insensitively: `%`, `_` and `\` in it are escaped. A null or empty
+  `q`, or `max_rows` below 1, returns no row (there is no "match all"); `max_rows` above 101 is
+  clamped to 101, so a caller asks for 101 to learn whether a page follows.
+- The prospect function matches any current field value, whatever the `field_name`.
+- Ids are text (`prs_...`, `pco_...`), so the cursor is text, not uuid.
+
+**Deployed Regions** (tula-closeline-infra) must create the role in the Region bootstrap, before this
+migration runs, as a superuser or `CREATEROLE` account whose name does not start with `closeline_`:
+
+```sql
+CREATE ROLE closeline_core_search NOLOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_search TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+```
+
+The migration fails with a message naming the role if it is missing, is not `NOLOGIN`/`BYPASSRLS`,
+or `closeline_owner` cannot `SET ROLE` to it. Locally `docker/postgres/init.sql` does this.
+`SEARCH_ROLE` is exported for tools that name the role.
