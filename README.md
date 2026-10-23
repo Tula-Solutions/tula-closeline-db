@@ -3494,3 +3494,28 @@ GRANT closeline_core_key_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 
 The migration fails naming the role if it is missing or wrongly configured. Locally
 `docker/postgres/init.sql` does this; a volume created before v0.37.0 lacks the role, so recreate it.
+
+## Voice idempotency keys (v0.38.0, migration `0036`)
+
+`voice.idempotency_keys` (`voiceIdempotencyKeys`) lets the voice service make a `POST` with an effect
+that costs money, such as `addLine` (which buys or ports a number), safe to retry. It is
+`playbook.idempotency_keys` (migration `0011`) with the same columns, checks, write-once trigger and
+purge index, in the `voice` schema, **without a foreign key to organizations** (the id is checked by
+shape). Only `closeline_voice` can reach it.
+
+- **Key:** primary key `(organization_id, user_id, route, key)`. `route` is `[a-z0-9._]`, 1 to
+  `IDEMPOTENCY_ROUTE_MAX` (64) characters, for example `lines.add`; `key` is the client's
+  `Idempotency-Key`, printable ASCII, 1 to `IDEMPOTENCY_KEY_MAX` (255, the same number as
+  `MAX_VOICE_IDEMPOTENCY_KEY_LENGTH`).
+- **Request hash and response:** `request_hash` is `IDEMPOTENCY_HASH_BYTES` (32) bytes. `status`
+  (100 to 599) and `response` (jsonb, at most `IDEMPOTENCY_RESPONSE_MAX_BYTES` (16384) bytes as text)
+  are both null while the request is in flight and both set once it is complete.
+- **Flow:** insert the row in flight in the transaction that does the work, complete it with `UPDATE`
+  in the same transaction. A retry with the same key reads the row: the same `request_hash` replays
+  the stored response, a different one is the contract's idempotency conflict. A completed row is
+  never rewritten (trigger `idempotency_keys_final`, error `voice.idempotency_final`).
+- **Expiry:** as in core and playbook, the row carries `created_at` and a purge deletes rows older
+  than the service's retention in bounded batches per Organization, on `idempotency_keys_purge_idx`
+  `(organization_id, created_at)`.
+- **Row-level security:** the canonical fail-closed policy on `organization_id`; the table needs no
+  entry in `NON_TENANT_TABLES`.
