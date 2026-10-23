@@ -50,6 +50,8 @@ export const PROSPECT_COMPANY_FIELD_NAMES = [
 ] as const
 /** The longest Prospect Company industry or region, in characters. */
 export const MAX_PROSPECT_COMPANY_TEXT_LENGTH = 200
+/** The longest `technologies` history value, a JSON array of up to 50 items of 100 characters. */
+export const MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH = 5300
 /** The most technologies one Prospect Company carries. */
 export const MAX_PROSPECT_COMPANY_TECHNOLOGIES = 50
 /** The longest technology, in characters. */
@@ -345,17 +347,27 @@ const fieldHistoryColumns = () => ({
   setByUserId: text('set_by_user_id'),
 })
 
-/** The checks every field-history table shares. */
+/**
+ * The value check of a field-history table: 1 to 320 characters. Prospect Company history
+ * relaxes it for `technologies`, whose value is a JSON array of strings.
+ */
+const fieldValueCheck = (table: string, companyFields = false) =>
+  check(
+    `${table}_value_shape`,
+    sql.raw(
+      companyFields
+        ? `("field_name" <> 'technologies' and char_length("value") between 1 and ${MAX_PROSPECT_FIELD_VALUE_LENGTH}) or ("field_name" = 'technologies' and char_length("value") between 1 and ${MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH} and core.prospect_company_technologies_text_valid("value"))`
+        : `char_length("value") between 1 and ${MAX_PROSPECT_FIELD_VALUE_LENGTH}`
+    )
+  )
+
+/** The checks every field-history table shares, except the value check ({@link fieldValueCheck}). */
 const fieldHistoryChecks = (table: string) => [
   check(`${table}_organization_id_shape`, orgShape),
   check(`${table}_organization_not_global`, notGlobal),
   check(
     `${table}_state_known`,
     sql.raw(`"state" in (${FIELD_HISTORY_STATES.map((s) => `'${s}'`).join(', ')})`)
-  ),
-  check(
-    `${table}_value_shape`,
-    sql.raw(`char_length("value") between 1 and ${MAX_PROSPECT_FIELD_VALUE_LENGTH}`)
   ),
   check(`${table}_source_known`, sql.raw(`"source" collate "C" ~ '${SOURCE_KIND_PATTERN}'`)),
   check(
@@ -387,6 +399,7 @@ export const prospectFields = coreSchema.table(
   (t) => [
     primaryKey({ name: 'prospect_fields_pkey', columns: [t.organizationId, t.seq] }),
     ...fieldHistoryChecks('prospect_fields'),
+    fieldValueCheck('prospect_fields'),
     check('prospect_fields_prospect_id_shape', idShape('prospect_id', 'prs')),
     check(
       'prospect_fields_field_name_known',
@@ -413,7 +426,8 @@ export const prospectFields = coreSchema.table(
 /**
  * One entry of a Prospect Company field's history, as {@link prospectFields} is for a Prospect.
  * The fields are `name`, `domain`, `industry`, `employee_count`, `region` and `technologies`; a
- * value is kept as text (a `technologies` value as its entries joined by the service).
+ * value is kept as text: `employee_count` as 1 to 9 digits and `technologies` as a JSON array of
+ * strings.
  */
 export const prospectCompanyFields = coreSchema.table(
   'prospect_company_fields',
@@ -421,6 +435,11 @@ export const prospectCompanyFields = coreSchema.table(
   (t) => [
     primaryKey({ name: 'prospect_company_fields_pkey', columns: [t.organizationId, t.seq] }),
     ...fieldHistoryChecks('prospect_company_fields'),
+    fieldValueCheck('prospect_company_fields', true),
+    check(
+      'prospect_company_fields_employee_count_value',
+      sql`${t.fieldName} <> 'employee_count' or ${t.value} collate "C" ~ '^[0-9]{1,9}$'`
+    ),
     check('prospect_company_fields_company_id_shape', idShape('company_id', 'pco')),
     check(
       'prospect_company_fields_field_name_known',

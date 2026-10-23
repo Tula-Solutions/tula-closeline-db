@@ -1919,6 +1919,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       prospect_merged_ids_valid: [false, false, true],
       prospect_tags_valid: [false, false, true],
       prospect_technologies_valid: [false, false, true],
+      prospect_company_technologies_text_valid: [false, false, true],
       hit_demo_rate_limit: [true, false, true],
       invitation_for_token: [true, false, true],
       lock_form_wording: [false, true, false],
@@ -2007,6 +2008,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         prospect_merged_ids_valid: 'i',
         prospect_tags_valid: 'i',
         prospect_technologies_valid: 'i',
+        prospect_company_technologies_text_valid: 'i',
       }
       for (const fn of await catalog()) {
         expect([fn.name, fn.volatility]).toEqual([fn.name, expected[fn.name] ?? 'v'])

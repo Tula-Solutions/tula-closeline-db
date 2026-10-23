@@ -9,6 +9,7 @@ import {
   MAX_MERGED_PROSPECTS,
   MAX_PROSPECT_IMPORT_BYTES,
   MAX_PROSPECT_IMPORT_ROWS,
+  MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH,
   PROSPECT_COMPANY_FIELD_NAMES,
   PROSPECT_FIELD_NAMES,
   PROSPECT_IDENTITY_KINDS,
@@ -110,6 +111,13 @@ describe('the prospect tables', () => {
     expect(company).toContain('cardinality(technologies) <= 50')
     expect(company).toContain('NOT BETWEEN 1 AND 100')
     expect(company).toContain('"employee_count" >= 0')
+    expect(MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH).toBe(5300)
+    expect(company).toContain('between 1 and 5300')
+    expect(company).toContain('IMMUTABLE PARALLEL SAFE')
+    expect(company).toContain('^[0-9]{1,9}$')
+    expect(company).toContain(
+      'REVOKE ALL ON FUNCTION "core"."prospect_company_technologies_text_valid"(text) FROM PUBLIC'
+    )
     const columns = getTableConfig(prospectCompanies).columns.map((c) => c.name)
     expect(columns).toEqual(
       expect.arrayContaining(['industry', 'employee_count', 'region', 'technologies'])

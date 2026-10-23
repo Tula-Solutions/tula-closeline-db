@@ -1,5 +1,5 @@
 {
-  "id": "46e66f71-5e32-45d8-ad42-5ba3f9785413",
+  "id": "69166b7c-4b23-47ef-8b83-9c13d99e2717",
   "prevId": "21260eaa-3fce-4392-9e97-c00464856565",
   "version": "7",
   "dialect": "postgresql",
@@ -7898,10 +7898,6 @@
           "name": "prospect_company_fields_state_known",
           "value": "\"state\" in ('current', 'superseded', 'suggested')"
         },
-        "prospect_company_fields_value_shape": {
-          "name": "prospect_company_fields_value_shape",
-          "value": "char_length(\"value\") between 1 and 320"
-        },
         "prospect_company_fields_source_known": {
           "name": "prospect_company_fields_source_known",
           "value": "\"source\" collate \"C\" ~ '^(manual|import|crm:hubspot|crm:salesforce|form|enrichment:[a-z][a-z0-9_]{0,31})$'"
@@ -7913,6 +7909,14 @@
         "prospect_company_fields_set_by_user_id_shape": {
           "name": "prospect_company_fields_set_by_user_id_shape",
           "value": "\"set_by_user_id\" is null or \"set_by_user_id\" ~ '^usr_[0-9a-f]{32}$'"
+        },
+        "prospect_company_fields_value_shape": {
+          "name": "prospect_company_fields_value_shape",
+          "value": "(\"field_name\" <> 'technologies' and char_length(\"value\") between 1 and 320) or (\"field_name\" = 'technologies' and char_length(\"value\") between 1 and 5300 and core.prospect_company_technologies_text_valid(\"value\"))"
+        },
+        "prospect_company_fields_employee_count_value": {
+          "name": "prospect_company_fields_employee_count_value",
+          "value": "\"core\".\"prospect_company_fields\".\"field_name\" <> 'employee_count' or \"core\".\"prospect_company_fields\".\"value\" collate \"C\" ~ '^[0-9]{1,9}$'"
         },
         "prospect_company_fields_company_id_shape": {
           "name": "prospect_company_fields_company_id_shape",
@@ -8112,10 +8116,6 @@
           "name": "prospect_fields_state_known",
           "value": "\"state\" in ('current', 'superseded', 'suggested')"
         },
-        "prospect_fields_value_shape": {
-          "name": "prospect_fields_value_shape",
-          "value": "char_length(\"value\") between 1 and 320"
-        },
         "prospect_fields_source_known": {
           "name": "prospect_fields_source_known",
           "value": "\"source\" collate \"C\" ~ '^(manual|import|crm:hubspot|crm:salesforce|form|enrichment:[a-z][a-z0-9_]{0,31})$'"
@@ -8127,6 +8127,10 @@
         "prospect_fields_set_by_user_id_shape": {
           "name": "prospect_fields_set_by_user_id_shape",
           "value": "\"set_by_user_id\" is null or \"set_by_user_id\" ~ '^usr_[0-9a-f]{32}$'"
+        },
+        "prospect_fields_value_shape": {
+          "name": "prospect_fields_value_shape",
+          "value": "char_length(\"value\") between 1 and 320"
         },
         "prospect_fields_prospect_id_shape": {
           "name": "prospect_fields_prospect_id_shape",

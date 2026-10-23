@@ -658,13 +658,62 @@ describe('core prospect tables', () => {
       expect(refused.code).toBe(CHECK_VIOLATION)
     })
 
+    describe('history values', () => {
+      const putEntry = (a: Seeded, field: string, value: string) =>
+        run(
+          a.orgId,
+          "insert into core.prospect_company_fields (organization_id, company_id, field_name, state, value, source, set_at) values ($1, $2, $3, 'current', $4, 'enrichment:acme', now())",
+          [a.orgId, a.companyId, field, value]
+        )
+
+      test('a technologies value is a JSON array of up to 50 strings of up to 100 characters', async () => {
+        const a = await seed()
+        const full = JSON.stringify(Array.from({ length: 50 }, (_, i) => `${i}`.padEnd(100, 'x')))
+        expect(full.length).toBeGreaterThan(320)
+        expect(full.length).toBeLessThanOrEqual(5300)
+        await putEntry(a, 'technologies', full)
+      })
+
+      test.each([
+        ['non-JSON text', 'postgres, redis'],
+        ['a JSON object', '{"a":"b"}'],
+        ['an array holding a number', '["a",1]'],
+        ['an array holding null', '["a",null]'],
+        ['an array holding an empty string', '[""]'],
+        ['51 items', JSON.stringify(Array.from({ length: 51 }, (_, i) => `t${i}`))],
+        ['an item of 101 characters', JSON.stringify(['x'.repeat(101)])],
+        ['more than 5300 characters', `["${'x'.repeat(5300)}"]`],
+      ])('a technologies value of %s is refused', async (_name, value) => {
+        const a = await seed()
+        const refused = await refusal(putEntry(a, 'technologies', value))
+        expect(refused.code).toBe(CHECK_VIOLATION)
+      })
+
+      test('every other field keeps the 320-character limit', async () => {
+        const a = await seed()
+        await putEntry(a, 'industry', 'x'.repeat(320))
+        const refused = await refusal(putEntry(a, 'region', 'x'.repeat(321)))
+        expect(refused.code).toBe(CHECK_VIOLATION)
+      })
+
+      test('an employee_count value is 1 to 9 digits', async () => {
+        const a = await seed()
+        await putEntry(a, 'employee_count', '123456789')
+        for (const bad of ['many', '-1', '1.5', '1234567890', ' 5']) {
+          const refused = await refusal(putEntry(a, 'employee_count', bad))
+          expect([bad, refused.code]).toEqual([bad, CHECK_VIOLATION])
+        }
+      })
+    })
+
     test('history entries accept the new field names and refuse unknown ones', async () => {
       const a = await seed()
-      for (const field of ['industry', 'employee_count', 'region', 'technologies']) {
+      const values = { industry: 'v', employee_count: '12', region: 'v', technologies: '["v"]' }
+      for (const [field, value] of Object.entries(values)) {
         await run(
           a.orgId,
-          "insert into core.prospect_company_fields (organization_id, company_id, field_name, state, value, source, set_at) values ($1, $2, $3, 'current', 'v', 'enrichment:acme', now())",
-          [a.orgId, a.companyId, field]
+          "insert into core.prospect_company_fields (organization_id, company_id, field_name, state, value, source, set_at) values ($1, $2, $3, 'current', $4, 'enrichment:acme', now())",
+          [a.orgId, a.companyId, field, value]
         )
       }
       const refused = await refusal(
