@@ -92,6 +92,9 @@ describe('the agent control, audit, export and API key tables', () => {
   test('the audit log has a keyset index for each way it is listed', () => {
     expect(indexNames(auditEvents).sort()).toEqual([
       'audit_events_action_idx',
+      'audit_events_actor_agent_idx',
+      'audit_events_actor_api_key_idx',
+      'audit_events_actor_member_idx',
       'audit_events_occurred_idx',
       'audit_events_prospect_idx',
       'audit_events_sequence_key',

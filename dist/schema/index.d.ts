@@ -9832,7 +9832,8 @@ declare const agentSettings: PgTableWithColumns_a5zn0g35<{
 * Lists served, newest first by sequence (keyset `sequence < $cursor`): the whole log on
 * `audit_events_sequence_key`; by date range on `audit_events_occurred_idx`; by action on
 * `audit_events_action_idx`; one subject on `audit_events_subject_idx`; one Prospect (a Manager's
-* view) on `audit_events_prospect_idx`.
+* view) on `audit_events_prospect_idx`; one actor on the three `audit_events_actor_*_idx`
+* partial indexes (the filter ORs the three columns, so Postgres can BitmapOr them).
 */
 declare const auditEvents: PgTableWithColumns_a5zn0g35<{
 	name: "audit_events";
