@@ -1152,6 +1152,8 @@ export const ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor, 
  * `playbook.orphan_sweep_page_done`, `SECURITY DEFINER`.
  * The service's duty: pass the **first** visit's start as `$2` on every visit of one sweep (keep it
  * with the cursor, and begin again from nothing if the sweep is older than the 25 hour window).
+ * A sweep that uses the claim must finish only through this statement: {@link ORPHAN_SWEEP_DONE}
+ * is not fenced, so a stale holder calling it directly could still advance `swept_through`.
  */
 export const ORPHAN_SWEEP_PAGE_DONE = `select held, swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)`
 
