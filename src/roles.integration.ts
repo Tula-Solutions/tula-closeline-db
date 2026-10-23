@@ -506,3 +506,90 @@ describe('closeline_core_key_lookup, the role that owns the API key lookup (0035
     expect(owned.rows.map((r) => r.name)).toEqual(['core.api_key_for_hash(text)'])
   })
 })
+
+describe('closeline_core_outbox_drain, the role that owns the outbox drain functions (0039)', () => {
+  let owner: Pool
+  const pools = new Map<string, Pool>()
+
+  beforeAll(async () => {
+    await migrateUp(env.owner)
+    owner = new Pool({ connectionString: env.owner, max: 1 })
+    for (const { schema, url } of SERVICES) {
+      pools.set(schema, new Pool({ connectionString: url, max: 1 }))
+    }
+  })
+
+  afterAll(async () => {
+    await owner.end()
+    await Promise.all([...pools.values()].map((p) => p.end()))
+  })
+
+  test('cannot log in, bypasses row-level security, is no superuser and inherits nothing', async () => {
+    const result = await owner.query(
+      `select rolcanlogin, rolbypassrls, rolsuper, rolinherit, rolcreaterole, rolcreatedb
+         from pg_roles where rolname = 'closeline_core_outbox_drain'`
+    )
+    expect(result.rows).toEqual([
+      {
+        rolcanlogin: false,
+        rolbypassrls: true,
+        rolsuper: false,
+        rolinherit: false,
+        rolcreaterole: false,
+        rolcreatedb: false,
+      },
+    ])
+  })
+
+  test('no service role is a member of it, and only the owner role can set it', async () => {
+    const members = await owner.query(
+      `select m.rolname as member, am.set_option, am.inherit_option
+         from pg_auth_members am
+         join pg_roles m on m.oid = am.member
+         join pg_roles g on g.oid = am.roleid
+        where g.rolname = 'closeline_core_outbox_drain'`
+    )
+    expect(members.rows).toEqual([
+      { member: 'closeline_owner', set_option: true, inherit_option: false },
+    ])
+  })
+
+  test.each(SERVICES)('$role cannot SET ROLE to it', async ({ schema }) => {
+    const message = await rejectionOf(
+      pools.get(schema)?.query('set role closeline_core_outbox_drain') as Promise<unknown>
+    )
+    expect(message).toContain('permission denied to set role "closeline_core_outbox_drain"')
+  })
+
+  test('it holds USAGE on core, column grants on core.outbox only, and owns the three functions', async () => {
+    const schemas = await owner.query(
+      `select n.nspname,
+              has_schema_privilege('closeline_core_outbox_drain', n.oid, 'USAGE') as usage,
+              has_schema_privilege('closeline_core_outbox_drain', n.oid, 'CREATE') as can_create
+         from pg_namespace n where n.nspname in ('auth', 'core', 'playbook', 'voice', 'public')
+        order by n.nspname`
+    )
+    expect(schemas.rows.filter((r) => r.usage).map((r) => r.nspname)).toEqual(['core'])
+    expect(schemas.rows.some((r) => r.can_create)).toBe(false)
+    const tables = await owner.query(
+      `select n.nspname || '.' || c.relname as name,
+              has_table_privilege('closeline_core_outbox_drain', c.oid,
+                'INSERT, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN') as writes,
+              has_table_privilege('closeline_core_outbox_drain', c.oid, 'SELECT, UPDATE') as whole_table,
+              has_any_column_privilege('closeline_core_outbox_drain', c.oid, 'SELECT, UPDATE') as some_columns
+         from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')`
+    )
+    expect(tables.rows.filter((r) => r.writes || r.whole_table)).toEqual([])
+    expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual(['core.outbox'])
+    const owned = await owner.query(
+      `select p.oid::regprocedure::text as name from pg_proc p
+        where p.proowner = 'closeline_core_outbox_drain'::regrole order by 1`
+    )
+    expect(owned.rows.map((r) => r.name)).toEqual([
+      'core.outbox_claim(integer,integer)',
+      'core.outbox_complete(text[],text[])',
+      'core.outbox_fail(text,text,text,integer)',
+    ])
+  })
+})

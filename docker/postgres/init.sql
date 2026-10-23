@@ -45,5 +45,13 @@ CREATE ROLE closeline_core_key_lookup NOLOGIN
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
 GRANT closeline_core_key_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 
+-- closeline_core_outbox_drain  owns core.outbox_claim, outbox_complete and outbox_fail (migration
+--                  0039), the drain of the transactional outbox, which publishes the rows of every
+--                  Organization. Same shape as the roles above; it reads seven columns of outbox,
+--                  updates four, and cannot insert, delete or read any other table.
+CREATE ROLE closeline_core_outbox_drain NOLOGIN
+  NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_outbox_drain TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+
 -- The owner role owns this database, so it can create the schemas in migration 0000.
 SELECT format('ALTER DATABASE %I OWNER TO closeline_owner', current_database()) \gexec

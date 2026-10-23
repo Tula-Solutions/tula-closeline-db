@@ -48,6 +48,13 @@ export type {
   OrganizationStatus,
 } from './core-lookups'
 export { consentFormForToken, invitationForToken, organizationOfUser } from './core-lookups'
+export type { OutboxClaimRow } from './core-outbox-statements'
+export {
+  OUTBOX_CLAIM,
+  OUTBOX_COMPLETE,
+  OUTBOX_ENQUEUE,
+  OUTBOX_FAIL,
+} from './core-outbox-statements'
 export { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING, withEnvironment } from './environment'
 export type { AuthTableCategories, TenantIsolationGap } from './isolation'
 export {
@@ -209,9 +216,21 @@ export {
   CRM_LOOKUP_ROLE,
   DEFINER_ROLES,
   KEY_LOOKUP_ROLE,
+  OUTBOX_DRAIN_ROLE,
   OWNER_ROLE,
   SEARCH_ROLE,
 } from './roles'
+export {
+  OUTBOX_DEDUPE_KEY_MAX_LENGTH,
+  OUTBOX_ERROR_CODE_MAX_LENGTH,
+  OUTBOX_MAX_ATTEMPTS,
+  OUTBOX_MAX_BATCH,
+  OUTBOX_MAX_LEASE_MS,
+  OUTBOX_MAX_RETRY_DELAY_MS,
+  OUTBOX_MIN_LEASE_MS,
+  OUTBOX_PAYLOAD_MAX_BYTES,
+  OUTBOX_TOPIC_MAX_LENGTH,
+} from './schema/core-outbox'
 export {
   CALL_CHANNELS,
   CALL_FAILURE_REASONS,

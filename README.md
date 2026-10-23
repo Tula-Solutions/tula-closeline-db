@@ -3547,3 +3547,90 @@ through it could use all `CALL_JOB_MAX_ATTEMPTS` (20) and the Call would be fail
   job. The statement counts no deferrals, so the service bounds them itself.
 - No schema change, so there is no migration; the playbook Call job calls `CALL_JOB_DEFER` for
   budget deferrals and `CALL_JOB_RETRY` for everything else.
+
+## Transactional outbox (v0.42.0, migration `0039`)
+
+`core.outbox` (`outbox`) holds the events a core write must publish, written in the same
+transaction as the write so a crash between the change and the queue loses nothing (ticket
+tula-closeline#339). The drain worker is a later core ticket; this release is the table, the
+statements and the drain's access path.
+
+- **Row:** primary key `(organization_id, id)`; `id` is `obx_` and 32 hex characters. `topic`
+  (1 to `OUTBOX_TOPIC_MAX_LENGTH` (120) characters, `[a-z][a-z0-9_.-]*`), `payload` (a jsonb object,
+  at most `OUTBOX_PAYLOAD_MAX_BYTES` (16384) bytes as text: ids and facts, never a secret or a message
+  body), `dedupe_key` (1 to `OUTBOX_DEDUPE_KEY_MAX_LENGTH` (200) characters), `created_at`,
+  `available_at` (due when it has passed), `attempts` (0 to `OUTBOX_MAX_ATTEMPTS` (50)),
+  `published_at` and `last_error_code` (a code of at most `OUTBOX_ERROR_CODE_MAX_LENGTH` (64)
+  characters, never an error message).
+- **Tenant isolation:** the usual fail-closed policy `outbox_tenant_isolation`. A second Organization
+  reads and writes nothing, and `closeline_core` sees no row without an Organization set.
+- **Dedupe:** `outbox_dedupe_key` is unique on `(organization_id, dedupe_key)`, so a replayed write
+  adds no second row.
+- **Indexes:** `outbox_drain_idx` on `(available_at, id)` where `published_at is null and attempts < 50`
+  serves the drain (rows parked at 50 attempts stay out of it); `outbox_published_idx` on `published_at` where it is not null is for a retention purge
+  (not provided here).
+- **Lease-unaware completion:** `outbox_complete` and `outbox_fail` do not check who holds the
+  lease. A stale worker can overwrite a newer holder's retry time or error code; publishing is
+  at-least-once, so consumers dedupe on the row `id`.
+
+**Write** (`OUTBOX_ENQUEUE`), inside `withOrganization`, in the transaction of the change; it returns
+the `id` of a new row and no row for a replay:
+
+```sql
+insert into core.outbox (id, organization_id, topic, payload, dedupe_key)
+values ($1, $2, $3, $4::jsonb, $5)
+on conflict (organization_id, dedupe_key) do nothing
+returning id
+```
+
+**Drain.** The drain reads every Organization, so it cannot run under `withOrganization`. It goes
+through three `SECURITY DEFINER` functions owned by `closeline_core_outbox_drain`
+(`OUTBOX_DRAIN_ROLE`): `NOLOGIN`, `BYPASSRLS`, `NOINHERIT`, a member of no role and held by no
+service role (`closeline_owner` is a member `WITH SET TRUE, INHERIT FALSE`). It holds `USAGE` on
+`core`, `SELECT` on seven columns of `outbox` and `UPDATE` on four (`attempts`, `available_at`,
+`published_at`, `last_error_code`); it cannot insert, delete or read the dedupe key. The functions
+pin `search_path = pg_catalog, core, pg_temp`, have `EXECUTE` revoked from `PUBLIC` and granted to
+`closeline_core` alone. Run them on the pooled handle.
+
+1. **Claim** (`OUTBOX_CLAIM`): `$1` how many (1 to `OUTBOX_MAX_BATCH` (100); less gives none), `$2`
+   the lease in milliseconds (1000 to 3600000). It takes unpublished rows that are due and have fewer
+   than 50 attempts, oldest first, `FOR UPDATE SKIP LOCKED`, counts the attempt and pushes
+   `available_at` out by the lease. No transaction stays open while the worker publishes, and
+   concurrent workers never take the same row or wait for each other.
+
+```sql
+select organization_id, id, topic, payload, attempts from core.outbox_claim($1::integer, $2::integer)
+```
+
+2. **Complete** (`OUTBOX_COMPLETE`): equal-length arrays of 1 to 100 Organization ids and row ids.
+   Returns the number of rows changed; a row already published is skipped, so a repeat is harmless.
+   Any other argument raises.
+
+```sql
+select core.outbox_complete($1::text[], $2::text[]) as published
+```
+
+3. **Fail** (`OUTBOX_FAIL`): Organization, row id, an error code and the delay before the next claim
+   in milliseconds (0 to 86400000). The caller computes its backoff and jitter. Returns false for a
+   row already published or gone. A malformed argument raises.
+
+```sql
+select core.outbox_fail($1::text, $2::text, $3::text, $4::integer) as recorded
+```
+
+- Publishing is at-least-once and the order across rows is unspecified; consumers dedupe on the row
+  `id`.
+- A worker that dies leaves its rows to be claimed again when the lease ends.
+- A row claimed 50 times is no longer returned and stays unpublished for an operator.
+- Nothing purges published rows yet.
+
+**Deployed Regions** (tula-closeline-infra) must create the role in the Region bootstrap, before
+migration `0039` runs, as for `closeline_core_key_lookup`:
+
+```sql
+CREATE ROLE closeline_core_outbox_drain NOLOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_outbox_drain TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+```
+
+The migration fails naming the role if it is missing or wrongly configured. Locally
+`docker/postgres/init.sql` does this; a volume created before v0.42.0 lacks the role, so recreate it.

@@ -1919,6 +1919,9 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       crm_connection_for_account: [true, false, true],
       has_expired: [false, false, true],
       limit_field_history: [false, true, false],
+      outbox_claim: [true, false, true],
+      outbox_complete: [true, false, true],
+      outbox_fail: [true, false, true],
       prospect_merged_ids_valid: [false, false, true],
       prospect_tags_valid: [false, false, true],
       prospect_technologies_valid: [false, false, true],
@@ -2003,13 +2006,17 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         const crmFn = fn.name === 'crm_connection_for_account'
         // The API key lookup (0035) likewise, with its own role and the same pinned path.
         const keyFn = fn.name === 'api_key_for_hash'
-        const expectedOwner = searchFn
-          ? 'closeline_core_search'
-          : crmFn
-            ? 'closeline_core_crm_lookup'
-            : keyFn
-              ? 'closeline_core_key_lookup'
-              : 'closeline_owner'
+        // The outbox drain (0039) has its own role too, with the same pinned path.
+        const outboxFn = fn.name.startsWith('outbox_')
+        const expectedOwner = outboxFn
+          ? 'closeline_core_outbox_drain'
+          : searchFn
+            ? 'closeline_core_search'
+            : crmFn
+              ? 'closeline_core_crm_lookup'
+              : keyFn
+                ? 'closeline_core_key_lookup'
+                : 'closeline_owner'
         expect([fn.name, fn.owner]).toEqual([fn.name, expectedOwner])
         // The directory writers also pin their plans to one per key (see the migration).
         const planPinned =
@@ -2018,7 +2025,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           fn.name,
           searchFn
             ? ['search_path=pg_catalog, core, public, pg_temp', 'plan_cache_mode=force_custom_plan']
-            : crmFn || keyFn
+            : crmFn || keyFn || outboxFn
               ? ['search_path=pg_catalog, core, pg_temp']
               : planPinned
                 ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']

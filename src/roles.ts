@@ -22,5 +22,18 @@ export const CRM_LOOKUP_ROLE = 'closeline_core_crm_lookup'
  */
 export const KEY_LOOKUP_ROLE = 'closeline_core_key_lookup'
 
+/**
+ * The NOLOGIN role that owns `core.outbox_claim`, `core.outbox_complete` and `core.outbox_fail` and
+ * bypasses row-level security so the outbox drain can claim the rows of every Organization. It
+ * reads seven columns of `outbox`, updates four and cannot insert or delete; no service role is a
+ * member of it.
+ */
+export const OUTBOX_DRAIN_ROLE = 'closeline_core_outbox_drain'
+
 /** The NOLOGIN definer roles that bypass row-level security by design. */
-export const DEFINER_ROLES = [SEARCH_ROLE, CRM_LOOKUP_ROLE, KEY_LOOKUP_ROLE] as const
+export const DEFINER_ROLES = [
+  SEARCH_ROLE,
+  CRM_LOOKUP_ROLE,
+  KEY_LOOKUP_ROLE,
+  OUTBOX_DRAIN_ROLE,
+] as const

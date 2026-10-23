@@ -201,6 +201,7 @@ export async function resetTestRoles(admin: Pool, adminConnectionUrl: string): P
     'closeline_core_search',
     'closeline_core_crm_lookup',
     'closeline_core_key_lookup',
+    'closeline_core_outbox_drain',
   ]) {
     await admin.query(`alter role ${definer} nologin nosuperuser bypassrls`)
     const members = await admin.query<{ name: string }>(

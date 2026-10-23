@@ -1,6 +1,15 @@
 import {
   TENANT_SETTING,
   ABANDON_CASE_MAX_ATTEMPTS2,
+  OUTBOX_MAX_ATTEMPTS2,
+  OUTBOX_TOPIC_MAX_LENGTH2,
+  OUTBOX_DEDUPE_KEY_MAX_LENGTH2,
+  OUTBOX_PAYLOAD_MAX_BYTES2,
+  OUTBOX_ERROR_CODE_MAX_LENGTH2,
+  OUTBOX_MAX_BATCH2,
+  OUTBOX_MIN_LEASE_MS2,
+  OUTBOX_MAX_LEASE_MS2,
+  OUTBOX_MAX_RETRY_DELAY_MS2,
   DOCUMENT_PURGE_MAX_ATTEMPTS2,
   INGESTION_STEPS2,
   INGESTION_JOB_MAX_ATTEMPTS2,
@@ -53,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-yzda8aex.js";
+} from "./shared/chunk-40jazgxh.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -400,6 +409,14 @@ async function consentFormForToken(db, token) {
     state: row.state
   } : null;
 }
+// src/core-outbox-statements.ts
+var OUTBOX_ENQUEUE = `insert into core.outbox (id, organization_id, topic, payload, dedupe_key)
+values ($1, $2, $3, $4::jsonb, $5)
+on conflict (organization_id, dedupe_key) do nothing
+returning id`;
+var OUTBOX_CLAIM = "select organization_id, id, topic, payload, attempts from core.outbox_claim($1::integer, $2::integer)";
+var OUTBOX_COMPLETE = "select core.outbox_complete($1::text[], $2::text[]) as published";
+var OUTBOX_FAIL = "select core.outbox_fail($1::text, $2::text, $3::text, $4::integer) as recorded";
 // src/environment.ts
 import { sql as sql3 } from "drizzle-orm";
 var ENVIRONMENT_SETTING = TENANT_SETTING;
@@ -422,7 +439,13 @@ var OWNER_ROLE = "closeline_owner";
 var SEARCH_ROLE = "closeline_core_search";
 var CRM_LOOKUP_ROLE = "closeline_core_crm_lookup";
 var KEY_LOOKUP_ROLE = "closeline_core_key_lookup";
-var DEFINER_ROLES = [SEARCH_ROLE, CRM_LOOKUP_ROLE, KEY_LOOKUP_ROLE];
+var OUTBOX_DRAIN_ROLE = "closeline_core_outbox_drain";
+var DEFINER_ROLES = [
+  SEARCH_ROLE,
+  CRM_LOOKUP_ROLE,
+  KEY_LOOKUP_ROLE,
+  OUTBOX_DRAIN_ROLE
+];
 
 // src/tenant.ts
 import { sql as sql4 } from "drizzle-orm";
@@ -2358,6 +2381,20 @@ export {
   ORPHAN_SWEEP_MIN_CLAIM_MS2 as ORPHAN_SWEEP_MIN_CLAIM_MS,
   ORPHAN_SWEEP_PAGE_DONE,
   ORPHAN_SWEEP_STATE,
+  OUTBOX_CLAIM,
+  OUTBOX_COMPLETE,
+  OUTBOX_DEDUPE_KEY_MAX_LENGTH2 as OUTBOX_DEDUPE_KEY_MAX_LENGTH,
+  OUTBOX_DRAIN_ROLE,
+  OUTBOX_ENQUEUE,
+  OUTBOX_ERROR_CODE_MAX_LENGTH2 as OUTBOX_ERROR_CODE_MAX_LENGTH,
+  OUTBOX_FAIL,
+  OUTBOX_MAX_ATTEMPTS2 as OUTBOX_MAX_ATTEMPTS,
+  OUTBOX_MAX_BATCH2 as OUTBOX_MAX_BATCH,
+  OUTBOX_MAX_LEASE_MS2 as OUTBOX_MAX_LEASE_MS,
+  OUTBOX_MAX_RETRY_DELAY_MS2 as OUTBOX_MAX_RETRY_DELAY_MS,
+  OUTBOX_MIN_LEASE_MS2 as OUTBOX_MIN_LEASE_MS,
+  OUTBOX_PAYLOAD_MAX_BYTES2 as OUTBOX_PAYLOAD_MAX_BYTES,
+  OUTBOX_TOPIC_MAX_LENGTH2 as OUTBOX_TOPIC_MAX_LENGTH,
   OWNER_ROLE,
   PACKAGE,
   PENDING_CLEANUP_PREDICATE2 as PENDING_CLEANUP_PREDICATE,
