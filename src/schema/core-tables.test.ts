@@ -41,8 +41,10 @@ const TENANT = [
 const NO_ACCESS = ['invitation_directory', 'membership_directory', 'organization_state']
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the two directories and the status table, and nothing else', () => {
-    expect(coreTables.map((config) => config.name).sort()).toEqual([...NO_ACCESS, ...TENANT].sort())
+  test('has the six tenant tables, the two directories, the status table and the Demo Request table, and nothing else', () => {
+    expect(coreTables.map((config) => config.name).sort()).toEqual(
+      [...NO_ACCESS, 'demo_request', ...TENANT].sort()
+    )
   })
 
   test.each(TENANT)('%s has an organization_id column', (name) => {

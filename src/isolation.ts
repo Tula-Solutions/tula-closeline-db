@@ -98,6 +98,8 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * reached only through a `SECURITY DEFINER` function.
  */
 export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'core.demo_request':
+    "a Visitor's Demo Request, held by Closeline itself and not by any Organization, so it has no organization_id; it is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read a Visitor's name, email or message",
   'core.invitation_directory':
     'asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in',
   'core.membership_directory':

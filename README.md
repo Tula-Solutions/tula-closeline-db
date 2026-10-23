@@ -3217,3 +3217,45 @@ null array give no row. Metadata only, no text, and no migration, table or colum
 ids after the 100th get no row. It does not refuse them (a plain statement cannot raise), so the caller
 must pass at most 100, which the search's over-fetch window (`topK` 100) already guarantees. A plan
 test pins that one index condition holds both `organization_id` and `id = ANY`, with no Seq Scan.
+
+## Demo Requests (v0.23.0, migration `0021`)
+
+`core.demo_request` holds a Visitor's submitted wish to see Closeline. Closeline itself holds it, not
+an Organization, so it has no `organization_id` and sits outside row-level security, like the core
+directories (ADR 0011): it is on the allowlist in `NON_TENANT_TABLE_REASONS`, and the catalog check
+fails if any service role holds a privilege on it. The migration revokes the schema's default
+privileges from `closeline_core`, so only the owner reaches it; core reaches it through the four
+`SECURITY DEFINER` functions below, also in migration `0021`.
+
+| Column | Rule |
+| --- | --- |
+| `id` | `dreq_` and 32 hex digits, built by the service |
+| `name`, `company_name` | 1 to 200 characters after trimming |
+| `work_email` | stored lower-cased, the `invitations.email` rule (3 to 320 printable ASCII, one `@`) |
+| `message` | null, or at most 2000 characters |
+| `source_page` | 1 to 200 characters, starting with `/` |
+| `idempotency_key` | 16 to 128 characters, unique across all rows |
+| `notification_status` | `pending` (default), `sent` or `failed`; with `notification_attempts` and `notification_last_attempt_at`, the outbox for the notice to the team |
+| `submitted_at` | `now()` by default |
+
+The honeypot field is never stored: there is no column for it. `demo_requests_submitted_at_idx`
+serves the twelve-month retention purge, and the partial `demo_requests_notice_idx` serves the scan
+for notices still `pending`.
+
+### Functions core calls
+
+Each runs as the owner with `search_path = pg_catalog, pg_temp`; `EXECUTE` is revoked from `PUBLIC`
+and granted to `closeline_core` alone (the other roles cannot even see schema `core`). Use the typed
+wrappers exported from the package; run them on the pooled handle, since the table has no Organization.
+
+| Function | Wrapper | Does |
+| --- | --- | --- |
+| `core.submit_demo_request(id, name, work_email, company_name, message, source_page, idempotency_key)` | `submitDemoRequest(db, input)` | inserts, or on a repeated key returns the first row's id with `replayed` and `sameFields` (false when the key was reused with a different body) |
+| `core.claim_demo_notices(limit, backoff_seconds)` | `claimDemoNotices(db, limit, backoffSeconds)` | takes up to `limit` (capped at 100) pending rows, oldest first, not tried within the backoff; counts the attempt; `FOR UPDATE SKIP LOCKED` so concurrent claims never overlap |
+| `core.settle_demo_notice(id, status)` | `settleDemoNotice(db, id, 'sent' \| 'failed')` | settles a pending row; false when unknown or already settled |
+| `core.purge_demo_requests(limit)` | `purgeDemoRequests(db, limit)` | deletes up to `limit` (capped at 1000) rows submitted over twelve months ago, oldest first; returns the count, so loop until it is below `limit` |
+
+`submitDemoRequest` throws `DemoRequestRefusedError` (SQLSTATE `code` and `constraint` only) when a
+field breaks a table check, never the driver's error, whose text holds the Visitor's name, email and
+message. Notice delivery is at least once: a claimed row is retried once its backoff passes, so the
+worker must cap `attempts` itself and settle the row `failed` past its cap.

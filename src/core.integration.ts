@@ -259,7 +259,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     test('the migrated database passes the check, and only the two directories, the status table and the playbook work registry need the allowlist', async () => {
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
       expect([...NON_TENANT_TABLES].sort()).toEqual(
-        [...NO_ACCESS_TABLES.map((name) => `core.${name}`), 'playbook.work_hints'].sort()
+        [
+          ...NO_ACCESS_TABLES.map((name) => `core.${name}`),
+          'core.demo_request',
+          'playbook.work_hints',
+        ].sort()
       )
       const without = await findTenantIsolationGaps(handle.db, [])
       expect(
@@ -267,7 +271,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           .filter((gap) => gap.schema === 'core' && !gap.table.startsWith('it_'))
           .map((g) => g.table)
           .sort()
-      ).toEqual([...NO_ACCESS_TABLES].sort())
+      ).toEqual([...NO_ACCESS_TABLES, 'demo_request'].sort())
     })
 
     describe('a second Organization cannot read or write any tenant table', () => {
@@ -1902,9 +1906,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   describe('every function in core is owned, pinned and callable by exactly the roles meant to', () => {
     /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
+      claim_demo_notices: [true, false, true],
       has_expired: [false, false, true],
       invitation_for_token: [true, false, true],
       organization_of_user: [true, false, true],
+      purge_demo_requests: [true, false, true],
       refuse_idempotency_rewrite: [false, true, false],
       refuse_region_change: [false, true, false],
       refuse_reopened_invitation: [false, true, false],
@@ -1912,7 +1918,9 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       refuse_truncate: [false, true, false],
       refuse_unacceptable_invitation: [false, true, false],
       require_owner: [false, true, false],
+      settle_demo_notice: [true, false, true],
       start_organization: [false, true, false],
+      submit_demo_request: [true, false, true],
       sync_invitation_directory: [true, true, false],
       sync_membership_directory: [true, true, false],
       sync_organization_state: [true, true, false],
@@ -1971,7 +1979,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       }
     })
 
-    test('the lookups are STABLE, the expiry rule is IMMUTABLE and the trigger functions are volatile', async () => {
+    test('the lookups are STABLE, the expiry rule is IMMUTABLE and every other function is volatile', async () => {
       const expected: Record<string, string> = {
         organization_of_user: 's',
         invitation_for_token: 's',
@@ -1982,7 +1990,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       }
     })
 
-    test('EXECUTE is revoked from PUBLIC on all of them, and only the lookups and the expiry rule are granted to closeline_core', async () => {
+    test('EXECUTE is revoked from PUBLIC on all of them, and only the lookups, the expiry rule and the Demo Request functions are granted to closeline_core', async () => {
       for (const fn of await catalog()) {
         const coreMayRun = FUNCTIONS[fn.name]?.[2] ?? false
         expect([fn.name, fn.has_acl, fn.public_execute]).toEqual([fn.name, true, false])
