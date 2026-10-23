@@ -17,8 +17,8 @@ Standards: `AGENTS.md` (this repo) and `.claude/COMMON.md` (shared).
 
 ## Database
 
-One Postgres per Region; each service owns one schema (`auth`, `core`, `playbook`) and writes it
-through its own login role (`closeline_auth`, `closeline_core`, `closeline_playbook`). Migrations
+One Postgres per Region; each service owns one schema (`auth`, `core`, `playbook`, `voice`) and writes it
+through its own login role (`closeline_auth`, `closeline_core`, `closeline_playbook`, `closeline_voice`). Migrations
 are generated and applied only from this repo and never edited once on `develop`. Never
 `drizzle-kit push`.
 
@@ -32,7 +32,7 @@ The first start runs `docker/postgres/init.sh`, which creates the owner and serv
 `docker/postgres/init.sql` (local passwords only, set in `docker-compose.yml`). To run it again,
 `docker compose down -v`.
 
-Integration tests need Postgres from the compose file. With none of the four connection
+Integration tests need Postgres from the compose file. With none of the five connection
 variables in `.env.example` set they use the compose defaults (port 5432, or `POSTGRES_PORT`), so
 this is the whole of what CI runs:
 
@@ -40,7 +40,7 @@ this is the whole of what CI runs:
 docker compose up -d --wait && bun run test:integration
 ```
 
-Set all four variables and `DATABASE_URL_ADMIN`, a superuser, together to test against another
+Set all five variables and `DATABASE_URL_ADMIN`, a superuser, together to test against another
 Postgres (`DATABASE_URL_ADMIN` alone, or a partial set, is refused). The suites drop stale test
 objects and alter roles, so they refuse any host that is not loopback unless
 `ALLOW_NON_LOCAL_TEST_DATABASE=1` is set; use that only for a disposable database. The suites cover

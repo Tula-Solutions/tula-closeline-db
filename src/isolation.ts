@@ -9,7 +9,7 @@ import { ORGANIZATION_SETTING, TENANT_POLICY_EXPRESSION } from './tenant'
  * relation in any other schema (bar `public` and drizzle's own) is itself a gap, and a unit test
  * keeps this list equal to the schemas exported from `src/schema`.
  */
-export const TENANT_SCHEMAS = ['auth', 'core', 'playbook'] as const
+export const TENANT_SCHEMAS = ['auth', 'core', 'playbook', 'voice'] as const
 
 /**
  * The only roles a `closeline_*` service role may be a member of: Postgres's read-only monitoring

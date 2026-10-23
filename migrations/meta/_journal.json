@@ -176,6 +176,13 @@
       "when": 1792725888256,
       "tag": "0024_core_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792727846830,
+      "tag": "0025_voice_schema",
+      "breakpoints": true
     }
   ]
 }
