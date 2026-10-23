@@ -88,7 +88,7 @@ const NO_ACCESS = [
 ]
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table, the demo rate counter and the outbox, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
       [
         ...NO_ACCESS,
@@ -100,6 +100,8 @@ describe('the core schema', () => {
         ...CRM_TABLES,
         ...CONTROL_TABLES,
         ...ANALYTICS_TABLES,
+        // The transactional outbox (0039); core-outbox.test.ts pins its row-level security.
+        'outbox',
       ].sort()
     )
   })
