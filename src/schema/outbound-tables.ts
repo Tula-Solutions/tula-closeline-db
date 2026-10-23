@@ -327,6 +327,7 @@ export const outboundBriefs = outboundSchema.table(
       t.id.desc()
     ),
     index('briefs_list_idx').on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+    index('briefs_expires_at_idx').on(t.expiresAt),
   ]
 )
 
@@ -478,6 +479,7 @@ export const outboundDrafts = outboundSchema.table(
       foreignColumns: [outboundBriefs.organizationId, outboundBriefs.id, outboundBriefs.prospectId],
     }),
     index('drafts_list_idx').on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+    index('drafts_brief_idx').on(t.organizationId, t.briefId),
     index('drafts_prospect_idx').on(
       t.organizationId,
       t.prospectId,

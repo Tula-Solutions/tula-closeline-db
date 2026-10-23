@@ -3207,7 +3207,8 @@ var outboundBriefs2 = outboundSchema2.table("briefs", {
   check21("briefs_expires_after_created", sql26`${t.expiresAt} > ${t.createdAt}`),
   unique24("briefs_id_prospect_key").on(t.organizationId, t.id, t.prospectId),
   index32("briefs_prospect_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()),
-  index32("briefs_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc())
+  index32("briefs_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+  index32("briefs_expires_at_idx").on(t.expiresAt)
 ]);
 var outboundBriefStatements2 = outboundSchema2.table("brief_statements", {
   organizationId: text40("organization_id").notNull(),
@@ -3297,6 +3298,7 @@ var outboundDrafts2 = outboundSchema2.table("drafts", {
     foreignColumns: [outboundBriefs2.organizationId, outboundBriefs2.id, outboundBriefs2.prospectId]
   }),
   index32("drafts_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+  index32("drafts_brief_idx").on(t.organizationId, t.briefId),
   index32("drafts_prospect_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()),
   index32("drafts_campaign_idx").on(t.organizationId, t.campaignId, t.createdAt.desc(), t.id.desc()).where(sql26`${t.campaignId} is not null`),
   index32("drafts_ungrounded_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()).where(sql26`${t.ungrounded}`)

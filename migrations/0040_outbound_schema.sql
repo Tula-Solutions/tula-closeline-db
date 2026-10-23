@@ -235,7 +235,9 @@ ALTER TABLE "outbound"."drafts" ADD CONSTRAINT "drafts_brief_fk" FOREIGN KEY ("o
 CREATE UNIQUE INDEX "brand_voices_version_key" ON "outbound"."brand_voices" USING btree ("organization_id","version");--> statement-breakpoint
 CREATE INDEX "briefs_prospect_idx" ON "outbound"."briefs" USING btree ("organization_id","prospect_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "briefs_list_idx" ON "outbound"."briefs" USING btree ("organization_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "briefs_expires_at_idx" ON "outbound"."briefs" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "drafts_list_idx" ON "outbound"."drafts" USING btree ("organization_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "drafts_brief_idx" ON "outbound"."drafts" USING btree ("organization_id","brief_id");--> statement-breakpoint
 CREATE INDEX "drafts_prospect_idx" ON "outbound"."drafts" USING btree ("organization_id","prospect_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "drafts_campaign_idx" ON "outbound"."drafts" USING btree ("organization_id","campaign_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "outbound"."drafts"."campaign_id" is not null;--> statement-breakpoint
 CREATE INDEX "drafts_ungrounded_idx" ON "outbound"."drafts" USING btree ("organization_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "outbound"."drafts"."ungrounded";

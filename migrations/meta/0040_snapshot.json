@@ -1,5 +1,5 @@
 {
-  "id": "d2e86f49-5190-4511-888f-a7566124b9ed",
+  "id": "c424f4c3-767c-4592-912f-7828adc7df95",
   "prevId": "7f1038ae-baaf-479d-b023-37d09dabe797",
   "version": "7",
   "dialect": "postgresql",
@@ -14687,6 +14687,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "briefs_expires_at_idx": {
+          "name": "briefs_expires_at_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -15215,6 +15230,27 @@
               "expression": "id",
               "isExpression": false,
               "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "drafts_brief_idx": {
+          "name": "drafts_brief_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "brief_id",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
