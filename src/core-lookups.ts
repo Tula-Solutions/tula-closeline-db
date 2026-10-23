@@ -4,6 +4,7 @@ import type { ORGANIZATION_STATUSES } from './schema'
 
 const USER_ID = /^usr_[0-9a-f]{32}$/
 const TOKEN_HASH = /^[0-9a-f]{64}$/
+const FORM_TOKEN = /^[A-Za-z0-9_-]{22,256}$/
 
 /** The state an Organization is in, as `core.organizations.status` stores it. */
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number]
@@ -22,6 +23,25 @@ export interface InvitationForToken {
   organizationId: string
   /** The invitation to read, inside that Organization's scope. */
   invitationId: string
+}
+
+/** The hosted consent form a public token opens, as `core.consent_form_for_token` answers. */
+export interface ConsentFormForToken {
+  /** The Organization that owns the form. */
+  organizationId: string
+  /** The form to read, inside that Organization's scope. */
+  formId: string
+  /** The wording the form currently shows; read its version inside that scope. */
+  wordingId: string
+  /** `published` accepts grants; `closed` is shown as closed. Drafts never appear. */
+  state: 'published' | 'closed'
+}
+
+interface ConsentFormRow extends Record<string, unknown> {
+  organization_id: string
+  form_id: string
+  wording_id: string
+  state: 'published' | 'closed'
 }
 
 interface OrganizationRow extends Record<string, unknown> {
@@ -89,4 +109,37 @@ export async function invitationForToken(
   )
   const row = rows[0]
   return row ? { organizationId: row.organization_id, invitationId: row.invitation_id } : null
+}
+
+/**
+ * Find the hosted consent form a public token opens: the question the hosted page asks before any
+ * Organization is known. It calls `core.consent_form_for_token`, the only way `closeline_core`
+ * reaches the consent form directory. A draft form, an unknown token and a form of a suspended or
+ * deleted Organization all give `null` and cannot be told apart. A malformed token also gives
+ * `null` without a query, since the token comes from a public URL. Then read the form and its
+ * wording, and write the grant, inside `withOrganization`.
+ *
+ * @param db - A database handle connected as `closeline_core`.
+ * @param token - The form's public token (22 to 256 URL-safe characters).
+ * @returns The Organization, form and wording ids and the form state, or `null`.
+ */
+export async function consentFormForToken(
+  db: Pick<Database, 'execute'>,
+  token: string
+): Promise<ConsentFormForToken | null> {
+  if (!FORM_TOKEN.test(token)) {
+    return null
+  }
+  const { rows } = await db.execute<ConsentFormRow>(
+    sql`select organization_id, form_id, wording_id, state from core.consent_form_for_token(${token})`
+  )
+  const row = rows[0]
+  return row
+    ? {
+        organizationId: row.organization_id,
+        formId: row.form_id,
+        wordingId: row.wording_id,
+        state: row.state,
+      }
+    : null
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { invitationForToken, organizationOfUser } from './core-lookups'
+import { consentFormForToken, invitationForToken, organizationOfUser } from './core-lookups'
 
 const USER = `usr_${'a1'.repeat(16)}`
 const ORG = `org_${'b2'.repeat(16)}`
@@ -82,5 +82,42 @@ describe('invitationForToken', () => {
 
   test('is null when no pending invitation opens', async () => {
     expect(await invitationForToken(dbAnswering([]).db, HASH)).toBeNull()
+  })
+})
+
+describe('consentFormForToken', () => {
+  const TOKEN = 'Ab_-'.repeat(8)
+  const FORM = `cfm_${'e5'.repeat(16)}`
+  const WORDING = `cwd_${'f6'.repeat(16)}`
+
+  test.each([
+    ['an empty token', ''],
+    ['a token that is too short', 'a'.repeat(21)],
+    ['a token that is too long', 'a'.repeat(257)],
+    ['a percent sign', `${TOKEN}%`],
+    ['a trailing newline', `${TOKEN}\n`],
+    ['a space', `${TOKEN} `],
+  ])('is null for %s without any query', async (_name, token) => {
+    const { db, seen } = dbAnswering([{ organization_id: ORG }])
+    expect(await consentFormForToken(db, token)).toBeNull()
+    expect(seen).toEqual([])
+  })
+
+  test('calls the lookup function with the token as a bound parameter and maps the row', async () => {
+    const { db, seen } = dbAnswering([
+      { organization_id: ORG, form_id: FORM, wording_id: WORDING, state: 'published' },
+    ])
+    expect(await consentFormForToken(db, TOKEN)).toEqual({
+      organizationId: ORG,
+      formId: FORM,
+      wordingId: WORDING,
+      state: 'published',
+    })
+    expect(seen[0]?.sql).toContain('core.consent_form_for_token($1)')
+    expect(seen[0]?.params).toEqual([TOKEN])
+  })
+
+  test('is null when no published or closed form opens', async () => {
+    expect(await consentFormForToken(dbAnswering([]).db, TOKEN)).toBeNull()
   })
 })

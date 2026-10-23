@@ -237,8 +237,9 @@ describe('the auth table categories', () => {
     }
   })
 
-  test('exempt only the two core directories, the status table, the Demo Request table, the demo rate counter and the playbook work registry, each with a precise reason, and no auth table', () => {
+  test('exempt only the three core directories, the status table, the Demo Request table, the demo rate counter and the playbook work registry, each with a precise reason, and no auth table', () => {
     expect([...NON_TENANT_TABLES].sort()).toEqual([
+      'core.consent_form_directory',
       'core.demo_rate_counter',
       'core.demo_request',
       'core.invitation_directory',

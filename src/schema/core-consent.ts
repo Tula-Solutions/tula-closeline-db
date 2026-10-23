@@ -235,6 +235,38 @@ export const consentForms = coreSchema.table(
 )
 
 /**
+ * Which Organization and form a hosted-form token opens, for published and closed forms only (a
+ * draft has no token). The public form route receives only the token, so this cannot sit behind
+ * row-level security: it is a no-access table like `invitation_directory`. It holds the token,
+ * the Organization id, the form id, the wording id and the state, nothing else. `closeline_core`
+ * reaches it only through the `SECURITY DEFINER` function `core.consent_form_for_token(token)`
+ * (one row for one exact key, joined to `organization_state` so only an `active` Organization
+ * answers); the trigger `consent_form_sync_directory` on `consent_form` keeps it, and no service
+ * role holds any privilege on it. One-click unsubscribe needs no such table: its token is signed
+ * and carries the Organization (M03, ADR 0021).
+ */
+export const consentFormDirectory = coreSchema.table(
+  'consent_form_directory',
+  {
+    token: text('token').primaryKey(),
+    organizationId: text('organization_id').notNull(),
+    formId: text('form_id').notNull(),
+    wordingId: text('wording_id').notNull(),
+    state: text('state', { enum: ['published', 'closed'] }).notNull(),
+  },
+  (t) => [
+    check(
+      'consent_form_directory_token_shape',
+      sql`char_length(${t.token}) between ${sql.raw(String(MIN_FORM_TOKEN_LENGTH))} and ${sql.raw(String(MAX_FORM_TOKEN_LENGTH))} and ${t.token} collate "C" ~ '${sql.raw(FORM_TOKEN_PATTERN)}'`
+    ),
+    check('consent_form_directory_organization_id_shape', orgShape),
+    check('consent_form_directory_form_id_shape', idShape('form_id', 'cfm')),
+    check('consent_form_directory_wording_id_shape', idShape('wording_id', 'cwd')),
+    check('consent_form_directory_state_known', sql`${t.state} in ('published', 'closed')`),
+  ]
+)
+
+/**
  * One event of the consent ledger (ADR 0021): a `granted` or `withdrawn` event for a Prospect and
  * channel, with its evidence. Append-only: a trigger refuses every update, and refuses a delete
  * unless the Prospect it belongs to is already gone (erasing a Prospect or an Organization

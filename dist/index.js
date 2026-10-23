@@ -47,7 +47,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-swhx87tt.js";
+} from "./shared/chunk-zcrm602h.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -357,6 +357,7 @@ async function purgeDemoRateCounters(db, limit) {
 import { sql as sql2 } from "drizzle-orm";
 var USER_ID = /^usr_[0-9a-f]{32}$/;
 var TOKEN_HASH = /^[0-9a-f]{64}$/;
+var FORM_TOKEN = /^[A-Za-z0-9_-]{22,256}$/;
 async function organizationOfUser(db, userId) {
   if (!USER_ID.test(userId)) {
     throw new Error("organizationOfUser: invalid user id");
@@ -375,6 +376,19 @@ async function invitationForToken(db, tokenHash) {
   const { rows } = await db.execute(sql2`select organization_id, invitation_id from core.invitation_for_token(${tokenHash})`);
   const row = rows[0];
   return row ? { organizationId: row.organization_id, invitationId: row.invitation_id } : null;
+}
+async function consentFormForToken(db, token) {
+  if (!FORM_TOKEN.test(token)) {
+    return null;
+  }
+  const { rows } = await db.execute(sql2`select organization_id, form_id, wording_id, state from core.consent_form_for_token(${token})`);
+  const row = rows[0];
+  return row ? {
+    organizationId: row.organization_id,
+    formId: row.form_id,
+    wordingId: row.wording_id,
+    state: row.state
+  } : null;
 }
 // src/environment.ts
 import { sql as sql3 } from "drizzle-orm";
@@ -474,6 +488,7 @@ var CONTROL_PLANE_TABLE_REASONS = {
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
+  "core.consent_form_directory": "asked before the Organization is known (the public hosted consent form receives only a token); holds token, Organization id, form id, wording id and state for published and closed forms only, is written only by a SECURITY DEFINER trigger on core.consent_form, and no service role holds any privilege on it: core.consent_form_for_token is the only way in",
   "core.demo_rate_counter": "a per-address request counter for the public demo-request route, held by Closeline itself and not by any Organization, so it has no organization_id; it holds only an HMAC of an address, a window and a count, is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read it",
   "core.demo_request": "a Visitor's Demo Request, held by Closeline itself and not by any Organization, so it has no organization_id; it is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read a Visitor's name, email or message",
   "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
@@ -2280,6 +2295,7 @@ export {
   claimDemoNotices,
   claimedCallJobs,
   claimedJobs,
+  consentFormForToken,
   createDb,
   discoveredOrganizations,
   findTenantIsolationGaps,
