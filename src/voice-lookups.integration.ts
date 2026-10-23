@@ -319,6 +319,7 @@ describe('the voice line lookup', () => {
     /** name: [SECURITY DEFINER, trigger function, closeline_voice may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       line_for_number: [true, false, true],
+      refuse_idempotency_rewrite: [false, true, false],
       refuse_truncate: [false, true, false],
       sync_line_directory: [true, true, false],
     }
