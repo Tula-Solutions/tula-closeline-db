@@ -3413,5 +3413,44 @@ there as `CRM_*` constants and pinned by a test).
 | `crm_external_ref` | `(organization_id, id)`; unique `(organization_id, provider, object_kind, external_id)` | lookup by local id on `(organization_id, provider, object_kind, local_id)`. `pending_write` rows have a null `external_id` and a `write_key`, unique per `(organization_id, provider, write_key)`, recorded before the CRM call |
 | `crm_webhook_receipt` | `(organization_id, connection_id, event_id)` | the primary key dedupes on the provider's event id; prune by `(organization_id, received_at)` |
 
-Not built here: ADR 0022's pre-Organization webhook lookup (provider and external account id to an
-Organization id). It needs a definer function like `0030`'s, so it is a separate ticket.
+## CRM webhook lookup (v0.35.0, migration `0033`)
+
+A CRM webhook names only the provider's account, before any Organization is known (ADR 0022).
+`core.crm_connection_for_account(p_provider text, p_external_account_id text)` answers it:
+`TABLE(organization_id text, connection_id text)`, at most one row, from the unique
+`(provider, external_account_id)` index. `STABLE SECURITY DEFINER`, `search_path = pg_catalog, core,
+pg_temp`, `EXECUTE` revoked from `PUBLIC` and granted to `closeline_core` alone. It is owned by
+`closeline_core_crm_lookup` (`CRM_LOOKUP_ROLE`): `NOLOGIN`, `BYPASSRLS`, `NOINHERIT`, a member of no
+role and held by no service role (`closeline_owner` is a member `WITH SET TRUE, INHERIT FALSE`, as for
+`closeline_core_search`). It holds `USAGE` on `core` and `SELECT` on four columns of
+`crm_connection` (`organization_id`, `id`, `provider`, `external_account_id`), so no token or key id
+can be returned.
+
+`CRM_CONNECTION_FOR_ACCOUNT` is the statement, with `$1` the provider and `$2` the account id; run it
+on the pooled handle, not inside `withOrganization`, then read the connection inside
+`withOrganization` for the Organization it names:
+
+```sql
+select organization_id, connection_id from core.crm_connection_for_account($1, $2)
+```
+
+- No row for an unknown account, for the same account id under the other provider, or once the
+  connection is disconnected (disconnecting deletes the row) or its Organization deleted. A
+  connection in `needs_reconnect` still routes.
+- A null or unknown provider, and an account id that is null, empty or over 128 characters, give no
+  row and raise nothing. The account id is matched exactly, never as a pattern.
+- The Organization setting is neither read nor needed. The Organization's `status` is not checked:
+  the handler reads it after scoping.
+
+**Deployed Regions** (tula-closeline-infra) must create the role in the Region bootstrap, before
+migration `0033` runs, as for `closeline_core_search`:
+
+```sql
+CREATE ROLE closeline_core_crm_lookup NOLOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_crm_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+```
+
+The migration fails naming the role if it is missing or wrongly configured. Locally
+`docker/postgres/init.sql` does this; a volume created before v0.35.0 lacks the role, so recreate it.
+The tenant isolation check allows `BYPASSRLS` on both definer roles (`DEFINER_ROLES`) and reports
+either if it can log in or is a superuser.

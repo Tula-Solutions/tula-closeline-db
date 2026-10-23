@@ -18,6 +18,8 @@ export {
 } from './auth-statements'
 export type { Database, DbHandle, DbOptions, Schema, Transaction } from './client'
 export { createDb, DEFAULT_POOL_OPTIONS, reportConnectionError } from './client'
+export type { CrmConnectionForAccountRow } from './core-crm-statements'
+export { CRM_CONNECTION_FOR_ACCOUNT } from './core-crm-statements'
 export type {
   ClaimedDemoNotice,
   DemoRateLimitHit,
@@ -199,7 +201,7 @@ export {
   RIGHTS_GET,
   type WorkDiscoveryRow,
 } from './playbook-statements'
-export { OWNER_ROLE, SEARCH_ROLE } from './roles'
+export { CRM_LOOKUP_ROLE, DEFINER_ROLES, OWNER_ROLE, SEARCH_ROLE } from './roles'
 export {
   CALL_CHANNELS,
   CALL_FAILURE_REASONS,
