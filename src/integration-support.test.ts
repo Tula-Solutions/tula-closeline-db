@@ -169,8 +169,10 @@ describe('resetTestRoles', () => {
     const { pool, statements } = fakePool([{ name: 'closeline_it_super_1' }])
     await resetTestRoles(pool, local)
     expect(statements).toContain('alter role closeline_core nobypassrls')
+    expect(statements).toContain('alter role closeline_core_search nologin nosuperuser bypassrls')
+    expect(statements).toContain('revoke closeline_core_search from "closeline_it_super_1"')
     expect(statements).toContain('drop role if exists "closeline_it_super_1"')
-    expect(statements.find((text) => text.startsWith('select'))).toContain(
+    expect(statements.find((text) => text.includes('it\\_super'))).toContain(
       'closeline\\_it\\_super\\_%'
     )
   })

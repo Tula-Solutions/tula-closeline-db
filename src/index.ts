@@ -193,7 +193,7 @@ export {
   RIGHTS_GET,
   type WorkDiscoveryRow,
 } from './playbook-statements'
-export { OWNER_ROLE } from './roles'
+export { OWNER_ROLE, SEARCH_ROLE } from './roles'
 export {
   CALL_CHANNELS,
   CALL_FAILURE_REASONS,

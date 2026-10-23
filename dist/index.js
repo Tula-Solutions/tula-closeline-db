@@ -409,6 +409,7 @@ import { sql as sql5 } from "drizzle-orm";
 
 // src/roles.ts
 var OWNER_ROLE = "closeline_owner";
+var SEARCH_ROLE = "closeline_core_search";
 
 // src/tenant.ts
 import { sql as sql4 } from "drizzle-orm";
@@ -563,14 +564,16 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
     }
   }
   const roles = await db.execute(sql5`
-    select rolname as role from pg_roles
-     where rolname like 'closeline\\_%' and (rolsuper or rolbypassrls)
+    select rolname as role, rolcanlogin as can_login from pg_roles
+     where rolname like 'closeline\\_%'
+       and (rolsuper or (rolbypassrls and rolname <> ${SEARCH_ROLE})
+            or (rolname = ${SEARCH_ROLE} and rolcanlogin))
      order by rolname`);
-  for (const { role } of roles.rows) {
+  for (const { role, can_login } of roles.rows) {
     gaps.push({
       schema: "pg_roles",
       table: role,
-      reason: "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
+      reason: role === SEARCH_ROLE && can_login ? "can log in, so its BYPASSRLS would be reachable by a session" : "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
     });
   }
   const memberships = await db.execute(sql5`
@@ -2300,6 +2303,7 @@ export {
   RIGHTS_CONFIRM,
   RIGHTS_GET,
   RIGHTS_MAX_WORDING_VERSION2 as RIGHTS_MAX_WORDING_VERSION,
+  SEARCH_ROLE,
   TENANT_SCHEMAS,
   WORK_KINDS2 as WORK_KINDS,
   assertTenantIsolation,

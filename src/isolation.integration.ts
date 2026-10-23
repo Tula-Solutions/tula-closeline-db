@@ -456,6 +456,56 @@ describe('the role check', () => {
     }
   })
 
+  test('closeline_core_search, the Prospect search definer, bypasses row-level security by design', async () => {
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('closeline_core_search is reported if it can log in', async () => {
+    await admin.query('alter role closeline_core_search login')
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core_search'])
+      expect(gaps[0]?.reason).toContain('log in')
+    } finally {
+      await admin.query('alter role closeline_core_search nologin')
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('closeline_core_search is reported if it is a superuser', async () => {
+    await admin.query('alter role closeline_core_search superuser')
+    try {
+      expect((await roleGaps()).map((gap) => gap.table)).toEqual(['closeline_core_search'])
+    } finally {
+      await admin.query('alter role closeline_core_search nosuperuser')
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role that is a member of closeline_core_search is reported', async () => {
+    await admin.query('grant closeline_core_search to closeline_core')
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+      expect(gaps[0]?.reason).toContain('closeline_core_search')
+    } finally {
+      await admin.query('revoke closeline_core_search from closeline_core')
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a killed run that left closeline_core_search altered is reset before the suite starts', async () => {
+    await admin.query('alter role closeline_core_search login nobypassrls')
+    await admin.query('grant closeline_core_search to closeline_core')
+    expect((await roleGaps()).length).toBeGreaterThan(0)
+    await resetTestRoles(admin, adminUrl())
+    expect(await roleGaps()).toEqual([])
+    const flags = await admin.query(
+      `select rolcanlogin, rolbypassrls from pg_roles where rolname = 'closeline_core_search'`
+    )
+    expect(flags.rows).toEqual([{ rolcanlogin: false, rolbypassrls: true }])
+  })
+
   test('a closeline role that is a superuser is reported', async () => {
     const role = `closeline_it_super_${suffix}`
     await admin.query(`create role "${role}" superuser`)

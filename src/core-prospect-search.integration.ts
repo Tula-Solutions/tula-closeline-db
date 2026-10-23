@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
-import { dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
+import { adminUrl, dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 const env = integrationEnv()
@@ -17,11 +17,14 @@ const PROSPECTS = Number(process.env.PROSPECT_SEARCH_SCALE) || 200_000
 /** Prospect Companies in that Organization, a quarter as many. */
 const COMPANIES = Math.floor(PROSPECTS / 4)
 
+const md5Of = (text: string): string => createHash('md5').update(text).digest('hex')
+
 const newId = (prefix: string): string => `${prefix}_${randomBytes(16).toString('hex')}`
 
 /** The node types of a JSON plan, and the names of the indexes it scans, in one flat list. */
-function planFacts(plan: unknown): { nodes: string[]; indexes: string[] } {
+function planFacts(plan: unknown): { nodes: string[]; indexes: string[]; seqScans: string[] } {
   const nodes: string[] = []
+  const seqScans: string[] = []
   const indexes: string[] = []
   const walk = (node: unknown): void => {
     if (typeof node !== 'object' || node === null) {
@@ -30,6 +33,9 @@ function planFacts(plan: unknown): { nodes: string[]; indexes: string[] } {
     const record = node as Record<string, unknown>
     if (typeof record['Node Type'] === 'string') {
       nodes.push(record['Node Type'])
+    }
+    if (record['Node Type'] === 'Seq Scan') {
+      seqScans.push(String(record['Relation Name']))
     }
     if (typeof record['Index Name'] === 'string') {
       indexes.push(record['Index Name'])
@@ -43,20 +49,25 @@ function planFacts(plan: unknown): { nodes: string[]; indexes: string[] } {
     }
   }
   walk(plan)
-  return { nodes, indexes }
+  return { nodes, indexes, seqScans }
 }
 
 describe('the Prospect list filter q uses the trigram indexes', () => {
   let owner: Pool
   let core: Pool
+  let admin: Pool
   const orgId = newId('org')
+  /** A second Organization with a few hand-made rows, for isolation, distinctness and escaping. */
+  const otherOrgId = newId('org')
+  const fixtureProspect = (name: string): string => `prs_${md5Of(name)}`
+  const fixtureCompany = (name: string): string => `pco_${md5Of(name)}`
 
   /** Run `fn` in one transaction scoped to the Organization, as the core role. */
-  async function scoped<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+  async function scoped<T>(fn: (c: PoolClient) => Promise<T>, organization = orgId): Promise<T> {
     const c = await core.connect()
     try {
       await c.query('begin')
-      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      await c.query('select set_config($1, $2, true)', [SETTING, organization])
       const result = await fn(c)
       await c.query('commit')
       return result
@@ -66,14 +77,6 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
     } finally {
       c.release()
     }
-  }
-
-  /** The plan the core role gets, with row-level security on: the planner's choice on statistics alone. */
-  async function explainAsCore(sql: string, values: unknown[]) {
-    return scoped(async (c) => {
-      const result = await c.query(`explain (format json) ${sql}`, values)
-      return planFacts(result.rows[0]['QUERY PLAN'])
-    })
   }
 
   /**
@@ -95,10 +98,79 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
     }
   }
 
+  /** The second Organization: one company, and prospects whose values probe the search rules. */
+  async function seedOtherOrganization(): Promise<void> {
+    const c = await owner.connect()
+    try {
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, otherOrgId])
+      await c.query(
+        'insert into core.organizations (organization_id, name, region) values ($1, $2, $3)',
+        [otherOrgId, 'Other', 'us']
+      )
+      await c.query(
+        "insert into core.memberships (id, organization_id, user_id, role, email) values ($1, $2, $3, 'owner', 'p@example.test')",
+        [newId('mem'), otherOrgId, newId('usr')]
+      )
+      await c.query(
+        'insert into core.prospect_companies (id, organization_id, name, domain) values ($1, $2, $3, $4), ($5, $2, $6, $7)',
+        [
+          fixtureCompany('dup'),
+          otherOrgId,
+          'Dupcorp',
+          'dupcorp.test',
+          fixtureCompany('rare'),
+          'Zyxquux Other',
+          'zyxquux-other.test',
+        ]
+      )
+      const prospects: [string, string | null][] = [
+        ['dup', fixtureCompany('dup')],
+        ['rare', fixtureCompany('rare')],
+        ['percent', null],
+        ['plain-x', null],
+        ['underscore', null],
+        ['plain-abc', null],
+        ['backslash', null],
+      ]
+      for (const [name, company] of prospects) {
+        await c.query(
+          "insert into core.prospects (id, organization_id, company_id, source) values ($1, $2, $3, 'manual')",
+          [fixtureProspect(name), otherOrgId, company]
+        )
+      }
+      const fields: [string, string, string][] = [
+        // Two matching fields and a matching Company: still one row for 'dupcorp'.
+        ['dup', 'email', 'x@dupcorp.test'],
+        ['dup', 'first_name', 'Dupcorp'],
+        ['rare', 'email', 'zyxquux@other.test'],
+        ['percent', 'first_name', '50%off'],
+        ['plain-x', 'first_name', '50xoff'],
+        ['underscore', 'first_name', 'a_c'],
+        ['plain-abc', 'first_name', 'abc'],
+        ['backslash', 'first_name', 'back\\slash'],
+      ]
+      for (const [name, fieldName, value] of fields) {
+        await c.query(
+          `insert into core.prospect_fields (organization_id, prospect_id, field_name, state, value, source, set_at)
+           values ($1, $2, $3, 'current', $4, 'manual', now())`,
+          [otherOrgId, fixtureProspect(name), fieldName, value]
+        )
+      }
+      await c.query('commit')
+    } catch (error) {
+      await c.query('rollback').catch(() => undefined)
+      throw error
+    } finally {
+      c.release()
+    }
+  }
+
   beforeAll(async () => {
     await migrateUp(env.owner)
     owner = new Pool({ connectionString: env.owner, max: 2 })
     core = new Pool({ connectionString: env.core, max: 2 })
+    admin = new Pool({ connectionString: adminUrl(), max: 1 })
     await dropStaleTestObjects(owner, env.owner)
     const c = await owner.connect()
     try {
@@ -154,6 +226,8 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
     // Plans depend on statistics, and autovacuum may not have analysed the fresh tables yet.
     await owner.query('analyze core.prospect_fields')
     await owner.query('analyze core.prospect_companies')
+    await owner.query('analyze core.prospects')
+    await seedOtherOrganization()
   }, 600_000)
 
   afterAll(async () => {
@@ -169,6 +243,11 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
       await c.query('delete from core.organizations where organization_id = $1', [orgId])
       left = (await c.query('select count(*)::int as n from core.prospects')).rows[0].n
       await c.query('commit')
+      await c.query('begin')
+      await c.query('select set_config($1, $2, true)', [SETTING, otherOrgId])
+      await c.query('delete from core.organizations where organization_id = $1', [otherOrgId])
+      left += (await c.query('select count(*)::int as n from core.prospects')).rows[0].n
+      await c.query('commit')
       trigger = (
         await c.query(
           "select tgenabled from pg_trigger where tgname = 'prospect_fields_history_limit'"
@@ -180,7 +259,7 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
     } finally {
       c.release()
       await dropStaleTestObjects(owner, env.owner).catch(() => undefined)
-      await Promise.all([owner.end(), core.end()])
+      await Promise.all([owner.end(), core.end(), admin.end()])
     }
     expect(left).toBe(0)
     // The load disables triggers only inside its own transaction; the shared database keeps them.
@@ -189,7 +268,7 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
 
   const FIELD_QUERY = `select prospect_id from core.prospect_fields
     where organization_id = $1 and state = 'current'
-      and field_name in ('first_name', 'last_name', 'email') and value ilike $2`
+      and value ilike $2`
   const NAME_QUERY =
     'select id from core.prospect_companies where organization_id = $1 and name ilike $2'
   const DOMAIN_QUERY =
@@ -222,14 +301,172 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
     expect((await scoped((c) => c.query(DOMAIN_QUERY, [orgId, '%zyxquux%']))).rowCount).toBe(1)
   })
 
-  // KNOWN GAP, kept as a tripwire: `ilike` is not leakproof, and PostgreSQL will not hand an index
-  // a clause that is not leakproof while a row-level security policy guards the table. So under the
-  // tenant policy the core role gets a sequential scan, whatever the indexes. `test.failing` passes
-  // while that holds and fails once a change (a leakproof search path, a policy that allows it)
-  // makes the planner use the index; then turn it into a plain test.
-  test.failing('under the tenant policy the core role also gets the trigram index', async () => {
-    const plan = await explainAsCore(FIELD_QUERY, [orgId, '%zyxquux%'])
-    expect(plan.indexes).toContain('prospect_fields_value_trgm_idx')
-    expect(plan.nodes).not.toContain('Seq Scan')
+  const searchIds = async (
+    q: string | null,
+    after: string | null = null,
+    maxRows = 101,
+    organization = orgId
+  ): Promise<string[]> =>
+    scoped(
+      async (c) =>
+        (
+          await c.query('select id from core.search_prospect_ids($1, $2, $3)', [q, after, maxRows])
+        ).rows.map((row) => row.id),
+      organization
+    )
+  const searchCompanyIds = async (
+    q: string | null,
+    after: string | null = null,
+    maxRows = 101,
+    organization = orgId
+  ): Promise<string[]> =>
+    scoped(
+      async (c) =>
+        (
+          await c.query('select id from core.search_prospect_company_ids($1, $2, $3)', [
+            q,
+            after,
+            maxRows,
+          ])
+        ).rows.map((row) => row.id),
+      organization
+    )
+
+  /**
+   * The plans of every statement a call runs, inside the function too: the core role calls it with
+   * the Organization set, and auto_explain (loaded by the superuser for this session) sends each
+   * nested plan back as a notice. Rolled back, so nothing it does is kept.
+   */
+  async function planOfCall(sql: string, values: unknown[]) {
+    const c = await admin.connect()
+    const plans: unknown[] = []
+    c.on('notice', (notice) => {
+      const message = notice.message ?? ''
+      const at = message.indexOf('plan:')
+      if (at >= 0) {
+        plans.push(JSON.parse(message.slice(at + 5)))
+      }
+    })
+    try {
+      await c.query("load 'auto_explain'")
+      await c.query('set auto_explain.log_min_duration = 0')
+      await c.query('set auto_explain.log_nested_statements = on')
+      await c.query("set auto_explain.log_format = 'json'")
+      await c.query('set client_min_messages = log')
+      await c.query('begin')
+      await c.query('set local role closeline_core')
+      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
+      await c.query(sql, values)
+      return planFacts(plans)
+    } finally {
+      await c.query('rollback').catch(() => undefined)
+      c.release()
+    }
+  }
+
+  // The tripwire this replaces pinned the gap: under the tenant policy the core role cannot hand
+  // the trigram index an `ilike` (it is not leakproof). The search functions run as a role that
+  // bypasses row-level security, with the Organization filter written out in the query, so the
+  // index is used even though the caller is the core role with row-level security on.
+  test('called by the core role, the Prospect search is a bitmap scan of each trigram index', async () => {
+    const plan = await planOfCall('select id from core.search_prospect_ids($1, $2, $3)', [
+      'zyxquux',
+      null,
+      101,
+    ])
+    expect(plan.nodes).toContain('Bitmap Index Scan')
+    expect(plan.seqScans).toEqual([])
+    expect([...new Set(plan.indexes)].filter((name) => name.endsWith('_trgm_idx')).sort()).toEqual([
+      'prospect_companies_domain_trgm_idx',
+      'prospect_companies_name_trgm_idx',
+      'prospect_fields_value_trgm_idx',
+    ])
+  })
+
+  test('called by the core role, the Company search is a bitmap scan of the name and domain indexes', async () => {
+    const plan = await planOfCall('select id from core.search_prospect_company_ids($1, $2, $3)', [
+      'zyxquux',
+      null,
+      101,
+    ])
+    expect(plan.nodes).toContain('Bitmap Index Scan')
+    expect(plan.seqScans).toEqual([])
+    expect([...new Set(plan.indexes)].filter((name) => name.endsWith('_trgm_idx')).sort()).toEqual([
+      'prospect_companies_domain_trgm_idx',
+      'prospect_companies_name_trgm_idx',
+    ])
+  })
+
+  test('the functions return the rare match', async () => {
+    expect(await searchIds('zyxquux')).toEqual([`prs_${md5Of('4242')}`])
+    expect(await searchCompanyIds('zyxquux')).toEqual([`pco_${md5Of('c777')}`])
+  })
+
+  test('a second Organization is never returned, and each Organization sees only its own', async () => {
+    expect(await searchIds('zyxquux')).toEqual([`prs_${md5Of('4242')}`])
+    expect(await searchCompanyIds('zyxquux')).toEqual([`pco_${md5Of('c777')}`])
+    const other = fixtureProspect('rare')
+    expect(await searchIds('zyxquux', null, 101, otherOrgId)).toEqual([other])
+    expect(await searchCompanyIds('zyxquux', null, 101, otherOrgId)).toEqual([
+      fixtureCompany('rare'),
+    ])
+    // A Company that no Prospect works at gives no Prospect.
+    expect(await searchIds('Zyxquux Holdings')).toEqual([])
+  })
+
+  test('with the tenant setting unset or empty the functions return zero rows', async () => {
+    for (const value of [null, '', 'org_00000000000000000000000000000000']) {
+      const c = await core.connect()
+      try {
+        await c.query('begin')
+        if (value !== null) {
+          await c.query('select set_config($1, $2, true)', [SETTING, value])
+        }
+        const prospects = await c.query(
+          "select id from core.search_prospect_ids('person', null, 101)"
+        )
+        const companies = await c.query(
+          "select id from core.search_prospect_company_ids('company', null, 101)"
+        )
+        expect([prospects.rowCount, companies.rowCount]).toEqual([0, 0])
+        await c.query('commit')
+      } finally {
+        c.release()
+      }
+    }
+    // The setting cannot be supplied as an argument: there is no such parameter.
+    expect(await searchIds(null)).toEqual([])
+    expect(await searchIds('')).toEqual([])
+  })
+
+  test('max_rows is clamped at 101 and the cursor pages through distinct ids in order', async () => {
+    const first = await searchIds('person', null, 100_000)
+    expect(first).toHaveLength(101)
+    expect(first).toEqual([...first].sort())
+    expect(new Set(first).size).toBe(101)
+    expect(await searchIds('person', null, 5)).toEqual(first.slice(0, 5))
+    expect(await searchIds('person', null, 0)).toEqual([])
+    const next = await searchIds('person', first[100], 3)
+    expect(next).toHaveLength(3)
+    expect((next[0] ?? '') > (first[100] ?? '')).toBe(true)
+    const companies = await searchCompanyIds('company', null, 100_000)
+    expect(companies).toHaveLength(101)
+    expect(companies).toEqual([...companies].sort())
+  })
+
+  test('a Prospect matching through several fields and its Company is returned once', async () => {
+    expect(await searchIds('dupcorp', null, 101, otherOrgId)).toEqual([fixtureProspect('dup')])
+  })
+
+  test('%, _ and a backslash in q match themselves, not as patterns', async () => {
+    const ids = (names: string[]) => names.map(fixtureProspect).sort()
+    expect(await searchIds('%', null, 101, otherOrgId)).toEqual(ids(['percent']))
+    expect(await searchIds('0%o', null, 101, otherOrgId)).toEqual(ids(['percent']))
+    expect(await searchIds('_', null, 101, otherOrgId)).toEqual(ids(['underscore']))
+    expect(await searchIds('a_c', null, 101, otherOrgId)).toEqual(ids(['underscore']))
+    expect(await searchIds('\\', null, 101, otherOrgId)).toEqual(ids(['backslash']))
+    expect(await searchIds('k\\s', null, 101, otherOrgId)).toEqual(ids(['backslash']))
+    expect(await searchCompanyIds('%', null, 101, otherOrgId)).toEqual([])
+    expect(await searchCompanyIds('_', null, 101, otherOrgId)).toEqual([])
   })
 })

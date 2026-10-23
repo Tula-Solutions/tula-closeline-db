@@ -1936,6 +1936,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       refuse_truncate: [false, true, false],
       refuse_unacceptable_invitation: [false, true, false],
       require_owner: [false, true, false],
+      search_prospect_company_ids: [true, false, true],
+      search_prospect_ids: [true, false, true],
       settle_demo_notice: [true, false, true],
       start_organization: [false, true, false],
       submit_demo_request: [true, false, true],
@@ -1945,6 +1947,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       sync_organization_state: [true, true, false],
       track_owner_count: [true, true, false],
     }
+
+    const SEARCH_FUNCTION_NAMES = ['search_prospect_ids', 'search_prospect_company_ids']
 
     interface FunctionRow {
       name: string
@@ -1983,15 +1987,23 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     test('each is owned by closeline_owner with search_path pinned, and SECURITY DEFINER only where intended', async () => {
       for (const fn of await catalog()) {
         const [definer, trigger] = FUNCTIONS[fn.name] ?? [false, false, false]
-        expect([fn.name, fn.owner]).toEqual([fn.name, 'closeline_owner'])
+        // The two Prospect searches are owned by the role that bypasses row-level security (0030);
+        // roles.integration.ts and core-prospect-search.integration.ts pin their other properties.
+        const searchFn = SEARCH_FUNCTION_NAMES.includes(fn.name)
+        expect([fn.name, fn.owner]).toEqual([
+          fn.name,
+          searchFn ? 'closeline_core_search' : 'closeline_owner',
+        ])
         // The directory writers also pin their plans to one per key (see the migration).
         const planPinned =
           fn.name === 'sync_membership_directory' || fn.name === 'sync_invitation_directory'
         expect([fn.name, fn.config]).toEqual([
           fn.name,
-          planPinned
-            ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
-            : ['search_path=pg_catalog, pg_temp'],
+          searchFn
+            ? ['search_path=pg_catalog, core, public, pg_temp', 'plan_cache_mode=force_custom_plan']
+            : planPinned
+              ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
+              : ['search_path=pg_catalog, pg_temp'],
         ])
         expect([fn.name, fn.definer]).toEqual([fn.name, definer])
         expect([fn.name, fn.trigger]).toEqual([fn.name, trigger])
@@ -2009,6 +2021,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         prospect_tags_valid: 'i',
         prospect_technologies_valid: 'i',
         prospect_company_technologies_text_valid: 'i',
+        search_prospect_ids: 's',
+        search_prospect_company_ids: 's',
       }
       for (const fn of await catalog()) {
         expect([fn.name, fn.volatility]).toEqual([fn.name, expected[fn.name] ?? 'v'])
