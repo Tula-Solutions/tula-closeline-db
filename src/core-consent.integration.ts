@@ -593,6 +593,169 @@ describe('core consent tables', () => {
     })
   })
 
+  describe('consent_form_for_token', () => {
+    let playbook: Pool
+    beforeAll(() => {
+      playbook = new Pool({ connectionString: env.playbook, max: 1 })
+    })
+    afterAll(async () => {
+      await playbook.end()
+    })
+
+    const newToken = () => randomBytes(24).toString('base64url')
+    const lookup = async (token: string | null, orgId: string | null = null) =>
+      (
+        await scoped(orgId, (c) =>
+          c.query('select * from core.consent_form_for_token($1)', [token])
+        )
+      ).rows
+    const publish = async (a: Seeded, token = newToken()) => {
+      await run(
+        a.orgId,
+        "update core.consent_form set state = 'published', token = $2, published_at = now() where id = $1",
+        [a.formId, token]
+      )
+      return token
+    }
+
+    test('answers with the Organization, form, wording and state of a published form, whatever the scope', async () => {
+      const a = await seed()
+      const b = await seed()
+      const token = await publish(a)
+      const expected = [
+        {
+          organization_id: a.orgId,
+          form_id: a.formId,
+          wording_id: a.wordingId,
+          state: 'published',
+        },
+      ]
+      expect(await lookup(token)).toEqual(expected)
+      expect(await lookup(token, b.orgId)).toEqual(expected)
+    })
+
+    test('a draft, an unknown, a malformed and a null token give no row', async () => {
+      const a = await seed()
+      expect(await lookup(newToken())).toEqual([])
+      expect(await lookup(null)).toEqual([])
+      for (const probe of ['', '%', '_'.repeat(30), 'x'.repeat(300)]) {
+        expect(await lookup(probe)).toEqual([])
+      }
+      const token = await publish(a)
+      for (const probe of [token.slice(0, -1), `${token} `, `${token}%`, token.toUpperCase()]) {
+        expect(await lookup(probe)).toEqual([])
+      }
+    })
+
+    test('a closed form still answers, as closed; a republished token follows the form; a deleted form is gone', async () => {
+      const a = await seed()
+      const token = await publish(a)
+      await run(
+        a.orgId,
+        "update core.consent_form set state = 'closed', closed_at = now() where id = $1",
+        [a.formId]
+      )
+      expect(await lookup(token)).toEqual([
+        { organization_id: a.orgId, form_id: a.formId, wording_id: a.wordingId, state: 'closed' },
+      ])
+      const next = newToken()
+      await run(a.orgId, 'update core.consent_form set token = $2 where id = $1', [a.formId, next])
+      expect(await lookup(token)).toEqual([])
+      expect((await lookup(next)).map((r) => r.state)).toEqual(['closed'])
+      await run(a.orgId, 'delete from core.consent_form where id = $1', [a.formId])
+      expect(await lookup(next)).toEqual([])
+    })
+
+    test.each(['suspended', 'deleted'])(
+      'gives no row for a form of a %s Organization',
+      async (status) => {
+        const a = await seed()
+        const token = await publish(a)
+        expect(await lookup(token)).toHaveLength(1)
+        await run(a.orgId, 'update core.organizations set status = $2 where organization_id = $1', [
+          a.orgId,
+          status,
+        ])
+        expect(await lookup(token)).toEqual([])
+      }
+    )
+
+    test('deleting the Organization removes the entry', async () => {
+      const a = await seed()
+      const token = await publish(a)
+      await removeOrganization(a.orgId)
+      expect(await lookup(token)).toEqual([])
+      const left = await owner.query('select 1 from core.consent_form_directory where token = $1', [
+        token,
+      ])
+      expect(left.rows).toEqual([])
+    })
+
+    test('a rolled-back publish leaves nothing behind', async () => {
+      const a = await seed()
+      const token = newToken()
+      const c = await core.connect()
+      try {
+        await c.query('begin')
+        await c.query('select set_config($1, $2, true)', [SETTING, a.orgId])
+        await c.query(
+          "update core.consent_form set state = 'published', token = $2, published_at = now() where id = $1",
+          [a.formId, token]
+        )
+        await c.query('rollback')
+      } finally {
+        c.release()
+      }
+      expect(await lookup(token)).toEqual([])
+    })
+
+    test('only closeline_core may execute it', async () => {
+      const a = await seed()
+      const token = await publish(a)
+      const denied = await refusal(
+        playbook.query('select * from core.consent_form_for_token($1)', [token])
+      )
+      expect(denied.message).toContain('permission denied')
+      const privileges = await owner.query<{ role: string; ok: boolean }>(
+        `select r as role, has_function_privilege(r, 'core.consent_form_for_token(text)', 'EXECUTE') as ok
+           from unnest(array['closeline_core', 'closeline_auth', 'closeline_playbook', 'closeline_voice', 'public']) r`
+      )
+      expect(privileges.rows.filter((r) => r.ok).map((r) => r.role)).toEqual(['closeline_core'])
+    })
+
+    test('closeline_core cannot read the directory or the form table without the Organization set', async () => {
+      const a = await seed()
+      await publish(a)
+      for (const statement of [
+        'select * from core.consent_form_directory',
+        'select count(*) from core.consent_form_directory',
+        "insert into core.consent_form_directory values ('x', 'y', 'z', 'w', 'published')",
+        'update core.consent_form_directory set state = state',
+        'delete from core.consent_form_directory',
+        'truncate core.consent_form_directory',
+      ]) {
+        for (const setting of [null, a.orgId]) {
+          const error = await refusal(run(setting, statement))
+          expect(error.message).toContain('permission denied for table')
+        }
+      }
+      expect((await run(null, 'select * from core.consent_form')).rows).toEqual([])
+      expect((await run(null, 'select * from core.consent_wording')).rows).toEqual([])
+      // TRUNCATE skips the sync trigger, so the form table and the directory each refuse it.
+      const guards = await owner.query<{ tgrelid: string }>(
+        `select tgrelid::regclass::text from pg_trigger
+          where tgname in ('consent_form_no_truncate', 'consent_form_directory_no_truncate')
+          order by 1`
+      )
+      expect(guards.rows.map((r) => r.tgrelid)).toEqual([
+        'core.consent_form',
+        'core.consent_form_directory',
+      ])
+      const truncated = await refusal(owner.query('truncate core.consent_form_directory'))
+      expect(truncated.message).toContain('core.truncate_refused')
+    })
+  })
+
   describe('suppression', () => {
     const add = (orgId: string, kind: string, value: Buffer, reason = 'unsubscribe') =>
       run(

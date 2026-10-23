@@ -89,7 +89,7 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * Tables exempt from the Organization check by explicit entry, as `schema.table`, each with the
  * one-line reason. The `auth` tables, which have no `organization_id`, are verified under
  * {@link ENVIRONMENT_SCOPED_TABLES} and {@link CONTROL_PLANE_TABLES} instead of being skipped. The
- * only entries are the two `core` directories, the Organization status table and the playbook work
+ * only entries are the three `core` directories, the Organization status table and the playbook work
  * registry, which are asked before an Organization is known. An entry here needs a decision record in the hub. An exempt
  * table is under no row-level security, so {@link findTenantIsolationGaps} also reports it as a
  * gap when any `closeline_*` service role (or PUBLIC) holds any privilege on it (SELECT, INSERT,
@@ -98,6 +98,8 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * reached only through a `SECURITY DEFINER` function.
  */
 export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'core.consent_form_directory':
+    'asked before the Organization is known (the public hosted consent form receives only a token); holds token, Organization id, form id, wording id and state for published and closed forms only, is written only by a SECURITY DEFINER trigger on core.consent_form, and no service role holds any privilege on it: core.consent_form_for_token is the only way in',
   'core.demo_rate_counter':
     'a per-address request counter for the public demo-request route, held by Closeline itself and not by any Organization, so it has no organization_id; it holds only an HMAC of an address, a window and a count, is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read it',
   'core.demo_request':

@@ -37,8 +37,13 @@ export {
   settleDemoNotice,
   submitDemoRequest,
 } from './core-demo-requests'
-export type { InvitationForToken, OrganizationOfUser, OrganizationStatus } from './core-lookups'
-export { invitationForToken, organizationOfUser } from './core-lookups'
+export type {
+  ConsentFormForToken,
+  InvitationForToken,
+  OrganizationOfUser,
+  OrganizationStatus,
+} from './core-lookups'
+export { consentFormForToken, invitationForToken, organizationOfUser } from './core-lookups'
 export { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING, withEnvironment } from './environment'
 export type { AuthTableCategories, TenantIsolationGap } from './isolation'
 export {

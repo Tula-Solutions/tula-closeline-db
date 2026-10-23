@@ -135,6 +135,7 @@ import {
   MAX_FORM_TOKEN_LENGTH2,
   consentWordings2,
   consentForms2,
+  consentFormDirectory2,
   contactConsentEvents2,
   suppressionEntries2,
   contactCheckLog2,
@@ -239,7 +240,7 @@ import {
   voiceCalls2,
   voiceCallEvents2,
   voiceRecordings2
-} from "../shared/chunk-swhx87tt.js";
+} from "../shared/chunk-zcrm602h.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -410,6 +411,7 @@ export {
   callReuploadRequeues2 as callReuploadRequeues,
   callVendorSends2 as callVendorSends,
   calls2 as calls,
+  consentFormDirectory2 as consentFormDirectory,
   consentForms2 as consentForms,
   consentWordings2 as consentWordings,
   consumedMessage2 as consumedMessage,

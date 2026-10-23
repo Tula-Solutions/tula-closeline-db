@@ -256,11 +256,12 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   }, 120_000)
 
   describe('tenant isolation', () => {
-    test('the migrated database passes the check, and only the two directories, the status table and the playbook work registry need the allowlist', async () => {
+    test('the migrated database passes the check, and only the three directories, the status table and the playbook work registry need the allowlist', async () => {
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
       expect([...NON_TENANT_TABLES].sort()).toEqual(
         [
           ...NO_ACCESS_TABLES.map((name) => `core.${name}`),
+          'core.consent_form_directory',
           'core.demo_rate_counter',
           'core.demo_request',
           'playbook.work_hints',
@@ -272,7 +273,9 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           .filter((gap) => gap.schema === 'core' && !gap.table.startsWith('it_'))
           .map((g) => g.table)
           .sort()
-      ).toEqual([...NO_ACCESS_TABLES, 'demo_rate_counter', 'demo_request'].sort())
+      ).toEqual(
+        [...NO_ACCESS_TABLES, 'consent_form_directory', 'demo_rate_counter', 'demo_request'].sort()
+      )
     })
 
     describe('a second Organization cannot read or write any tenant table', () => {
@@ -1909,6 +1912,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       claim_demo_notices: [true, false, true],
       consent_channels_valid: [false, false, true],
+      consent_form_for_token: [true, false, true],
       has_expired: [false, false, true],
       limit_field_history: [false, true, false],
       prospect_merged_ids_valid: [false, false, true],
@@ -1932,6 +1936,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       settle_demo_notice: [true, false, true],
       start_organization: [false, true, false],
       submit_demo_request: [true, false, true],
+      sync_consent_form_directory: [true, true, false],
       sync_invitation_directory: [true, true, false],
       sync_membership_directory: [true, true, false],
       sync_organization_state: [true, true, false],
@@ -1994,6 +1999,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       const expected: Record<string, string> = {
         organization_of_user: 's',
         invitation_for_token: 's',
+        consent_form_for_token: 's',
         consent_channels_valid: 'i',
         has_expired: 'i',
         prospect_merged_ids_valid: 'i',
