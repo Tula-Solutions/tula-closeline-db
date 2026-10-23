@@ -1,6 +1,7 @@
 export * from './auth'
 export * from './core'
 export * from './core-consent'
+export * from './core-controls'
 export * from './core-crm'
 export * from './core-demo-rate-counter'
 export * from './core-demo-requests'

@@ -62,6 +62,16 @@ const CRM_TABLES = [
   'crm_sync_run',
   'crm_webhook_receipt',
 ]
+const CONTROL_TABLES = [
+  'agent_instruction_pointer',
+  'agent_instruction_versions',
+  'agent_settings',
+  'api_key_usage',
+  'api_keys',
+  'audit_events',
+  'export_jobs',
+  'export_parts',
+]
 const NO_ACCESS = [
   'consent_form_directory',
   'invitation_directory',
@@ -70,7 +80,7 @@ const NO_ACCESS = [
 ]
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the three directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
       [
         ...NO_ACCESS,
@@ -80,6 +90,7 @@ describe('the core schema', () => {
         ...PROSPECT_TABLES,
         ...CONSENT_TABLES,
         ...CRM_TABLES,
+        ...CONTROL_TABLES,
       ].sort()
     )
   })

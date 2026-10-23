@@ -20,10 +20,15 @@ __export(exports_schema, {
   ABANDON_CASE_MAX_ATTEMPTS: () => ABANDON_CASE_MAX_ATTEMPTS2,
   ABANDON_CASE_OUTCOMES: () => ABANDON_CASE_OUTCOMES2,
   ADDRESS_HASH_BYTES: () => ADDRESS_HASH_BYTES2,
+  AGENT_KINDS: () => AGENT_KINDS2,
+  AGENT_SETTING_CHANNELS: () => AGENT_SETTING_CHANNELS2,
   API_KEY_KINDS: () => API_KEY_KINDS2,
+  API_KEY_ROLE_CEILINGS: () => API_KEY_ROLE_CEILINGS2,
+  API_KEY_SCOPES: () => API_KEY_SCOPES2,
   ATTEMPT_COUNTER_KEY_HASH_BYTES: () => ATTEMPT_COUNTER_KEY_HASH_BYTES2,
   ATTEMPT_COUNTER_KINDS: () => ATTEMPT_COUNTER_KINDS2,
   ATTEMPT_COUNTER_MAX_HITS: () => ATTEMPT_COUNTER_MAX_HITS2,
+  AUDIT_ACTOR_KINDS: () => AUDIT_ACTOR_KINDS2,
   AUDIT_ACTOR_TYPES: () => AUDIT_ACTOR_TYPES2,
   AUDIT_RETENTION_FLOOR: () => AUDIT_RETENTION_FLOOR2,
   CALL_CHANNELS: () => CALL_CHANNELS2,
@@ -56,6 +61,7 @@ __export(exports_schema, {
   CONTACT_ALLOW_BASES: () => CONTACT_ALLOW_BASES2,
   CONTACT_CHECK_RETENTION_DAYS: () => CONTACT_CHECK_RETENTION_DAYS2,
   CONTACT_PURPOSES: () => CONTACT_PURPOSES2,
+  CONTROL_LEVELS: () => CONTROL_LEVELS2,
   CREDENTIAL_TYPES: () => CREDENTIAL_TYPES2,
   CRM_CONNECTION_STATES: () => CRM_CONNECTION_STATES2,
   CRM_DIRECTIONS: () => CRM_DIRECTIONS2,
@@ -86,6 +92,7 @@ __export(exports_schema, {
   DEAL_NAME_MAX_BYTES: () => DEAL_NAME_MAX_BYTES2,
   DEAL_NAME_MAX_LENGTH: () => DEAL_NAME_MAX_LENGTH2,
   DEAL_OUTCOMES: () => DEAL_OUTCOMES2,
+  DEFAULT_CHANNEL: () => DEFAULT_CHANNEL2,
   DEMO_NOTIFICATION_STATUSES: () => DEMO_NOTIFICATION_STATUSES2,
   DEMO_RATE_ADDRESS_HASH_BYTES: () => DEMO_RATE_ADDRESS_HASH_BYTES2,
   DEMO_REQUEST_KEY_LENGTH: () => DEMO_REQUEST_KEY_LENGTH2,
@@ -102,6 +109,14 @@ __export(exports_schema, {
   EMBED_USAGE_MAX_MOMENTS: () => EMBED_USAGE_MAX_MOMENTS2,
   ENVIRONMENT_KINDS: () => ENVIRONMENT_KINDS2,
   EVENT_RETENTION_FLOOR: () => EVENT_RETENTION_FLOOR2,
+  EXPORT_ACTIVE_STATES: () => EXPORT_ACTIVE_STATES2,
+  EXPORT_FAILURE_REASONS: () => EXPORT_FAILURE_REASONS2,
+  EXPORT_FORMATS: () => EXPORT_FORMATS2,
+  EXPORT_KINDS: () => EXPORT_KINDS2,
+  EXPORT_PART_FAILURE_REASONS: () => EXPORT_PART_FAILURE_REASONS2,
+  EXPORT_PART_STATES: () => EXPORT_PART_STATES2,
+  EXPORT_SERVICES: () => EXPORT_SERVICES2,
+  EXPORT_STATES: () => EXPORT_STATES2,
   FIELD_HISTORY_STATES: () => FIELD_HISTORY_STATES2,
   FORM_TOKEN_PATTERN: () => FORM_TOKEN_PATTERN2,
   GLOBAL_SCOPE_ORGANIZATION_ID: () => GLOBAL_SCOPE_ORGANIZATION_ID2,
@@ -121,6 +136,9 @@ __export(exports_schema, {
   LINE_ASSIGNMENT_KINDS: () => LINE_ASSIGNMENT_KINDS2,
   LINE_STATES: () => LINE_STATES2,
   LOGGED_DENIAL_CODES: () => LOGGED_DENIAL_CODES2,
+  MAX_AGENT_INSTRUCTION_LENGTH: () => MAX_AGENT_INSTRUCTION_LENGTH2,
+  MAX_API_KEY_NAME_LENGTH: () => MAX_API_KEY_NAME_LENGTH2,
+  MAX_AUDIT_METADATA_BYTES: () => MAX_AUDIT_METADATA_BYTES2,
   MAX_CALLER_LENGTH: () => MAX_CALLER_LENGTH2,
   MAX_CALL_DURATION_SECONDS: () => MAX_CALL_DURATION_SECONDS2,
   MAX_CONSENT_FORM_NAME_LENGTH: () => MAX_CONSENT_FORM_NAME_LENGTH2,
@@ -134,7 +152,11 @@ __export(exports_schema, {
   MAX_CRM_RUN_FAILURES: () => MAX_CRM_RUN_FAILURES2,
   MAX_CRM_SEALED_TOKEN_BYTES: () => MAX_CRM_SEALED_TOKEN_BYTES2,
   MAX_CRM_WRITE_KEY_LENGTH: () => MAX_CRM_WRITE_KEY_LENGTH2,
+  MAX_ESCALATION_RULES: () => MAX_ESCALATION_RULES2,
   MAX_EVIDENCE_REF_LENGTH: () => MAX_EVIDENCE_REF_LENGTH2,
+  MAX_EXPORT_PART_BYTES: () => MAX_EXPORT_PART_BYTES2,
+  MAX_EXPORT_PART_FILES: () => MAX_EXPORT_PART_FILES2,
+  MAX_EXPORT_PREFIX_LENGTH: () => MAX_EXPORT_PREFIX_LENGTH2,
   MAX_FIELD_HISTORY_ENTRIES: () => MAX_FIELD_HISTORY_ENTRIES2,
   MAX_FORM_TOKEN_LENGTH: () => MAX_FORM_TOKEN_LENGTH2,
   MAX_LINE_LABEL_LENGTH: () => MAX_LINE_LABEL_LENGTH2,
@@ -167,6 +189,7 @@ __export(exports_schema, {
   MEMBER_NAME_MAX: () => MEMBER_NAME_MAX2,
   MIN_FORM_TOKEN_LENGTH: () => MIN_FORM_TOKEN_LENGTH2,
   OAUTH_PROVIDERS: () => OAUTH_PROVIDERS2,
+  ORGANIZATION_AGENT_KIND: () => ORGANIZATION_AGENT_KIND2,
   ORGANIZATION_REGIONS: () => ORGANIZATION_REGIONS2,
   ORGANIZATION_STATUSES: () => ORGANIZATION_STATUSES2,
   ORPHAN_SWEEP_CURSOR_MAX_BYTES: () => ORPHAN_SWEEP_CURSOR_MAX_BYTES2,
@@ -210,8 +233,13 @@ __export(exports_schema, {
   WEBHOOK_DELIVERY_STATES: () => WEBHOOK_DELIVERY_STATES2,
   WORK_KINDS: () => WORK_KINDS2,
   abandonCases: () => abandonCases2,
+  agentInstructionPointers: () => agentInstructionPointers2,
+  agentInstructionVersions: () => agentInstructionVersions2,
+  agentSettings: () => agentSettings2,
+  apiKeyUsage: () => apiKeyUsage2,
   apiKeys: () => apiKeys2,
   attemptCounters: () => attemptCounters2,
+  auditEvents: () => auditEvents2,
   auditLogs: () => auditLogs2,
   authSchema: () => authSchema2,
   backupCodes: () => backupCodes2,
@@ -225,6 +253,7 @@ __export(exports_schema, {
   consumedMessage: () => consumedMessage2,
   contactCheckLog: () => contactCheckLog2,
   contactConsentEvents: () => contactConsentEvents2,
+  coreApiKeys: () => coreApiKeys2,
   coreSchema: () => coreSchema2,
   credentials: () => credentials2,
   crmConnections: () => crmConnections2,
@@ -241,6 +270,8 @@ __export(exports_schema, {
   environmentSettings: () => environmentSettings2,
   environments: () => environments2,
   events: () => events2,
+  exportJobs: () => exportJobs2,
+  exportParts: () => exportParts2,
   flowAttempts: () => flowAttempts2,
   hookCallCounts: () => hookCallCounts2,
   hooks: () => hooks2,
@@ -1974,20 +2005,329 @@ var contactCheckLog2 = coreSchema2.table("contact_check_log", {
   index25("contact_check_log_list_idx").on(t.organizationId, t.checkedAt.desc(), t.id.desc()),
   index25("contact_check_log_prospect_idx").on(t.organizationId, t.prospectId, t.checkedAt.desc(), t.id.desc()).where(sql19`${t.prospectId} is not null`)
 ]);
-// src/schema/core-crm.ts
+// src/schema/core-controls.ts
 import { sql as sql20 } from "drizzle-orm";
 import {
   bigint as bigint5,
   boolean as boolean8,
   check as check15,
-  customType as customType6,
   foreignKey as foreignKey7,
   index as index26,
+  integer as integer15,
   jsonb as jsonb12,
   primaryKey as primaryKey6,
   text as text35,
   timestamp as timestamp28,
   uniqueIndex as uniqueIndex5
+} from "drizzle-orm/pg-core";
+var AGENT_KINDS2 = ["inbound", "outbound"];
+var MAX_AGENT_INSTRUCTION_LENGTH2 = 20000;
+var CONTROL_LEVELS2 = ["supervised", "assisted", "autonomous"];
+var AGENT_SETTING_CHANNELS2 = ["phone", "sms", "whatsapp", "email", "linkedin"];
+var DEFAULT_CHANNEL2 = "default";
+var ORGANIZATION_AGENT_KIND2 = "organization";
+var MAX_ESCALATION_RULES2 = 7;
+var AUDIT_ACTOR_KINDS2 = ["member", "agent", "api_key", "system"];
+var MAX_AUDIT_METADATA_BYTES2 = 4096;
+var EXPORT_KINDS2 = ["organization", "enriched_prospects"];
+var EXPORT_FORMATS2 = ["csv"];
+var EXPORT_STATES2 = ["queued", "running", "ready", "failed", "expired"];
+var EXPORT_ACTIVE_STATES2 = ["queued", "running"];
+var EXPORT_FAILURE_REASONS2 = ["part_failed", "timed_out", "storage_unavailable"];
+var EXPORT_SERVICES2 = ["core", "playbook", "voice", "outbound"];
+var EXPORT_PART_STATES2 = ["pending", "ready", "failed"];
+var EXPORT_PART_FAILURE_REASONS2 = [
+  "write_failed",
+  "storage_unavailable",
+  "source_unavailable"
+];
+var MAX_EXPORT_PART_FILES2 = 1e4;
+var MAX_EXPORT_PART_BYTES2 = 50000000000;
+var MAX_EXPORT_PREFIX_LENGTH2 = 300;
+var API_KEY_SCOPES2 = [
+  "prospects:read",
+  "prospects:write",
+  "consent:read",
+  "consent:write",
+  "enrichment:read",
+  "enrichment:write",
+  "campaigns:read",
+  "campaigns:write",
+  "messaging:read",
+  "messaging:write",
+  "bookings:read",
+  "bookings:write",
+  "playbook:read",
+  "playbook:write",
+  "calls:read",
+  "calls:write"
+];
+var MAX_API_KEY_NAME_LENGTH2 = 80;
+var API_KEY_ROLE_CEILINGS2 = ["owner", "admin", "manager", "rep"];
+var list4 = (values) => sql20.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape4 = (column, prefix) => sql20.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var orgShape3 = sql20.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
+var notGlobal3 = sql20.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
+var hexHash = (column) => sql20.raw(`"${column}" ~ '^[0-9a-f]{64}$'`);
+var ts3 = (name) => timestamp28(name, { withTimezone: true });
+var num = (n) => sql20.raw(String(n));
+var agentInstructionVersions2 = coreSchema2.table("agent_instruction_versions", {
+  id: text35("id").notNull(),
+  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  agentKind: text35("agent_kind", { enum: AGENT_KINDS2 }).notNull(),
+  number: integer15("number").notNull(),
+  text: text35("text").notNull(),
+  authorMembershipId: text35("author_membership_id"),
+  createdAt: ts3("created_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey6({ name: "agent_instruction_versions_pkey", columns: [t.organizationId, t.id] }),
+  check15("agent_instruction_versions_id_shape", idShape4("id", "ains")),
+  check15("agent_instruction_versions_organization_id_shape", orgShape3),
+  check15("agent_instruction_versions_organization_not_global", notGlobal3),
+  check15("agent_instruction_versions_agent_kind_known", sql20`${t.agentKind} in (${list4(AGENT_KINDS2)})`),
+  check15("agent_instruction_versions_number_positive", sql20`${t.number} >= 1`),
+  check15("agent_instruction_versions_text_length", sql20`char_length(${t.text}) between 1 and ${num(MAX_AGENT_INSTRUCTION_LENGTH2)}`),
+  check15("agent_instruction_versions_author_shape", sql20`${t.authorMembershipId} is null or ${t.authorMembershipId} ~ '^mem_[0-9a-f]{32}$'`),
+  uniqueIndex5("agent_instruction_versions_number_key").on(t.organizationId, t.agentKind, t.number)
+]);
+var agentInstructionPointers2 = coreSchema2.table("agent_instruction_pointer", {
+  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  agentKind: text35("agent_kind", { enum: AGENT_KINDS2 }).notNull(),
+  versionNumber: integer15("version_number").notNull(),
+  publishedByMembershipId: text35("published_by_membership_id"),
+  publishedAt: ts3("published_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey6({
+    name: "agent_instruction_pointer_pkey",
+    columns: [t.organizationId, t.agentKind]
+  }),
+  foreignKey7({
+    name: "agent_instruction_pointer_version_fk",
+    columns: [t.organizationId, t.agentKind, t.versionNumber],
+    foreignColumns: [
+      agentInstructionVersions2.organizationId,
+      agentInstructionVersions2.agentKind,
+      agentInstructionVersions2.number
+    ]
+  }),
+  check15("agent_instruction_pointer_organization_id_shape", orgShape3),
+  check15("agent_instruction_pointer_organization_not_global", notGlobal3),
+  check15("agent_instruction_pointer_agent_kind_known", sql20`${t.agentKind} in (${list4(AGENT_KINDS2)})`),
+  check15("agent_instruction_pointer_published_by_shape", sql20`${t.publishedByMembershipId} is null or ${t.publishedByMembershipId} ~ '^mem_[0-9a-f]{32}$'`)
+]);
+var agentSettings2 = coreSchema2.table("agent_settings", {
+  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  agentKind: text35("agent_kind", { enum: [...AGENT_KINDS2, ORGANIZATION_AGENT_KIND2] }).notNull(),
+  channel: text35("channel", { enum: [...AGENT_SETTING_CHANNELS2, DEFAULT_CHANNEL2] }).notNull().default(DEFAULT_CHANNEL2),
+  level: text35("level", { enum: CONTROL_LEVELS2 }),
+  sendWindow: jsonb12("send_window"),
+  escalationRules: jsonb12("escalation_rules"),
+  agentsPaused: boolean8("agents_paused"),
+  updatedByMembershipId: text35("updated_by_membership_id"),
+  updatedAt: ts3("updated_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey6({
+    name: "agent_settings_pkey",
+    columns: [t.organizationId, t.agentKind, t.channel]
+  }),
+  check15("agent_settings_organization_id_shape", orgShape3),
+  check15("agent_settings_organization_not_global", notGlobal3),
+  check15("agent_settings_agent_kind_known", sql20`${t.agentKind} in (${list4([...AGENT_KINDS2, ORGANIZATION_AGENT_KIND2])})`),
+  check15("agent_settings_channel_known", sql20`${t.channel} in (${list4([...AGENT_SETTING_CHANNELS2, DEFAULT_CHANNEL2])})`),
+  check15("agent_settings_level_known", sql20`${t.level} is null or ${t.level} in (${list4(CONTROL_LEVELS2)})`),
+  check15("agent_settings_updated_by_shape", sql20`${t.updatedByMembershipId} is null or ${t.updatedByMembershipId} ~ '^mem_[0-9a-f]{32}$'`),
+  check15("agent_settings_send_window_shape", sql20`${t.sendWindow} is null or jsonb_typeof(${t.sendWindow}) = 'object'`),
+  check15("agent_settings_escalation_rules_shape", sql20`${t.escalationRules} is null or (jsonb_typeof(${t.escalationRules}) = 'array' and jsonb_array_length(${t.escalationRules}) <= ${num(MAX_ESCALATION_RULES2)})`),
+  check15("agent_settings_row_columns", sql20`(${t.agentKind} <> 'organization'
+          and ${t.level} is not null and ${t.sendWindow} is not null and ${t.escalationRules} is not null
+          and ${t.agentsPaused} is null)
+        or (${t.agentKind} = 'organization' and ${t.channel} = 'default'
+          and ${t.agentsPaused} is not null
+          and ${t.level} is null and ${t.sendWindow} is null and ${t.escalationRules} is null)`)
+]);
+var auditEvents2 = coreSchema2.table("audit_events", {
+  id: text35("id").notNull(),
+  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  sequence: bigint5("sequence", { mode: "number" }).notNull(),
+  occurredAt: ts3("occurred_at").notNull(),
+  actorKind: text35("actor_kind", { enum: AUDIT_ACTOR_KINDS2 }).notNull(),
+  actorMembershipId: text35("actor_membership_id"),
+  actorAgentKind: text35("actor_agent_kind", { enum: AGENT_KINDS2 }),
+  actorApiKeyId: text35("actor_api_key_id"),
+  action: text35("action").notNull(),
+  subjectType: text35("subject_type"),
+  subjectId: text35("subject_id"),
+  prospectId: text35("prospect_id"),
+  instructionVersion: integer15("instruction_version"),
+  requestId: text35("request_id"),
+  metadata: jsonb12("metadata").notNull().default(sql20`'{}'::jsonb`),
+  previousHash: text35("previous_hash"),
+  hash: text35("hash").notNull(),
+  recordedAt: ts3("recorded_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey6({ name: "audit_events_pkey", columns: [t.organizationId, t.id] }),
+  check15("audit_events_id_shape", idShape4("id", "aud")),
+  check15("audit_events_organization_id_shape", orgShape3),
+  check15("audit_events_organization_not_global", notGlobal3),
+  check15("audit_events_sequence_positive", sql20`${t.sequence} >= 1`),
+  check15("audit_events_actor_kind_known", sql20`${t.actorKind} in (${list4(AUDIT_ACTOR_KINDS2)})`),
+  check15("audit_events_actor_columns", sql20`(${t.actorKind} = 'member' and ${t.actorMembershipId} is not null and ${t.actorMembershipId} ~ '^mem_[0-9a-f]{32}$'
+            and ${t.actorAgentKind} is null and ${t.actorApiKeyId} is null)
+        or (${t.actorKind} = 'agent' and ${t.actorAgentKind} is not null and ${t.actorAgentKind} in (${list4(AGENT_KINDS2)})
+            and ${t.actorMembershipId} is null and ${t.actorApiKeyId} is null)
+        or (${t.actorKind} = 'api_key' and ${t.actorApiKeyId} is not null and ${t.actorApiKeyId} ~ '^akey_[0-9a-f]{32}$'
+            and ${t.actorMembershipId} is null and ${t.actorAgentKind} is null)
+        or (${t.actorKind} = 'system'
+            and ${t.actorMembershipId} is null and ${t.actorAgentKind} is null and ${t.actorApiKeyId} is null)`),
+  check15("audit_events_action_shape", sql20`char_length(${t.action}) <= 100 and ${t.action} ~ '^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$'`),
+  check15("audit_events_subject_shape", sql20`(${t.subjectType} is null and ${t.subjectId} is null)
+        or (${t.subjectType} is not null and char_length(${t.subjectType}) <= 40 and ${t.subjectType} ~ '^[a-z][a-z0-9_]*$'
+            and ${t.subjectId} is not null and char_length(${t.subjectId}) <= 64 and ${t.subjectId} ~ '^[a-z][a-z0-9_]*_[0-9a-f]{32}$')`),
+  check15("audit_events_prospect_id_shape", sql20`${t.prospectId} is null or ${t.prospectId} ~ '^prs_[0-9a-f]{32}$'`),
+  check15("audit_events_instruction_version_positive", sql20`${t.instructionVersion} is null or ${t.instructionVersion} >= 1`),
+  check15("audit_events_request_id_shape", sql20`${t.requestId} is null or ${t.requestId} ~ '^req_[0-9a-f]{32}$'`),
+  check15("audit_events_metadata_shape", sql20`jsonb_typeof(${t.metadata}) = 'object' and octet_length(${t.metadata}::text) <= ${num(MAX_AUDIT_METADATA_BYTES2)}`),
+  check15("audit_events_hash_shape", hexHash("hash")),
+  check15("audit_events_previous_hash_shape", sql20`${t.previousHash} is null or ${t.previousHash} ~ '^[0-9a-f]{64}$'`),
+  check15("audit_events_chain_start", sql20`(${t.sequence} = 1) = (${t.previousHash} is null)`),
+  uniqueIndex5("audit_events_sequence_key").on(t.organizationId, t.sequence),
+  index26("audit_events_occurred_idx").on(t.organizationId, t.occurredAt.desc(), t.sequence.desc()),
+  index26("audit_events_action_idx").on(t.organizationId, t.action, t.sequence.desc()),
+  index26("audit_events_subject_idx").on(t.organizationId, t.subjectType, t.subjectId, t.sequence.desc()).where(sql20`${t.subjectId} is not null`),
+  index26("audit_events_prospect_idx").on(t.organizationId, t.prospectId, t.sequence.desc()).where(sql20`${t.prospectId} is not null`)
+]);
+var exportJobs2 = coreSchema2.table("export_jobs", {
+  id: text35("id").notNull(),
+  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  kind: text35("kind", { enum: EXPORT_KINDS2 }).notNull(),
+  format: text35("format", { enum: EXPORT_FORMATS2 }),
+  filter: jsonb12("filter"),
+  state: text35("state", { enum: EXPORT_STATES2 }).notNull().default("queued"),
+  requestedByMembershipId: text35("requested_by_membership_id").notNull(),
+  includeRecordingLinks: boolean8("include_recording_links").notNull().default(false),
+  failureReason: text35("failure_reason", { enum: EXPORT_FAILURE_REASONS2 }),
+  requestedAt: ts3("requested_at").notNull().defaultNow(),
+  completedAt: ts3("completed_at"),
+  expiresAt: ts3("expires_at")
+}, (t) => [
+  primaryKey6({ name: "export_jobs_pkey", columns: [t.organizationId, t.id] }),
+  check15("export_jobs_id_shape", idShape4("id", "exp")),
+  check15("export_jobs_organization_id_shape", orgShape3),
+  check15("export_jobs_organization_not_global", notGlobal3),
+  check15("export_jobs_kind_known", sql20`${t.kind} in (${list4(EXPORT_KINDS2)})`),
+  check15("export_jobs_format_known", sql20`${t.format} is null or ${t.format} in (${list4(EXPORT_FORMATS2)})`),
+  check15("export_jobs_state_known", sql20`${t.state} in (${list4(EXPORT_STATES2)})`),
+  check15("export_jobs_failure_reason_known", sql20`${t.failureReason} is null or ${t.failureReason} in (${list4(EXPORT_FAILURE_REASONS2)})`),
+  check15("export_jobs_requested_by_shape", idShape4("requested_by_membership_id", "mem")),
+  check15("export_jobs_filter_shape", sql20`${t.filter} is null or jsonb_typeof(${t.filter}) = 'object'`),
+  check15("export_jobs_kind_columns", sql20`(${t.kind} = 'organization' and ${t.format} is null and ${t.filter} is null)
+        or (${t.kind} = 'enriched_prospects' and ${t.format} is not null and ${t.includeRecordingLinks} = false)`),
+  check15("export_jobs_failure_iff_failed", sql20`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check15("export_jobs_completion", sql20`(${t.state} in ('queued', 'running') and ${t.completedAt} is null and ${t.expiresAt} is null)
+        or (${t.state} in ('ready', 'expired') and ${t.completedAt} is not null and ${t.expiresAt} is not null)
+        or (${t.state} = 'failed' and ${t.completedAt} is not null and ${t.expiresAt} is null)`),
+  uniqueIndex5("export_jobs_one_active_key").on(t.organizationId).where(sql20`${t.state} in (${list4(EXPORT_ACTIVE_STATES2)})`),
+  index26("export_jobs_list_idx").on(t.organizationId, t.requestedAt.desc(), t.id.desc())
+]);
+var exportParts2 = coreSchema2.table("export_parts", {
+  organizationId: text35("organization_id").notNull(),
+  exportId: text35("export_id").notNull(),
+  service: text35("service", { enum: EXPORT_SERVICES2 }).notNull(),
+  state: text35("state", { enum: EXPORT_PART_STATES2 }).notNull().default("pending"),
+  prefix: text35("prefix"),
+  fileCount: integer15("file_count"),
+  bytes: bigint5("bytes", { mode: "number" }),
+  failureReason: text35("failure_reason", { enum: EXPORT_PART_FAILURE_REASONS2 }),
+  readyAt: ts3("ready_at"),
+  updatedAt: ts3("updated_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey6({
+    name: "export_parts_pkey",
+    columns: [t.organizationId, t.exportId, t.service]
+  }),
+  foreignKey7({
+    name: "export_parts_export_fk",
+    columns: [t.organizationId, t.exportId],
+    foreignColumns: [exportJobs2.organizationId, exportJobs2.id]
+  }).onDelete("cascade"),
+  check15("export_parts_organization_id_shape", orgShape3),
+  check15("export_parts_organization_not_global", notGlobal3),
+  check15("export_parts_export_id_shape", idShape4("export_id", "exp")),
+  check15("export_parts_service_known", sql20`${t.service} in (${list4(EXPORT_SERVICES2)})`),
+  check15("export_parts_state_known", sql20`${t.state} in (${list4(EXPORT_PART_STATES2)})`),
+  check15("export_parts_failure_reason_known", sql20`${t.failureReason} is null or ${t.failureReason} in (${list4(EXPORT_PART_FAILURE_REASONS2)})`),
+  check15("export_parts_prefix_shape", sql20`${t.prefix} is null or (char_length(${t.prefix}) <= ${num(MAX_EXPORT_PREFIX_LENGTH2)}
+        and ${t.prefix} ~ '^[A-Za-z0-9_][A-Za-z0-9_./-]*$' and ('/' || ${t.prefix} || '/') not like '%/../%')`),
+  check15("export_parts_file_count_range", sql20`${t.fileCount} is null or ${t.fileCount} between 0 and ${num(MAX_EXPORT_PART_FILES2)}`),
+  check15("export_parts_bytes_range", sql20`${t.bytes} is null or ${t.bytes} between 0 and ${num(MAX_EXPORT_PART_BYTES2)}`),
+  check15("export_parts_state_columns", sql20`(${t.state} = 'pending' and ${t.prefix} is null and ${t.fileCount} is null and ${t.bytes} is null and ${t.failureReason} is null and ${t.readyAt} is null)
+        or (${t.state} = 'ready' and ${t.prefix} is not null and ${t.fileCount} is not null and ${t.bytes} is not null and ${t.failureReason} is null and ${t.readyAt} is not null)
+        or (${t.state} = 'failed' and ${t.failureReason} is not null and ${t.readyAt} is null)`)
+]);
+var coreApiKeys2 = coreSchema2.table("api_keys", {
+  id: text35("id").notNull(),
+  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  name: text35("name").notNull(),
+  prefix: text35("prefix").notNull(),
+  secretHash: text35("secret_hash").notNull(),
+  scopes: text35("scopes").array().notNull(),
+  roleCeiling: text35("role_ceiling", { enum: API_KEY_ROLE_CEILINGS2 }).notNull(),
+  expiresAt: ts3("expires_at"),
+  lastUsedAt: ts3("last_used_at"),
+  revokedAt: ts3("revoked_at"),
+  createdByMembershipId: text35("created_by_membership_id").notNull(),
+  createdAt: ts3("created_at").notNull().defaultNow()
+}, (t) => [
+  primaryKey6({ name: "api_keys_pkey", columns: [t.organizationId, t.id] }),
+  check15("api_keys_id_shape", idShape4("id", "akey")),
+  check15("api_keys_organization_id_shape", orgShape3),
+  check15("api_keys_organization_not_global", notGlobal3),
+  check15("api_keys_name_length", sql20`char_length(${t.name}) between 1 and ${num(MAX_API_KEY_NAME_LENGTH2)}`),
+  check15("api_keys_prefix_shape", sql20`${t.prefix} ~ '^clk_[A-Za-z0-9_-]{8}$'`),
+  check15("api_keys_secret_hash_shape", hexHash("secret_hash")),
+  check15("api_keys_scopes_known", sql20`cardinality(${t.scopes}) between 1 and ${num(API_KEY_SCOPES2.length)}
+        and ${t.scopes} <@ array[${list4(API_KEY_SCOPES2)}]::text[]`),
+  check15("api_keys_role_ceiling_known", sql20`${t.roleCeiling} in (${list4(API_KEY_ROLE_CEILINGS2)})`),
+  check15("api_keys_created_by_shape", idShape4("created_by_membership_id", "mem")),
+  check15("api_keys_expiry_after_creation", sql20`${t.expiresAt} is null or ${t.expiresAt} > ${t.createdAt}`),
+  uniqueIndex5("api_keys_secret_hash_key").on(t.secretHash),
+  index26("api_keys_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc())
+]);
+var apiKeyUsage2 = coreSchema2.table("api_key_usage", {
+  organizationId: text35("organization_id").notNull(),
+  apiKeyId: text35("api_key_id").notNull(),
+  windowStart: ts3("window_start").notNull(),
+  requestCount: bigint5("request_count", { mode: "number" }).notNull().default(0)
+}, (t) => [
+  primaryKey6({
+    name: "api_key_usage_pkey",
+    columns: [t.organizationId, t.apiKeyId, t.windowStart]
+  }),
+  foreignKey7({
+    name: "api_key_usage_key_fk",
+    columns: [t.organizationId, t.apiKeyId],
+    foreignColumns: [coreApiKeys2.organizationId, coreApiKeys2.id]
+  }).onDelete("cascade"),
+  check15("api_key_usage_organization_id_shape", orgShape3),
+  check15("api_key_usage_organization_not_global", notGlobal3),
+  check15("api_key_usage_api_key_id_shape", idShape4("api_key_id", "akey")),
+  check15("api_key_usage_request_count_range", sql20`${t.requestCount} between 0 and 1000000000`),
+  index26("api_key_usage_age_idx").on(t.organizationId, t.windowStart)
+]);
+// src/schema/core-crm.ts
+import { sql as sql21 } from "drizzle-orm";
+import {
+  bigint as bigint6,
+  boolean as boolean9,
+  check as check16,
+  customType as customType6,
+  foreignKey as foreignKey8,
+  index as index27,
+  jsonb as jsonb13,
+  primaryKey as primaryKey7,
+  text as text36,
+  timestamp as timestamp29,
+  uniqueIndex as uniqueIndex6
 } from "drizzle-orm/pg-core";
 var CRM_PROVIDERS2 = ["hubspot", "salesforce"];
 var CRM_OBJECT_KINDS2 = ["deal", "call", "company", "contact"];
@@ -2032,216 +2372,216 @@ var MAX_CRM_CURSOR_LENGTH2 = 1024;
 var MAX_CRM_WRITE_KEY_LENGTH2 = 256;
 var MAX_CRM_LOCAL_ID_LENGTH2 = 128;
 var CRM_WEBHOOK_WINDOW_SECONDS2 = 300;
-var list4 = (values) => sql20.raw(values.map((v) => `'${v}'`).join(", "));
-var idShape4 = (column, prefix) => sql20.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var orgShape3 = sql20.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
-var notGlobal3 = sql20.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
-var ts3 = (name) => timestamp28(name, { withTimezone: true });
-var lengthBetween = (column, max) => sql20.raw(`char_length("${column}") between 1 and ${max}`);
+var list5 = (values) => sql21.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape5 = (column, prefix) => sql21.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var orgShape4 = sql21.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
+var notGlobal4 = sql21.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
+var ts4 = (name) => timestamp29(name, { withTimezone: true });
+var lengthBetween = (column, max) => sql21.raw(`char_length("${column}") between 1 and ${max}`);
 var bytes6 = customType6({
   dataType: () => "bytea",
   toDriver: (value) => Buffer.from(value),
   fromDriver: (value) => new Uint8Array(value)
 });
 var crmConnections2 = coreSchema2.table("crm_connection", {
-  id: text35("id").notNull(),
-  organizationId: text35("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
-  provider: text35("provider", { enum: CRM_PROVIDERS2 }).notNull(),
-  state: text35("state", { enum: CRM_CONNECTION_STATES2 }).notNull().default("connected"),
-  externalAccountId: text35("external_account_id").notNull(),
-  accountLabel: text35("account_label"),
-  scopeLevel: text35("scope_level", { enum: CRM_SCOPE_LEVELS2 }).notNull().default("read"),
+  id: text36("id").notNull(),
+  organizationId: text36("organization_id").notNull().references(() => organizations2.organizationId, { onDelete: "cascade" }),
+  provider: text36("provider", { enum: CRM_PROVIDERS2 }).notNull(),
+  state: text36("state", { enum: CRM_CONNECTION_STATES2 }).notNull().default("connected"),
+  externalAccountId: text36("external_account_id").notNull(),
+  accountLabel: text36("account_label"),
+  scopeLevel: text36("scope_level", { enum: CRM_SCOPE_LEVELS2 }).notNull().default("read"),
   accessTokenSealed: bytes6("access_token_sealed"),
   refreshTokenSealed: bytes6("refresh_token_sealed"),
-  tokenKeyId: text35("token_key_id"),
-  accessTokenExpiresAt: ts3("access_token_expires_at"),
-  connectedByMembershipId: text35("connected_by_membership_id").notNull(),
-  connectedAt: ts3("connected_at").notNull().defaultNow(),
-  lastSyncedAt: ts3("last_synced_at"),
-  needsReconnectSince: ts3("needs_reconnect_since"),
-  stageMappingConfirmedByMembershipId: text35("stage_mapping_confirmed_by_membership_id"),
-  stageMappingConfirmedAt: ts3("stage_mapping_confirmed_at"),
-  updatedAt: ts3("updated_at").notNull().defaultNow()
+  tokenKeyId: text36("token_key_id"),
+  accessTokenExpiresAt: ts4("access_token_expires_at"),
+  connectedByMembershipId: text36("connected_by_membership_id").notNull(),
+  connectedAt: ts4("connected_at").notNull().defaultNow(),
+  lastSyncedAt: ts4("last_synced_at"),
+  needsReconnectSince: ts4("needs_reconnect_since"),
+  stageMappingConfirmedByMembershipId: text36("stage_mapping_confirmed_by_membership_id"),
+  stageMappingConfirmedAt: ts4("stage_mapping_confirmed_at"),
+  updatedAt: ts4("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey6({ name: "crm_connection_pkey", columns: [t.organizationId, t.id] }),
-  check15("crm_connection_id_shape", idShape4("id", "crn")),
-  check15("crm_connection_organization_id_shape", orgShape3),
-  check15("crm_connection_organization_not_global", notGlobal3),
-  check15("crm_connection_provider_known", sql20`${t.provider} in (${list4(CRM_PROVIDERS2)})`),
-  check15("crm_connection_state_known", sql20`${t.state} in (${list4(CRM_CONNECTION_STATES2)})`),
-  check15("crm_connection_scope_level_known", sql20`${t.scopeLevel} in (${list4(CRM_SCOPE_LEVELS2)})`),
-  check15("crm_connection_external_account_id_shape", lengthBetween("external_account_id", MAX_CRM_EXTERNAL_ID_LENGTH2)),
-  check15("crm_connection_account_label_shape", sql20`${t.accountLabel} is null or char_length(${t.accountLabel}) between 1 and ${sql20.raw(String(MAX_CRM_LABEL_LENGTH2))}`),
-  check15("crm_connection_connected_by_membership_id_shape", idShape4("connected_by_membership_id", "mem")),
-  check15("crm_connection_stage_mapping_confirmed_by_shape", idShape4("stage_mapping_confirmed_by_membership_id", "mem")),
-  check15("crm_connection_access_token_sealed_size", sql20`${t.accessTokenSealed} is null or octet_length(${t.accessTokenSealed}) between 1 and ${sql20.raw(String(MAX_CRM_SEALED_TOKEN_BYTES2))}`),
-  check15("crm_connection_refresh_token_sealed_size", sql20`${t.refreshTokenSealed} is null or octet_length(${t.refreshTokenSealed}) between 1 and ${sql20.raw(String(MAX_CRM_SEALED_TOKEN_BYTES2))}`),
-  check15("crm_connection_token_key_id_shape", sql20`${t.tokenKeyId} is null or char_length(${t.tokenKeyId}) between 1 and ${sql20.raw(String(MAX_CRM_KEY_ID_LENGTH2))}`),
-  check15("crm_connection_sealed_tokens_have_key_id", sql20`(${t.accessTokenSealed} is null and ${t.refreshTokenSealed} is null) or ${t.tokenKeyId} is not null`),
-  check15("crm_connection_access_expiry_needs_token", sql20`${t.accessTokenExpiresAt} is null or ${t.accessTokenSealed} is not null`),
-  check15("crm_connection_needs_reconnect_since", sql20`(${t.state} = 'needs_reconnect') = (${t.needsReconnectSince} is not null)`),
-  check15("crm_connection_stage_mapping_confirmation", sql20`(${t.stageMappingConfirmedByMembershipId} is null) = (${t.stageMappingConfirmedAt} is null)`),
-  uniqueIndex5("crm_connection_provider_key").on(t.organizationId, t.provider),
-  uniqueIndex5("crm_connection_account_key").on(t.provider, t.externalAccountId),
-  uniqueIndex5("crm_connection_provider_id_key").on(t.organizationId, t.id, t.provider)
+  primaryKey7({ name: "crm_connection_pkey", columns: [t.organizationId, t.id] }),
+  check16("crm_connection_id_shape", idShape5("id", "crn")),
+  check16("crm_connection_organization_id_shape", orgShape4),
+  check16("crm_connection_organization_not_global", notGlobal4),
+  check16("crm_connection_provider_known", sql21`${t.provider} in (${list5(CRM_PROVIDERS2)})`),
+  check16("crm_connection_state_known", sql21`${t.state} in (${list5(CRM_CONNECTION_STATES2)})`),
+  check16("crm_connection_scope_level_known", sql21`${t.scopeLevel} in (${list5(CRM_SCOPE_LEVELS2)})`),
+  check16("crm_connection_external_account_id_shape", lengthBetween("external_account_id", MAX_CRM_EXTERNAL_ID_LENGTH2)),
+  check16("crm_connection_account_label_shape", sql21`${t.accountLabel} is null or char_length(${t.accountLabel}) between 1 and ${sql21.raw(String(MAX_CRM_LABEL_LENGTH2))}`),
+  check16("crm_connection_connected_by_membership_id_shape", idShape5("connected_by_membership_id", "mem")),
+  check16("crm_connection_stage_mapping_confirmed_by_shape", idShape5("stage_mapping_confirmed_by_membership_id", "mem")),
+  check16("crm_connection_access_token_sealed_size", sql21`${t.accessTokenSealed} is null or octet_length(${t.accessTokenSealed}) between 1 and ${sql21.raw(String(MAX_CRM_SEALED_TOKEN_BYTES2))}`),
+  check16("crm_connection_refresh_token_sealed_size", sql21`${t.refreshTokenSealed} is null or octet_length(${t.refreshTokenSealed}) between 1 and ${sql21.raw(String(MAX_CRM_SEALED_TOKEN_BYTES2))}`),
+  check16("crm_connection_token_key_id_shape", sql21`${t.tokenKeyId} is null or char_length(${t.tokenKeyId}) between 1 and ${sql21.raw(String(MAX_CRM_KEY_ID_LENGTH2))}`),
+  check16("crm_connection_sealed_tokens_have_key_id", sql21`(${t.accessTokenSealed} is null and ${t.refreshTokenSealed} is null) or ${t.tokenKeyId} is not null`),
+  check16("crm_connection_access_expiry_needs_token", sql21`${t.accessTokenExpiresAt} is null or ${t.accessTokenSealed} is not null`),
+  check16("crm_connection_needs_reconnect_since", sql21`(${t.state} = 'needs_reconnect') = (${t.needsReconnectSince} is not null)`),
+  check16("crm_connection_stage_mapping_confirmation", sql21`(${t.stageMappingConfirmedByMembershipId} is null) = (${t.stageMappingConfirmedAt} is null)`),
+  uniqueIndex6("crm_connection_provider_key").on(t.organizationId, t.provider),
+  uniqueIndex6("crm_connection_account_key").on(t.provider, t.externalAccountId),
+  uniqueIndex6("crm_connection_provider_id_key").on(t.organizationId, t.id, t.provider)
 ]);
 var crmMappings2 = coreSchema2.table("crm_mapping", {
-  organizationId: text35("organization_id").notNull(),
-  connectionId: text35("connection_id").notNull(),
-  kind: text35("kind", { enum: CRM_MAPPING_KINDS2 }).notNull(),
-  key: text35("key").notNull(),
-  outcome: text35("outcome", { enum: CRM_STAGE_OUTCOMES2 }),
-  label: text35("label"),
-  direction: text35("direction", { enum: CRM_DIRECTIONS2 }),
-  updatedAt: ts3("updated_at").notNull().defaultNow()
+  organizationId: text36("organization_id").notNull(),
+  connectionId: text36("connection_id").notNull(),
+  kind: text36("kind", { enum: CRM_MAPPING_KINDS2 }).notNull(),
+  key: text36("key").notNull(),
+  outcome: text36("outcome", { enum: CRM_STAGE_OUTCOMES2 }),
+  label: text36("label"),
+  direction: text36("direction", { enum: CRM_DIRECTIONS2 }),
+  updatedAt: ts4("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey6({
+  primaryKey7({
     name: "crm_mapping_pkey",
     columns: [t.organizationId, t.connectionId, t.kind, t.key]
   }),
-  check15("crm_mapping_organization_id_shape", orgShape3),
-  check15("crm_mapping_organization_not_global", notGlobal3),
-  check15("crm_mapping_connection_id_shape", idShape4("connection_id", "crn")),
-  check15("crm_mapping_kind_known", sql20`${t.kind} in (${list4(CRM_MAPPING_KINDS2)})`),
-  check15("crm_mapping_key_shape", lengthBetween("key", MAX_CRM_EXTERNAL_ID_LENGTH2)),
-  check15("crm_mapping_outcome_known", sql20`${t.outcome} is null or ${t.outcome} in (${list4(CRM_STAGE_OUTCOMES2)})`),
-  check15("crm_mapping_direction_known", sql20`${t.direction} is null or ${t.direction} in (${list4(CRM_DIRECTIONS2)})`),
-  check15("crm_mapping_label_shape", sql20`${t.label} is null or char_length(${t.label}) between 1 and ${sql20.raw(String(MAX_CRM_LABEL_LENGTH2))}`),
-  check15("crm_mapping_kind_columns", sql20`(${t.kind} = 'stage' and ${t.outcome} is not null and ${t.direction} is null)
-        or (${t.kind} = 'field' and ${t.direction} is not null and ${t.outcome} is null and ${t.label} is null and ${t.key} in (${list4(CRM_FIELD_KEYS2)}))`),
-  check15("crm_mapping_notes_never_both", sql20`${t.key} <> 'activity.notes' or ${t.direction} is distinct from 'both'`),
-  foreignKey7({
+  check16("crm_mapping_organization_id_shape", orgShape4),
+  check16("crm_mapping_organization_not_global", notGlobal4),
+  check16("crm_mapping_connection_id_shape", idShape5("connection_id", "crn")),
+  check16("crm_mapping_kind_known", sql21`${t.kind} in (${list5(CRM_MAPPING_KINDS2)})`),
+  check16("crm_mapping_key_shape", lengthBetween("key", MAX_CRM_EXTERNAL_ID_LENGTH2)),
+  check16("crm_mapping_outcome_known", sql21`${t.outcome} is null or ${t.outcome} in (${list5(CRM_STAGE_OUTCOMES2)})`),
+  check16("crm_mapping_direction_known", sql21`${t.direction} is null or ${t.direction} in (${list5(CRM_DIRECTIONS2)})`),
+  check16("crm_mapping_label_shape", sql21`${t.label} is null or char_length(${t.label}) between 1 and ${sql21.raw(String(MAX_CRM_LABEL_LENGTH2))}`),
+  check16("crm_mapping_kind_columns", sql21`(${t.kind} = 'stage' and ${t.outcome} is not null and ${t.direction} is null)
+        or (${t.kind} = 'field' and ${t.direction} is not null and ${t.outcome} is null and ${t.label} is null and ${t.key} in (${list5(CRM_FIELD_KEYS2)}))`),
+  check16("crm_mapping_notes_never_both", sql21`${t.key} <> 'activity.notes' or ${t.direction} is distinct from 'both'`),
+  foreignKey8({
     name: "crm_mapping_connection_fk",
     columns: [t.organizationId, t.connectionId],
     foreignColumns: [crmConnections2.organizationId, crmConnections2.id]
   }).onDelete("cascade")
 ]);
-var jsonArrayBounded = (column, max) => sql20.raw(`jsonb_typeof("${column}") = 'array' and jsonb_array_length("${column}") <= ${max}`);
+var jsonArrayBounded = (column, max) => sql21.raw(`jsonb_typeof("${column}") = 'array' and jsonb_array_length("${column}") <= ${max}`);
 var crmSyncRuns2 = coreSchema2.table("crm_sync_run", {
-  id: text35("id").notNull(),
-  organizationId: text35("organization_id").notNull(),
-  connectionId: text35("connection_id").notNull(),
-  objectKind: text35("object_kind", { enum: CRM_OBJECT_KINDS2 }).notNull(),
-  trigger: text35("trigger", { enum: CRM_RUN_TRIGGERS2 }).notNull(),
-  state: text35("state", { enum: CRM_RUN_STATES2 }).notNull().default("queued"),
-  requestedAt: ts3("requested_at").notNull().defaultNow(),
-  requestedByMembershipId: text35("requested_by_membership_id"),
-  startedAt: ts3("started_at"),
-  completedAt: ts3("completed_at"),
-  createdCount: bigint5("created_count", { mode: "number" }).notNull().default(0),
-  updatedCount: bigint5("updated_count", { mode: "number" }).notNull().default(0),
-  skippedCount: bigint5("skipped_count", { mode: "number" }).notNull().default(0),
-  failedCount: bigint5("failed_count", { mode: "number" }).notNull().default(0),
-  unlinkedCount: bigint5("unlinked_count", { mode: "number" }).notNull().default(0),
-  skipped: jsonb12("skipped").notNull().default(sql20`'[]'::jsonb`),
-  skippedFields: jsonb12("skipped_fields").notNull().default(sql20`'[]'::jsonb`),
-  failures: jsonb12("failures").notNull().default(sql20`'[]'::jsonb`),
-  failuresTruncated: boolean8("failures_truncated").notNull().default(false),
-  errorCode: text35("error_code", { enum: CRM_RUN_ERROR_CODES2 }),
-  retryOfRunId: text35("retry_of_run_id"),
-  cursor: text35("cursor")
+  id: text36("id").notNull(),
+  organizationId: text36("organization_id").notNull(),
+  connectionId: text36("connection_id").notNull(),
+  objectKind: text36("object_kind", { enum: CRM_OBJECT_KINDS2 }).notNull(),
+  trigger: text36("trigger", { enum: CRM_RUN_TRIGGERS2 }).notNull(),
+  state: text36("state", { enum: CRM_RUN_STATES2 }).notNull().default("queued"),
+  requestedAt: ts4("requested_at").notNull().defaultNow(),
+  requestedByMembershipId: text36("requested_by_membership_id"),
+  startedAt: ts4("started_at"),
+  completedAt: ts4("completed_at"),
+  createdCount: bigint6("created_count", { mode: "number" }).notNull().default(0),
+  updatedCount: bigint6("updated_count", { mode: "number" }).notNull().default(0),
+  skippedCount: bigint6("skipped_count", { mode: "number" }).notNull().default(0),
+  failedCount: bigint6("failed_count", { mode: "number" }).notNull().default(0),
+  unlinkedCount: bigint6("unlinked_count", { mode: "number" }).notNull().default(0),
+  skipped: jsonb13("skipped").notNull().default(sql21`'[]'::jsonb`),
+  skippedFields: jsonb13("skipped_fields").notNull().default(sql21`'[]'::jsonb`),
+  failures: jsonb13("failures").notNull().default(sql21`'[]'::jsonb`),
+  failuresTruncated: boolean9("failures_truncated").notNull().default(false),
+  errorCode: text36("error_code", { enum: CRM_RUN_ERROR_CODES2 }),
+  retryOfRunId: text36("retry_of_run_id"),
+  cursor: text36("cursor")
 }, (t) => [
-  primaryKey6({ name: "crm_sync_run_pkey", columns: [t.organizationId, t.id] }),
-  check15("crm_sync_run_id_shape", idShape4("id", "crun")),
-  check15("crm_sync_run_organization_id_shape", orgShape3),
-  check15("crm_sync_run_organization_not_global", notGlobal3),
-  check15("crm_sync_run_connection_id_shape", idShape4("connection_id", "crn")),
-  check15("crm_sync_run_requested_by_membership_id_shape", idShape4("requested_by_membership_id", "mem")),
-  check15("crm_sync_run_retry_of_run_id_shape", idShape4("retry_of_run_id", "crun")),
-  check15("crm_sync_run_object_kind_known", sql20`${t.objectKind} in (${list4(CRM_OBJECT_KINDS2)})`),
-  check15("crm_sync_run_trigger_known", sql20`${t.trigger} in (${list4(CRM_RUN_TRIGGERS2)})`),
-  check15("crm_sync_run_state_known", sql20`${t.state} in (${list4(CRM_RUN_STATES2)})`),
-  check15("crm_sync_run_error_code_known", sql20`${t.errorCode} is null or ${t.errorCode} in (${list4(CRM_RUN_ERROR_CODES2)})`),
-  check15("crm_sync_run_counts_bounds", sql20`${t.createdCount} between 0 and ${sql20.raw(String(MAX_CRM_RUN_COUNT2))}
-        and ${t.updatedCount} between 0 and ${sql20.raw(String(MAX_CRM_RUN_COUNT2))}
-        and ${t.skippedCount} between 0 and ${sql20.raw(String(MAX_CRM_RUN_COUNT2))}
-        and ${t.failedCount} between 0 and ${sql20.raw(String(MAX_CRM_RUN_COUNT2))}
-        and ${t.unlinkedCount} between 0 and ${sql20.raw(String(MAX_CRM_RUN_COUNT2))}`),
-  check15("crm_sync_run_skipped_shape", jsonArrayBounded("skipped", CRM_SKIP_REASON_COUNT2)),
-  check15("crm_sync_run_skipped_fields_shape", jsonArrayBounded("skipped_fields", CRM_FIELD_KEYS2.length)),
-  check15("crm_sync_run_failures_shape", jsonArrayBounded("failures", MAX_CRM_RUN_FAILURES2)),
-  check15("crm_sync_run_cursor_shape", sql20`${t.cursor} is null or char_length(${t.cursor}) between 1 and ${sql20.raw(String(MAX_CRM_CURSOR_LENGTH2))}`),
-  check15("crm_sync_run_lifecycle", sql20`(${t.state} = 'queued' and ${t.startedAt} is null and ${t.completedAt} is null)
+  primaryKey7({ name: "crm_sync_run_pkey", columns: [t.organizationId, t.id] }),
+  check16("crm_sync_run_id_shape", idShape5("id", "crun")),
+  check16("crm_sync_run_organization_id_shape", orgShape4),
+  check16("crm_sync_run_organization_not_global", notGlobal4),
+  check16("crm_sync_run_connection_id_shape", idShape5("connection_id", "crn")),
+  check16("crm_sync_run_requested_by_membership_id_shape", idShape5("requested_by_membership_id", "mem")),
+  check16("crm_sync_run_retry_of_run_id_shape", idShape5("retry_of_run_id", "crun")),
+  check16("crm_sync_run_object_kind_known", sql21`${t.objectKind} in (${list5(CRM_OBJECT_KINDS2)})`),
+  check16("crm_sync_run_trigger_known", sql21`${t.trigger} in (${list5(CRM_RUN_TRIGGERS2)})`),
+  check16("crm_sync_run_state_known", sql21`${t.state} in (${list5(CRM_RUN_STATES2)})`),
+  check16("crm_sync_run_error_code_known", sql21`${t.errorCode} is null or ${t.errorCode} in (${list5(CRM_RUN_ERROR_CODES2)})`),
+  check16("crm_sync_run_counts_bounds", sql21`${t.createdCount} between 0 and ${sql21.raw(String(MAX_CRM_RUN_COUNT2))}
+        and ${t.updatedCount} between 0 and ${sql21.raw(String(MAX_CRM_RUN_COUNT2))}
+        and ${t.skippedCount} between 0 and ${sql21.raw(String(MAX_CRM_RUN_COUNT2))}
+        and ${t.failedCount} between 0 and ${sql21.raw(String(MAX_CRM_RUN_COUNT2))}
+        and ${t.unlinkedCount} between 0 and ${sql21.raw(String(MAX_CRM_RUN_COUNT2))}`),
+  check16("crm_sync_run_skipped_shape", jsonArrayBounded("skipped", CRM_SKIP_REASON_COUNT2)),
+  check16("crm_sync_run_skipped_fields_shape", jsonArrayBounded("skipped_fields", CRM_FIELD_KEYS2.length)),
+  check16("crm_sync_run_failures_shape", jsonArrayBounded("failures", MAX_CRM_RUN_FAILURES2)),
+  check16("crm_sync_run_cursor_shape", sql21`${t.cursor} is null or char_length(${t.cursor}) between 1 and ${sql21.raw(String(MAX_CRM_CURSOR_LENGTH2))}`),
+  check16("crm_sync_run_lifecycle", sql21`(${t.state} = 'queued' and ${t.startedAt} is null and ${t.completedAt} is null)
         or (${t.state} = 'running' and ${t.startedAt} is not null and ${t.completedAt} is null)
         or (${t.state} in ('completed', 'failed') and ${t.completedAt} is not null)`),
-  check15("crm_sync_run_error_code_only_when_failed", sql20`${t.errorCode} is null or ${t.state} = 'failed'`),
-  foreignKey7({
+  check16("crm_sync_run_error_code_only_when_failed", sql21`${t.errorCode} is null or ${t.state} = 'failed'`),
+  foreignKey8({
     name: "crm_sync_run_connection_fk",
     columns: [t.organizationId, t.connectionId],
     foreignColumns: [crmConnections2.organizationId, crmConnections2.id]
   }).onDelete("cascade"),
-  foreignKey7({
+  foreignKey8({
     name: "crm_sync_run_retry_of_fk",
     columns: [t.organizationId, t.retryOfRunId],
     foreignColumns: [t.organizationId, t.id]
   }),
-  index26("crm_sync_runs_list_idx").on(t.organizationId, t.connectionId, t.requestedAt.desc(), t.id.desc()),
-  index26("crm_sync_runs_state_list_idx").on(t.organizationId, t.connectionId, t.state, t.requestedAt.desc(), t.id.desc()),
-  index26("crm_sync_runs_kind_list_idx").on(t.organizationId, t.connectionId, t.objectKind, t.requestedAt.desc(), t.id.desc())
+  index27("crm_sync_runs_list_idx").on(t.organizationId, t.connectionId, t.requestedAt.desc(), t.id.desc()),
+  index27("crm_sync_runs_state_list_idx").on(t.organizationId, t.connectionId, t.state, t.requestedAt.desc(), t.id.desc()),
+  index27("crm_sync_runs_kind_list_idx").on(t.organizationId, t.connectionId, t.objectKind, t.requestedAt.desc(), t.id.desc())
 ]);
 var crmExternalRefs2 = coreSchema2.table("crm_external_ref", {
-  id: text35("id").notNull(),
-  organizationId: text35("organization_id").notNull(),
-  connectionId: text35("connection_id").notNull(),
-  provider: text35("provider", { enum: CRM_PROVIDERS2 }).notNull(),
-  objectKind: text35("object_kind", { enum: CRM_OBJECT_KINDS2 }).notNull(),
-  externalId: text35("external_id"),
-  localId: text35("local_id").notNull(),
-  state: text35("state", { enum: CRM_REF_STATES2 }).notNull().default("linked"),
-  lastSeenVersion: text35("last_seen_version"),
-  lastSeenAt: ts3("last_seen_at"),
-  writeKey: text35("write_key"),
-  createdAt: ts3("created_at").notNull().defaultNow(),
-  updatedAt: ts3("updated_at").notNull().defaultNow()
+  id: text36("id").notNull(),
+  organizationId: text36("organization_id").notNull(),
+  connectionId: text36("connection_id").notNull(),
+  provider: text36("provider", { enum: CRM_PROVIDERS2 }).notNull(),
+  objectKind: text36("object_kind", { enum: CRM_OBJECT_KINDS2 }).notNull(),
+  externalId: text36("external_id"),
+  localId: text36("local_id").notNull(),
+  state: text36("state", { enum: CRM_REF_STATES2 }).notNull().default("linked"),
+  lastSeenVersion: text36("last_seen_version"),
+  lastSeenAt: ts4("last_seen_at"),
+  writeKey: text36("write_key"),
+  createdAt: ts4("created_at").notNull().defaultNow(),
+  updatedAt: ts4("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey6({ name: "crm_external_ref_pkey", columns: [t.organizationId, t.id] }),
-  check15("crm_external_ref_id_shape", idShape4("id", "cxr")),
-  check15("crm_external_ref_organization_id_shape", orgShape3),
-  check15("crm_external_ref_organization_not_global", notGlobal3),
-  check15("crm_external_ref_connection_id_shape", idShape4("connection_id", "crn")),
-  check15("crm_external_ref_provider_known", sql20`${t.provider} in (${list4(CRM_PROVIDERS2)})`),
-  check15("crm_external_ref_object_kind_known", sql20`${t.objectKind} in (${list4(CRM_OBJECT_KINDS2)})`),
-  check15("crm_external_ref_state_known", sql20`${t.state} in (${list4(CRM_REF_STATES2)})`),
-  check15("crm_external_ref_external_id_shape", sql20`${t.externalId} is null or char_length(${t.externalId}) between 1 and ${sql20.raw(String(MAX_CRM_EXTERNAL_ID_LENGTH2))}`),
-  check15("crm_external_ref_local_id_shape", lengthBetween("local_id", MAX_CRM_LOCAL_ID_LENGTH2)),
-  check15("crm_external_ref_last_seen_version_shape", sql20`${t.lastSeenVersion} is null or char_length(${t.lastSeenVersion}) between 1 and ${sql20.raw(String(MAX_CRM_CURSOR_LENGTH2))}`),
-  check15("crm_external_ref_write_key_shape", sql20`${t.writeKey} is null or char_length(${t.writeKey}) between 1 and ${sql20.raw(String(MAX_CRM_WRITE_KEY_LENGTH2))}`),
-  check15("crm_external_ref_state_columns", sql20`(${t.state} = 'pending_write' and ${t.writeKey} is not null)
+  primaryKey7({ name: "crm_external_ref_pkey", columns: [t.organizationId, t.id] }),
+  check16("crm_external_ref_id_shape", idShape5("id", "cxr")),
+  check16("crm_external_ref_organization_id_shape", orgShape4),
+  check16("crm_external_ref_organization_not_global", notGlobal4),
+  check16("crm_external_ref_connection_id_shape", idShape5("connection_id", "crn")),
+  check16("crm_external_ref_provider_known", sql21`${t.provider} in (${list5(CRM_PROVIDERS2)})`),
+  check16("crm_external_ref_object_kind_known", sql21`${t.objectKind} in (${list5(CRM_OBJECT_KINDS2)})`),
+  check16("crm_external_ref_state_known", sql21`${t.state} in (${list5(CRM_REF_STATES2)})`),
+  check16("crm_external_ref_external_id_shape", sql21`${t.externalId} is null or char_length(${t.externalId}) between 1 and ${sql21.raw(String(MAX_CRM_EXTERNAL_ID_LENGTH2))}`),
+  check16("crm_external_ref_local_id_shape", lengthBetween("local_id", MAX_CRM_LOCAL_ID_LENGTH2)),
+  check16("crm_external_ref_last_seen_version_shape", sql21`${t.lastSeenVersion} is null or char_length(${t.lastSeenVersion}) between 1 and ${sql21.raw(String(MAX_CRM_CURSOR_LENGTH2))}`),
+  check16("crm_external_ref_write_key_shape", sql21`${t.writeKey} is null or char_length(${t.writeKey}) between 1 and ${sql21.raw(String(MAX_CRM_WRITE_KEY_LENGTH2))}`),
+  check16("crm_external_ref_state_columns", sql21`(${t.state} = 'pending_write' and ${t.writeKey} is not null)
         or (${t.state} in ('linked', 'unlinked') and ${t.externalId} is not null)`),
-  foreignKey7({
+  foreignKey8({
     name: "crm_external_ref_connection_fk",
     columns: [t.organizationId, t.connectionId, t.provider],
     foreignColumns: [crmConnections2.organizationId, crmConnections2.id, crmConnections2.provider]
   }).onDelete("cascade"),
-  uniqueIndex5("crm_external_ref_object_key").on(t.organizationId, t.provider, t.objectKind, t.externalId),
-  uniqueIndex5("crm_external_ref_write_key").on(t.organizationId, t.provider, t.writeKey).where(sql20`${t.writeKey} is not null`),
-  index26("crm_external_refs_local_idx").on(t.organizationId, t.provider, t.objectKind, t.localId),
-  index26("crm_external_refs_connection_idx").on(t.organizationId, t.connectionId, t.id)
+  uniqueIndex6("crm_external_ref_object_key").on(t.organizationId, t.provider, t.objectKind, t.externalId),
+  uniqueIndex6("crm_external_ref_write_key").on(t.organizationId, t.provider, t.writeKey).where(sql21`${t.writeKey} is not null`),
+  index27("crm_external_refs_local_idx").on(t.organizationId, t.provider, t.objectKind, t.localId),
+  index27("crm_external_refs_connection_idx").on(t.organizationId, t.connectionId, t.id)
 ]);
 var crmWebhookReceipts2 = coreSchema2.table("crm_webhook_receipt", {
-  organizationId: text35("organization_id").notNull(),
-  connectionId: text35("connection_id").notNull(),
-  eventId: text35("event_id").notNull(),
-  receivedAt: ts3("received_at").notNull().defaultNow()
+  organizationId: text36("organization_id").notNull(),
+  connectionId: text36("connection_id").notNull(),
+  eventId: text36("event_id").notNull(),
+  receivedAt: ts4("received_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey6({
+  primaryKey7({
     name: "crm_webhook_receipt_pkey",
     columns: [t.organizationId, t.connectionId, t.eventId]
   }),
-  check15("crm_webhook_receipt_organization_id_shape", orgShape3),
-  check15("crm_webhook_receipt_organization_not_global", notGlobal3),
-  check15("crm_webhook_receipt_connection_id_shape", idShape4("connection_id", "crn")),
-  check15("crm_webhook_receipt_event_id_shape", lengthBetween("event_id", MAX_CRM_EXTERNAL_ID_LENGTH2)),
-  foreignKey7({
+  check16("crm_webhook_receipt_organization_id_shape", orgShape4),
+  check16("crm_webhook_receipt_organization_not_global", notGlobal4),
+  check16("crm_webhook_receipt_connection_id_shape", idShape5("connection_id", "crn")),
+  check16("crm_webhook_receipt_event_id_shape", lengthBetween("event_id", MAX_CRM_EXTERNAL_ID_LENGTH2)),
+  foreignKey8({
     name: "crm_webhook_receipt_connection_fk",
     columns: [t.organizationId, t.connectionId],
     foreignColumns: [crmConnections2.organizationId, crmConnections2.id]
   }).onDelete("cascade"),
-  index26("crm_webhook_receipts_age_idx").on(t.organizationId, t.receivedAt)
+  index27("crm_webhook_receipts_age_idx").on(t.organizationId, t.receivedAt)
 ]);
 // src/schema/core-demo-rate-counter.ts
-import { sql as sql21 } from "drizzle-orm";
-import { check as check16, customType as customType7, index as index27, integer as integer15, primaryKey as primaryKey7, timestamp as timestamp29 } from "drizzle-orm/pg-core";
+import { sql as sql22 } from "drizzle-orm";
+import { check as check17, customType as customType7, index as index28, integer as integer16, primaryKey as primaryKey8, timestamp as timestamp30 } from "drizzle-orm/pg-core";
 var DEMO_RATE_ADDRESS_HASH_BYTES2 = 32;
 var bytea = customType7({
   dataType() {
@@ -2250,105 +2590,105 @@ var bytea = customType7({
 });
 var demoRateCounters2 = coreSchema2.table("demo_rate_counter", {
   addressHash: bytea("address_hash").notNull(),
-  windowStart: timestamp29("window_start", { withTimezone: true }).notNull(),
-  hits: integer15("hits").notNull()
+  windowStart: timestamp30("window_start", { withTimezone: true }).notNull(),
+  hits: integer16("hits").notNull()
 }, (t) => [
-  primaryKey7({ name: "demo_rate_counter_pkey", columns: [t.addressHash, t.windowStart] }),
-  check16("demo_rate_counter_address_hash_length", sql21`octet_length(${t.addressHash}) = ${sql21.raw(String(DEMO_RATE_ADDRESS_HASH_BYTES2))}`),
-  check16("demo_rate_counter_hits_positive", sql21`${t.hits} >= 1`),
-  index27("demo_rate_counters_window_start_idx").on(t.windowStart)
+  primaryKey8({ name: "demo_rate_counter_pkey", columns: [t.addressHash, t.windowStart] }),
+  check17("demo_rate_counter_address_hash_length", sql22`octet_length(${t.addressHash}) = ${sql22.raw(String(DEMO_RATE_ADDRESS_HASH_BYTES2))}`),
+  check17("demo_rate_counter_hits_positive", sql22`${t.hits} >= 1`),
+  index28("demo_rate_counters_window_start_idx").on(t.windowStart)
 ]);
 // src/schema/core-demo-requests.ts
-import { sql as sql22 } from "drizzle-orm";
-import { check as check17, index as index28, integer as integer16, text as text36, timestamp as timestamp30, unique as unique23 } from "drizzle-orm/pg-core";
+import { sql as sql23 } from "drizzle-orm";
+import { check as check18, index as index29, integer as integer17, text as text37, timestamp as timestamp31, unique as unique23 } from "drizzle-orm/pg-core";
 var DEMO_NOTIFICATION_STATUSES2 = ["pending", "sent", "failed"];
 var DEMO_REQUEST_NAME_MAX2 = 200;
 var DEMO_REQUEST_MESSAGE_MAX2 = 2000;
 var DEMO_REQUEST_SOURCE_PAGE_MAX2 = 200;
 var DEMO_REQUEST_KEY_LENGTH2 = { min: 16, max: 128 };
-var list5 = (values) => sql22.raw(values.map((v) => `'${v}'`).join(", "));
+var list6 = (values) => sql23.raw(values.map((v) => `'${v}'`).join(", "));
 var demoRequests2 = coreSchema2.table("demo_request", {
-  id: text36("id").primaryKey(),
-  name: text36("name").notNull(),
-  workEmail: text36("work_email").notNull(),
-  companyName: text36("company_name").notNull(),
-  message: text36("message"),
-  sourcePage: text36("source_page").notNull(),
-  idempotencyKey: text36("idempotency_key").notNull(),
-  notificationStatus: text36("notification_status", { enum: DEMO_NOTIFICATION_STATUSES2 }).notNull().default("pending"),
-  notificationAttempts: integer16("notification_attempts").notNull().default(0),
-  notificationLastAttemptAt: timestamp30("notification_last_attempt_at", { withTimezone: true }),
-  submittedAt: timestamp30("submitted_at", { withTimezone: true }).notNull().defaultNow()
+  id: text37("id").primaryKey(),
+  name: text37("name").notNull(),
+  workEmail: text37("work_email").notNull(),
+  companyName: text37("company_name").notNull(),
+  message: text37("message"),
+  sourcePage: text37("source_page").notNull(),
+  idempotencyKey: text37("idempotency_key").notNull(),
+  notificationStatus: text37("notification_status", { enum: DEMO_NOTIFICATION_STATUSES2 }).notNull().default("pending"),
+  notificationAttempts: integer17("notification_attempts").notNull().default(0),
+  notificationLastAttemptAt: timestamp31("notification_last_attempt_at", { withTimezone: true }),
+  submittedAt: timestamp31("submitted_at", { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
-  check17("demo_request_id_shape", sql22`"id" ~ '^dreq_[0-9a-f]{32}$'`),
-  check17("demo_request_name_shape", sql22`char_length(btrim(${t.name})) between 1 and ${sql22.raw(String(DEMO_REQUEST_NAME_MAX2))}`),
-  check17("demo_request_work_email_shape", sql22`${t.workEmail} = lower(${t.workEmail} collate "C")
+  check18("demo_request_id_shape", sql23`"id" ~ '^dreq_[0-9a-f]{32}$'`),
+  check18("demo_request_name_shape", sql23`char_length(btrim(${t.name})) between 1 and ${sql23.raw(String(DEMO_REQUEST_NAME_MAX2))}`),
+  check18("demo_request_work_email_shape", sql23`${t.workEmail} = lower(${t.workEmail} collate "C")
         and char_length(${t.workEmail}) between 3 and 320
         and char_length(${t.workEmail}) - char_length(replace(${t.workEmail}, '@', '')) = 1
         and position('@' in ${t.workEmail}) between 2 and char_length(${t.workEmail}) - 1
         and ${t.workEmail} collate "C" !~ '[[:space:][:cntrl:]]'
         and ${t.workEmail} collate "C" ~ '^[!-~]+$'`),
-  check17("demo_request_company_name_shape", sql22`char_length(btrim(${t.companyName})) between 1 and ${sql22.raw(String(DEMO_REQUEST_NAME_MAX2))}`),
-  check17("demo_request_message_length", sql22`${t.message} is null or char_length(${t.message}) <= ${sql22.raw(String(DEMO_REQUEST_MESSAGE_MAX2))}`),
-  check17("demo_request_source_page_shape", sql22`char_length(${t.sourcePage}) between 1 and ${sql22.raw(String(DEMO_REQUEST_SOURCE_PAGE_MAX2))}
+  check18("demo_request_company_name_shape", sql23`char_length(btrim(${t.companyName})) between 1 and ${sql23.raw(String(DEMO_REQUEST_NAME_MAX2))}`),
+  check18("demo_request_message_length", sql23`${t.message} is null or char_length(${t.message}) <= ${sql23.raw(String(DEMO_REQUEST_MESSAGE_MAX2))}`),
+  check18("demo_request_source_page_shape", sql23`char_length(${t.sourcePage}) between 1 and ${sql23.raw(String(DEMO_REQUEST_SOURCE_PAGE_MAX2))}
         and left(${t.sourcePage}, 1) = '/'`),
-  check17("demo_request_idempotency_key_length", sql22`char_length(${t.idempotencyKey}) between ${sql22.raw(String(DEMO_REQUEST_KEY_LENGTH2.min))} and ${sql22.raw(String(DEMO_REQUEST_KEY_LENGTH2.max))}`),
-  check17("demo_request_notification_status_known", sql22`${t.notificationStatus} in (${list5(DEMO_NOTIFICATION_STATUSES2)})`),
-  check17("demo_request_notification_attempts_not_negative", sql22`${t.notificationAttempts} >= 0`),
+  check18("demo_request_idempotency_key_length", sql23`char_length(${t.idempotencyKey}) between ${sql23.raw(String(DEMO_REQUEST_KEY_LENGTH2.min))} and ${sql23.raw(String(DEMO_REQUEST_KEY_LENGTH2.max))}`),
+  check18("demo_request_notification_status_known", sql23`${t.notificationStatus} in (${list6(DEMO_NOTIFICATION_STATUSES2)})`),
+  check18("demo_request_notification_attempts_not_negative", sql23`${t.notificationAttempts} >= 0`),
   unique23("demo_request_idempotency_key_key").on(t.idempotencyKey),
-  index28("demo_requests_submitted_at_idx").on(t.submittedAt),
-  index28("demo_requests_notice_idx").on(t.submittedAt, t.id).where(sql22`${t.notificationStatus} = 'pending'`)
+  index29("demo_requests_submitted_at_idx").on(t.submittedAt),
+  index29("demo_requests_notice_idx").on(t.submittedAt, t.id).where(sql23`${t.notificationStatus} = 'pending'`)
 ]);
 // src/schema/playbook.ts
 import { pgSchema as pgSchema3 } from "drizzle-orm/pg-core";
 var playbookSchema2 = pgSchema3("playbook");
 // src/schema/playbook-calls.ts
-import { sql as sql25 } from "drizzle-orm";
+import { sql as sql26 } from "drizzle-orm";
 import {
-  bigint as bigint8,
-  check as check20,
+  bigint as bigint9,
+  check as check21,
   customType as customType9,
-  foreignKey as foreignKey10,
-  index as index31,
-  integer as integer19,
-  primaryKey as primaryKey10,
-  text as text39,
-  timestamp as timestamp33,
-  uniqueIndex as uniqueIndex8,
+  foreignKey as foreignKey11,
+  index as index32,
+  integer as integer20,
+  primaryKey as primaryKey11,
+  text as text40,
+  timestamp as timestamp34,
+  uniqueIndex as uniqueIndex9,
   uuid as uuid25
 } from "drizzle-orm/pg-core";
 
 // src/schema/playbook-sales-history.ts
-import { sql as sql24 } from "drizzle-orm";
+import { sql as sql25 } from "drizzle-orm";
 import {
-  bigint as bigint7,
-  boolean as boolean9,
-  check as check19,
+  bigint as bigint8,
+  boolean as boolean10,
+  check as check20,
   date as date2,
-  foreignKey as foreignKey9,
-  index as index30,
-  integer as integer18,
+  foreignKey as foreignKey10,
+  index as index31,
+  integer as integer19,
   numeric,
-  primaryKey as primaryKey9,
-  text as text38,
-  timestamp as timestamp32,
-  uniqueIndex as uniqueIndex7,
+  primaryKey as primaryKey10,
+  text as text39,
+  timestamp as timestamp33,
+  uniqueIndex as uniqueIndex8,
   uuid as uuid24
 } from "drizzle-orm/pg-core";
 
 // src/schema/playbook-tables.ts
-import { sql as sql23 } from "drizzle-orm";
+import { sql as sql24 } from "drizzle-orm";
 import {
-  bigint as bigint6,
-  check as check18,
+  bigint as bigint7,
+  check as check19,
   customType as customType8,
-  foreignKey as foreignKey8,
-  index as index29,
-  integer as integer17,
-  primaryKey as primaryKey8,
-  text as text37,
-  timestamp as timestamp31,
-  uniqueIndex as uniqueIndex6,
+  foreignKey as foreignKey9,
+  index as index30,
+  integer as integer18,
+  primaryKey as primaryKey9,
+  text as text38,
+  timestamp as timestamp32,
+  uniqueIndex as uniqueIndex7,
   uuid as uuid23
 } from "drizzle-orm/pg-core";
 var DOCUMENT_STATES2 = ["uploaded", "processing", "ready", "failed", "deleted"];
@@ -2379,148 +2719,148 @@ var bytes7 = customType8({
   toDriver: (value) => Buffer.from(value),
   fromDriver: (value) => new Uint8Array(value)
 });
-var list6 = (values) => sql23.raw(values.map((v) => `'${v}'`).join(", "));
-var idShape5 = (column, prefix) => sql23.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var list7 = (values) => sql24.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape6 = (column, prefix) => sql24.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
 var GLOBAL_SCOPE_ORGANIZATION_ID2 = "org_00000000000000000000000000000000";
-var notGlobal4 = sql23.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
-var ts4 = (name) => timestamp31(name, { withTimezone: true });
-var createdAt3 = () => ts4("created_at").notNull().defaultNow();
-var updatedAt3 = () => ts4("updated_at").notNull().defaultNow();
+var notGlobal5 = sql24.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
+var ts5 = (name) => timestamp32(name, { withTimezone: true });
+var createdAt3 = () => ts5("created_at").notNull().defaultNow();
+var updatedAt3 = () => ts5("updated_at").notNull().defaultNow();
 var PENDING_CLEANUP_PREDICATE2 = "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)";
 var documents2 = playbookSchema2.table("documents", {
-  id: text37("id").notNull(),
-  organizationId: text37("organization_id").notNull(),
-  name: text37("name").notNull(),
-  state: text37("state", { enum: DOCUMENT_STATES2 }).notNull().default("uploaded"),
+  id: text38("id").notNull(),
+  organizationId: text38("organization_id").notNull(),
+  name: text38("name").notNull(),
+  state: text38("state", { enum: DOCUMENT_STATES2 }).notNull().default("uploaded"),
   contentHash: bytes7("content_hash").notNull(),
-  sizeBytes: bigint6("size_bytes", { mode: "number" }).notNull(),
-  declaredType: text37("declared_type").notNull(),
-  detectedType: text37("detected_type", { enum: DOCUMENT_FILE_TYPES2 }).notNull(),
-  uploadedBy: text37("uploaded_by").notNull(),
-  objectKey: text37("object_key").notNull(),
-  failureReason: text37("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
-  pageCount: integer17("page_count"),
-  epoch: integer17("epoch").notNull().default(0),
-  deletionSeq: integer17("deletion_seq").notNull().default(0),
-  vectorsRemovedSeq: integer17("vectors_removed_seq"),
-  deletedAt: ts4("deleted_at"),
-  deletedBy: text37("deleted_by"),
-  purgeDueAt: ts4("purge_due_at"),
-  purgeStartedAt: ts4("purge_started_at"),
-  purgeLeaseUntil: ts4("purge_lease_until"),
-  purgeAttempts: integer17("purge_attempts").notNull().default(0),
-  restoreBarredAt: ts4("restore_barred_at"),
+  sizeBytes: bigint7("size_bytes", { mode: "number" }).notNull(),
+  declaredType: text38("declared_type").notNull(),
+  detectedType: text38("detected_type", { enum: DOCUMENT_FILE_TYPES2 }).notNull(),
+  uploadedBy: text38("uploaded_by").notNull(),
+  objectKey: text38("object_key").notNull(),
+  failureReason: text38("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
+  pageCount: integer18("page_count"),
+  epoch: integer18("epoch").notNull().default(0),
+  deletionSeq: integer18("deletion_seq").notNull().default(0),
+  vectorsRemovedSeq: integer18("vectors_removed_seq"),
+  deletedAt: ts5("deleted_at"),
+  deletedBy: text38("deleted_by"),
+  purgeDueAt: ts5("purge_due_at"),
+  purgeStartedAt: ts5("purge_started_at"),
+  purgeLeaseUntil: ts5("purge_lease_until"),
+  purgeAttempts: integer18("purge_attempts").notNull().default(0),
+  restoreBarredAt: ts5("restore_barred_at"),
   createdAt: createdAt3(),
   updatedAt: updatedAt3()
 }, (t) => [
-  primaryKey8({ name: "documents_pkey", columns: [t.organizationId, t.id] }),
-  check18("documents_id_shape", idShape5("id", "doc")),
-  check18("documents_organization_id_shape", idShape5("organization_id", "org")),
-  check18("documents_organization_not_global", notGlobal4),
-  check18("documents_uploaded_by_shape", idShape5("uploaded_by", "usr")),
-  check18("documents_deleted_by_shape", sql23`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
-  check18("documents_name_shape", sql23`char_length(btrim(${t.name})) between 1 and 255`),
-  check18("documents_state_known", sql23`${t.state} in (${list6(DOCUMENT_STATES2)})`),
-  check18("documents_content_hash_length", sql23`octet_length(${t.contentHash}) = 32`),
-  check18("documents_size_bounds", sql23`${t.sizeBytes} between 1 and ${sql23.raw(String(DOCUMENT_MAX_BYTES2))}`),
-  check18("documents_declared_type_shape", sql23`char_length(${t.declaredType}) between 1 and 255 and ${t.declaredType} collate "C" ~ '^[ -~]+$'`),
-  check18("documents_detected_type_known", sql23`${t.detectedType} in (${list6(DOCUMENT_FILE_TYPES2)})`),
-  check18("documents_object_key_shape", sql23`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`),
-  check18("documents_failure_reason_known", sql23`${t.failureReason} in (${list6(DOCUMENT_FAILURE_REASONS2)})`),
-  check18("documents_failed_has_reason", sql23`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
-  check18("documents_page_count_positive", sql23`${t.pageCount} > 0`),
-  check18("documents_epoch_bounds", sql23`${t.epoch} >= 0 and ${t.deletionSeq} >= 0`),
-  check18("documents_vectors_removed_seq_bounds", sql23`${t.vectorsRemovedSeq} between 0 and ${t.deletionSeq}`),
-  check18("documents_deleted_has_times", sql23`(${t.state} = 'deleted') = (${t.deletedAt} is not null)
+  primaryKey9({ name: "documents_pkey", columns: [t.organizationId, t.id] }),
+  check19("documents_id_shape", idShape6("id", "doc")),
+  check19("documents_organization_id_shape", idShape6("organization_id", "org")),
+  check19("documents_organization_not_global", notGlobal5),
+  check19("documents_uploaded_by_shape", idShape6("uploaded_by", "usr")),
+  check19("documents_deleted_by_shape", sql24`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
+  check19("documents_name_shape", sql24`char_length(btrim(${t.name})) between 1 and 255`),
+  check19("documents_state_known", sql24`${t.state} in (${list7(DOCUMENT_STATES2)})`),
+  check19("documents_content_hash_length", sql24`octet_length(${t.contentHash}) = 32`),
+  check19("documents_size_bounds", sql24`${t.sizeBytes} between 1 and ${sql24.raw(String(DOCUMENT_MAX_BYTES2))}`),
+  check19("documents_declared_type_shape", sql24`char_length(${t.declaredType}) between 1 and 255 and ${t.declaredType} collate "C" ~ '^[ -~]+$'`),
+  check19("documents_detected_type_known", sql24`${t.detectedType} in (${list7(DOCUMENT_FILE_TYPES2)})`),
+  check19("documents_object_key_shape", sql24`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`),
+  check19("documents_failure_reason_known", sql24`${t.failureReason} in (${list7(DOCUMENT_FAILURE_REASONS2)})`),
+  check19("documents_failed_has_reason", sql24`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check19("documents_page_count_positive", sql24`${t.pageCount} > 0`),
+  check19("documents_epoch_bounds", sql24`${t.epoch} >= 0 and ${t.deletionSeq} >= 0`),
+  check19("documents_vectors_removed_seq_bounds", sql24`${t.vectorsRemovedSeq} between 0 and ${t.deletionSeq}`),
+  check19("documents_deleted_has_times", sql24`(${t.state} = 'deleted') = (${t.deletedAt} is not null)
         and (${t.state} = 'deleted') = (${t.purgeDueAt} is not null)`),
-  check18("documents_deleted_by_when_deleted", sql23`${t.state} = 'deleted' or ${t.deletedBy} is null`),
-  check18("documents_deleted_is_counted", sql23`(${t.state} <> 'deleted') or ${t.deletionSeq} >= 1`),
-  check18("documents_purge_due_after_delete", sql23`${t.purgeDueAt} >= ${t.deletedAt}`),
-  check18("documents_purge_only_when_deleted", sql23`(${t.purgeStartedAt} is null or ${t.state} = 'deleted')
+  check19("documents_deleted_by_when_deleted", sql24`${t.state} = 'deleted' or ${t.deletedBy} is null`),
+  check19("documents_deleted_is_counted", sql24`(${t.state} <> 'deleted') or ${t.deletionSeq} >= 1`),
+  check19("documents_purge_due_after_delete", sql24`${t.purgeDueAt} >= ${t.deletedAt}`),
+  check19("documents_purge_only_when_deleted", sql24`(${t.purgeStartedAt} is null or ${t.state} = 'deleted')
         and (${t.purgeStartedAt} is null) = (${t.purgeLeaseUntil} is null)
         and (${t.purgeStartedAt} is null) = (${t.purgeAttempts} = 0)`),
-  check18("documents_purge_attempts_bounds", sql23`${t.purgeAttempts} between 0 and ${sql23.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
-  check18("documents_barred_only_when_deleted", sql23`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`),
-  uniqueIndex6("documents_content_hash_key").on(t.organizationId, t.contentHash).where(sql23`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
-  index29("documents_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql23`${t.state} <> 'deleted'`),
-  index29("documents_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id).where(sql23`${t.state} <> 'deleted'`),
-  index29("documents_deleted_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql23`${t.state} = 'deleted'`),
-  index29("documents_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql23`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql23.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
-  index29("documents_unbarred_idx").on(t.organizationId, t.id).where(sql23`${t.restoreBarredAt} is null`),
-  index29("documents_cleanup_idx").on(t.organizationId, t.deletedAt, t.id).where(sql23.raw(PENDING_CLEANUP_PREDICATE2)),
-  index29("documents_spent_purge_idx").on(t.organizationId, t.id).where(sql23`${t.state} = 'deleted' and ${t.purgeAttempts} >= ${sql23.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`)
+  check19("documents_purge_attempts_bounds", sql24`${t.purgeAttempts} between 0 and ${sql24.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
+  check19("documents_barred_only_when_deleted", sql24`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`),
+  uniqueIndex7("documents_content_hash_key").on(t.organizationId, t.contentHash).where(sql24`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
+  index30("documents_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql24`${t.state} <> 'deleted'`),
+  index30("documents_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id).where(sql24`${t.state} <> 'deleted'`),
+  index30("documents_deleted_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql24`${t.state} = 'deleted'`),
+  index30("documents_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql24`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql24.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`),
+  index30("documents_unbarred_idx").on(t.organizationId, t.id).where(sql24`${t.restoreBarredAt} is null`),
+  index30("documents_cleanup_idx").on(t.organizationId, t.deletedAt, t.id).where(sql24.raw(PENDING_CLEANUP_PREDICATE2)),
+  index30("documents_spent_purge_idx").on(t.organizationId, t.id).where(sql24`${t.state} = 'deleted' and ${t.purgeAttempts} >= ${sql24.raw(String(DOCUMENT_PURGE_MAX_ATTEMPTS2))}`)
 ]);
 var organizationUsage2 = playbookSchema2.table("organization_usage", {
-  organizationId: text37("organization_id").primaryKey(),
-  documentCount: bigint6("document_count", { mode: "number" }).notNull().default(0),
-  byteCount: bigint6("byte_count", { mode: "number" }).notNull().default(0),
-  dealCount: bigint6("deal_count", { mode: "number" }).notNull().default(0),
-  callCount: bigint6("call_count", { mode: "number" }).notNull().default(0),
-  recordingByteCount: bigint6("recording_byte_count", { mode: "number" }).notNull().default(0),
+  organizationId: text38("organization_id").primaryKey(),
+  documentCount: bigint7("document_count", { mode: "number" }).notNull().default(0),
+  byteCount: bigint7("byte_count", { mode: "number" }).notNull().default(0),
+  dealCount: bigint7("deal_count", { mode: "number" }).notNull().default(0),
+  callCount: bigint7("call_count", { mode: "number" }).notNull().default(0),
+  recordingByteCount: bigint7("recording_byte_count", { mode: "number" }).notNull().default(0),
   updatedAt: updatedAt3()
 }, (t) => [
-  check18("organization_usage_organization_id_shape", idShape5("organization_id", "org")),
-  check18("organization_usage_organization_not_global", notGlobal4),
-  check18("organization_usage_not_negative", sql23`${t.documentCount} >= 0 and ${t.byteCount} >= 0`),
-  check18("organization_usage_deal_count_not_negative", sql23`${t.dealCount} >= 0`),
-  check18("organization_usage_call_counts_not_negative", sql23`${t.callCount} >= 0 and ${t.recordingByteCount} >= 0`)
+  check19("organization_usage_organization_id_shape", idShape6("organization_id", "org")),
+  check19("organization_usage_organization_not_global", notGlobal5),
+  check19("organization_usage_not_negative", sql24`${t.documentCount} >= 0 and ${t.byteCount} >= 0`),
+  check19("organization_usage_deal_count_not_negative", sql24`${t.dealCount} >= 0`),
+  check19("organization_usage_call_counts_not_negative", sql24`${t.callCount} >= 0 and ${t.recordingByteCount} >= 0`)
 ]);
 var ingestionJobs2 = playbookSchema2.table("ingestion_jobs", {
-  id: text37("id").notNull(),
-  organizationId: text37("organization_id").notNull(),
-  documentId: text37("document_id").notNull(),
-  epoch: integer17("epoch").notNull(),
-  state: text37("state", { enum: INGESTION_JOB_STATES2 }).notNull().default("queued"),
-  step: text37("step", { enum: INGESTION_STEPS2 }).notNull().default("parse"),
-  attempts: integer17("attempts").notNull().default(0),
-  nextAttemptAt: ts4("next_attempt_at").notNull(),
+  id: text38("id").notNull(),
+  organizationId: text38("organization_id").notNull(),
+  documentId: text38("document_id").notNull(),
+  epoch: integer18("epoch").notNull(),
+  state: text38("state", { enum: INGESTION_JOB_STATES2 }).notNull().default("queued"),
+  step: text38("step", { enum: INGESTION_STEPS2 }).notNull().default("parse"),
+  attempts: integer18("attempts").notNull().default(0),
+  nextAttemptAt: ts5("next_attempt_at").notNull(),
   claimToken: uuid23("claim_token"),
-  artifactKey: text37("artifact_key"),
-  pageCount: integer17("page_count"),
-  chunkCount: integer17("chunk_count"),
-  chunksDone: integer17("chunks_done").notNull().default(0),
-  failureReason: text37("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
-  finishedAt: ts4("finished_at"),
+  artifactKey: text38("artifact_key"),
+  pageCount: integer18("page_count"),
+  chunkCount: integer18("chunk_count"),
+  chunksDone: integer18("chunks_done").notNull().default(0),
+  failureReason: text38("failure_reason", { enum: DOCUMENT_FAILURE_REASONS2 }),
+  finishedAt: ts5("finished_at"),
   createdAt: createdAt3(),
   updatedAt: updatedAt3()
 }, (t) => [
-  primaryKey8({ name: "ingestion_jobs_pkey", columns: [t.organizationId, t.id] }),
-  foreignKey8({
+  primaryKey9({ name: "ingestion_jobs_pkey", columns: [t.organizationId, t.id] }),
+  foreignKey9({
     name: "ingestion_jobs_document_fk",
     columns: [t.organizationId, t.documentId],
     foreignColumns: [documents2.organizationId, documents2.id]
   }).onDelete("cascade"),
-  check18("ingestion_jobs_id_shape", idShape5("id", "job")),
-  check18("ingestion_jobs_organization_id_shape", idShape5("organization_id", "org")),
-  check18("ingestion_jobs_organization_not_global", notGlobal4),
-  check18("ingestion_jobs_epoch_bounds", sql23`${t.epoch} >= 0`),
-  check18("ingestion_jobs_state_known", sql23`${t.state} in (${list6(INGESTION_JOB_STATES2)})`),
-  check18("ingestion_jobs_step_known", sql23`${t.step} in (${list6(INGESTION_STEPS2)})`),
-  check18("ingestion_jobs_attempts_bounds", sql23`${t.attempts} between 0 and ${sql23.raw(String(INGESTION_JOB_MAX_ATTEMPTS2))}`),
-  check18("ingestion_jobs_running_has_token", sql23`(${t.state} = 'running') = (${t.claimToken} is not null)`),
-  check18("ingestion_jobs_artifact_key_shape", sql23`char_length(${t.artifactKey}) between 1 and 1024 and ${t.artifactKey} collate "C" ~ '^[!-~]+$'`),
-  check18("ingestion_jobs_counts_bounds", sql23`${t.pageCount} between 1 and ${sql23.raw(String(DOCUMENT_MAX_PAGE_COUNT2))}
-        and ${t.chunkCount} between 0 and ${sql23.raw(String(INGESTION_MAX_CHUNKS2))}
+  check19("ingestion_jobs_id_shape", idShape6("id", "job")),
+  check19("ingestion_jobs_organization_id_shape", idShape6("organization_id", "org")),
+  check19("ingestion_jobs_organization_not_global", notGlobal5),
+  check19("ingestion_jobs_epoch_bounds", sql24`${t.epoch} >= 0`),
+  check19("ingestion_jobs_state_known", sql24`${t.state} in (${list7(INGESTION_JOB_STATES2)})`),
+  check19("ingestion_jobs_step_known", sql24`${t.step} in (${list7(INGESTION_STEPS2)})`),
+  check19("ingestion_jobs_attempts_bounds", sql24`${t.attempts} between 0 and ${sql24.raw(String(INGESTION_JOB_MAX_ATTEMPTS2))}`),
+  check19("ingestion_jobs_running_has_token", sql24`(${t.state} = 'running') = (${t.claimToken} is not null)`),
+  check19("ingestion_jobs_artifact_key_shape", sql24`char_length(${t.artifactKey}) between 1 and 1024 and ${t.artifactKey} collate "C" ~ '^[!-~]+$'`),
+  check19("ingestion_jobs_counts_bounds", sql24`${t.pageCount} between 1 and ${sql24.raw(String(DOCUMENT_MAX_PAGE_COUNT2))}
+        and ${t.chunkCount} between 0 and ${sql24.raw(String(INGESTION_MAX_CHUNKS2))}
         and ${t.chunksDone} >= 0 and ${t.chunksDone} <= coalesce(${t.chunkCount}, 0)`),
-  check18("ingestion_jobs_failure_reason_known", sql23`${t.failureReason} in (${list6(DOCUMENT_FAILURE_REASONS2)})`),
-  check18("ingestion_jobs_failed_has_reason", sql23`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
-  check18("ingestion_jobs_final_has_finish", sql23`(${t.state} in ('succeeded', 'failed', 'cancelled')) = (${t.finishedAt} is not null)`),
-  index29("ingestion_jobs_document_idx").on(t.organizationId, t.documentId),
-  uniqueIndex6("ingestion_jobs_active_document_key").on(t.organizationId, t.documentId).where(sql23`${t.state} in ('queued', 'running')`),
-  index29("ingestion_jobs_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql23`${t.state} in ('queued', 'running')`)
+  check19("ingestion_jobs_failure_reason_known", sql24`${t.failureReason} in (${list7(DOCUMENT_FAILURE_REASONS2)})`),
+  check19("ingestion_jobs_failed_has_reason", sql24`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check19("ingestion_jobs_final_has_finish", sql24`(${t.state} in ('succeeded', 'failed', 'cancelled')) = (${t.finishedAt} is not null)`),
+  index30("ingestion_jobs_document_idx").on(t.organizationId, t.documentId),
+  uniqueIndex7("ingestion_jobs_active_document_key").on(t.organizationId, t.documentId).where(sql24`${t.state} in ('queued', 'running')`),
+  index30("ingestion_jobs_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql24`${t.state} in ('queued', 'running')`)
 ]);
 var indexSettings2 = playbookSchema2.table("index_settings", {
-  organizationId: text37("organization_id").primaryKey(),
-  embeddingModel: text37("embedding_model").notNull(),
-  embeddingDimension: integer17("embedding_dimension").notNull(),
-  vectorsWrittenAt: ts4("vectors_written_at"),
+  organizationId: text38("organization_id").primaryKey(),
+  embeddingModel: text38("embedding_model").notNull(),
+  embeddingDimension: integer18("embedding_dimension").notNull(),
+  vectorsWrittenAt: ts5("vectors_written_at"),
   createdAt: createdAt3(),
   updatedAt: updatedAt3()
 }, (t) => [
-  check18("index_settings_organization_id_shape", idShape5("organization_id", "org")),
-  check18("index_settings_organization_not_global", notGlobal4),
-  check18("index_settings_model_shape", sql23`char_length(${t.embeddingModel}) between 1 and 200 and ${t.embeddingModel} collate "C" ~ '^[A-Za-z0-9._:/-]+$'`),
-  check18("index_settings_dimension_bounds", sql23`${t.embeddingDimension} between 1 and 16384`)
+  check19("index_settings_organization_id_shape", idShape6("organization_id", "org")),
+  check19("index_settings_organization_not_global", notGlobal5),
+  check19("index_settings_model_shape", sql24`char_length(${t.embeddingModel}) between 1 and 200 and ${t.embeddingModel} collate "C" ~ '^[A-Za-z0-9._:/-]+$'`),
+  check19("index_settings_dimension_bounds", sql24`${t.embeddingDimension} between 1 and 16384`)
 ]);
 
 // src/schema/playbook-sales-history.ts
@@ -2561,131 +2901,131 @@ var DEAL_MAX_SEQ2 = 2147483647;
 var RIGHTS_MAX_WORDING_VERSION2 = 1e6;
 var DEAL_IMPORT_MAX_ATTEMPTS2 = 20;
 var DEAL_IMPORT_APPLY_BATCH2 = 500;
-var list7 = (values) => sql24.raw(values.map((v) => `'${v}'`).join(", "));
-var idShape6 = (column, prefix) => sql24.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var notGlobal5 = sql24.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
-var ts5 = (name) => timestamp32(name, { withTimezone: true });
+var list8 = (values) => sql25.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape7 = (column, prefix) => sql25.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var notGlobal6 = sql25.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
+var ts6 = (name) => timestamp33(name, { withTimezone: true });
 var deals2 = playbookSchema2.table("deals", {
-  id: text38("id").notNull(),
-  organizationId: text38("organization_id").notNull(),
-  dealId: text38("deal_id").notNull(),
-  name: text38("name"),
-  outcome: text38("outcome", { enum: DEAL_OUTCOMES2 }).notNull().default("open"),
-  outcomeSeq: integer18("outcome_seq").notNull().default(0),
-  retagThrough: integer18("retag_through").notNull().default(0),
+  id: text39("id").notNull(),
+  organizationId: text39("organization_id").notNull(),
+  dealId: text39("deal_id").notNull(),
+  name: text39("name"),
+  outcome: text39("outcome", { enum: DEAL_OUTCOMES2 }).notNull().default("open"),
+  outcomeSeq: integer19("outcome_seq").notNull().default(0),
+  retagThrough: integer19("retag_through").notNull().default(0),
   closedAt: date2("closed_at", { mode: "string" }),
   amount: numeric("amount", { precision: 17, scale: 2 }),
-  currency: text38("currency"),
-  appearedInImport: boolean9("appeared_in_import").notNull().default(false),
-  createdAt: ts5("created_at").notNull().defaultNow(),
-  updatedAt: ts5("updated_at").notNull().defaultNow()
+  currency: text39("currency"),
+  appearedInImport: boolean10("appeared_in_import").notNull().default(false),
+  createdAt: ts6("created_at").notNull().defaultNow(),
+  updatedAt: ts6("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey9({ name: "deals_pkey", columns: [t.organizationId, t.id] }),
-  check19("deals_id_shape", idShape6("id", "deal")),
-  check19("deals_organization_id_shape", idShape6("organization_id", "org")),
-  check19("deals_organization_not_global", notGlobal5),
-  check19("deals_deal_id_shape", sql24`char_length(${t.dealId}) between 1 and ${sql24.raw(String(DEAL_ID_MAX_LENGTH2))}
-        and octet_length(${t.dealId}) <= ${sql24.raw(String(DEAL_ID_MAX_BYTES2))}
+  primaryKey10({ name: "deals_pkey", columns: [t.organizationId, t.id] }),
+  check20("deals_id_shape", idShape7("id", "deal")),
+  check20("deals_organization_id_shape", idShape7("organization_id", "org")),
+  check20("deals_organization_not_global", notGlobal6),
+  check20("deals_deal_id_shape", sql25`char_length(${t.dealId}) between 1 and ${sql25.raw(String(DEAL_ID_MAX_LENGTH2))}
+        and octet_length(${t.dealId}) <= ${sql25.raw(String(DEAL_ID_MAX_BYTES2))}
         and ${t.dealId} = btrim(${t.dealId}, E' \\t\\n\\r\\f\\v')`),
-  check19("deals_name_shape", sql24`${t.name} is null or (char_length(${t.name}) between 1 and ${sql24.raw(String(DEAL_NAME_MAX_LENGTH2))}
-        and octet_length(${t.name}) <= ${sql24.raw(String(DEAL_NAME_MAX_BYTES2))})`),
-  check19("deals_outcome_known", sql24`${t.outcome} in (${list7(DEAL_OUTCOMES2)})`),
-  check19("deals_outcome_seq_range", sql24`${t.outcomeSeq} between 0 and ${sql24.raw(String(DEAL_MAX_SEQ2))}`),
-  check19("deals_amount_range", sql24`${t.amount} is null or ${t.amount} >= 0`),
-  check19("deals_currency_shape", sql24`${t.currency} is null or ${t.currency} ~ '^[A-Z]{3}$'`),
-  check19("deals_amount_has_currency", sql24`${t.amount} is null or ${t.currency} is not null`),
-  check19("deals_retag_through_range", sql24`${t.retagThrough} between 0 and ${t.outcomeSeq}`),
-  uniqueIndex7("deals_deal_id_key").on(t.organizationId, t.dealId),
-  index30("deals_retag_idx").on(t.organizationId, t.id).where(sql24`${t.retagThrough} < ${t.outcomeSeq}`),
-  index30("deals_list_idx").on(t.organizationId, t.createdAt, t.id),
-  index30("deals_outcome_list_idx").on(t.organizationId, t.outcome, t.createdAt, t.id),
-  index30("deals_import_list_idx").on(t.organizationId, t.appearedInImport, t.createdAt, t.id)
+  check20("deals_name_shape", sql25`${t.name} is null or (char_length(${t.name}) between 1 and ${sql25.raw(String(DEAL_NAME_MAX_LENGTH2))}
+        and octet_length(${t.name}) <= ${sql25.raw(String(DEAL_NAME_MAX_BYTES2))})`),
+  check20("deals_outcome_known", sql25`${t.outcome} in (${list8(DEAL_OUTCOMES2)})`),
+  check20("deals_outcome_seq_range", sql25`${t.outcomeSeq} between 0 and ${sql25.raw(String(DEAL_MAX_SEQ2))}`),
+  check20("deals_amount_range", sql25`${t.amount} is null or ${t.amount} >= 0`),
+  check20("deals_currency_shape", sql25`${t.currency} is null or ${t.currency} ~ '^[A-Z]{3}$'`),
+  check20("deals_amount_has_currency", sql25`${t.amount} is null or ${t.currency} is not null`),
+  check20("deals_retag_through_range", sql25`${t.retagThrough} between 0 and ${t.outcomeSeq}`),
+  uniqueIndex8("deals_deal_id_key").on(t.organizationId, t.dealId),
+  index31("deals_retag_idx").on(t.organizationId, t.id).where(sql25`${t.retagThrough} < ${t.outcomeSeq}`),
+  index31("deals_list_idx").on(t.organizationId, t.createdAt, t.id),
+  index31("deals_outcome_list_idx").on(t.organizationId, t.outcome, t.createdAt, t.id),
+  index31("deals_import_list_idx").on(t.organizationId, t.appearedInImport, t.createdAt, t.id)
 ]);
 var dealImports2 = playbookSchema2.table("deal_imports", {
-  id: text38("id").notNull(),
-  organizationId: text38("organization_id").notNull(),
-  state: text38("state", { enum: DEAL_IMPORT_STATES2 }).notNull().default("uploaded"),
-  failureReason: text38("failure_reason", { enum: DEAL_IMPORT_FAILURE_REASONS2 }),
-  uploadedBy: text38("uploaded_by").notNull(),
-  objectKey: text38("object_key").notNull(),
-  sizeBytes: bigint7("size_bytes", { mode: "number" }).notNull(),
-  attempts: integer18("attempts").notNull().default(0),
-  nextAttemptAt: ts5("next_attempt_at").notNull().defaultNow(),
+  id: text39("id").notNull(),
+  organizationId: text39("organization_id").notNull(),
+  state: text39("state", { enum: DEAL_IMPORT_STATES2 }).notNull().default("uploaded"),
+  failureReason: text39("failure_reason", { enum: DEAL_IMPORT_FAILURE_REASONS2 }),
+  uploadedBy: text39("uploaded_by").notNull(),
+  objectKey: text39("object_key").notNull(),
+  sizeBytes: bigint8("size_bytes", { mode: "number" }).notNull(),
+  attempts: integer19("attempts").notNull().default(0),
+  nextAttemptAt: ts6("next_attempt_at").notNull().defaultNow(),
   claimToken: uuid24("claim_token"),
-  rowCount: integer18("row_count"),
-  appliedCount: integer18("applied_count").notNull().default(0),
-  rejectedCount: integer18("rejected_count").notNull().default(0),
-  reportThrough: integer18("report_through").notNull().default(1),
-  objectRemovedAt: ts5("object_removed_at"),
-  erasedAt: ts5("erased_at"),
-  finishedAt: ts5("finished_at"),
-  createdAt: ts5("created_at").notNull().defaultNow(),
-  updatedAt: ts5("updated_at").notNull().defaultNow()
+  rowCount: integer19("row_count"),
+  appliedCount: integer19("applied_count").notNull().default(0),
+  rejectedCount: integer19("rejected_count").notNull().default(0),
+  reportThrough: integer19("report_through").notNull().default(1),
+  objectRemovedAt: ts6("object_removed_at"),
+  erasedAt: ts6("erased_at"),
+  finishedAt: ts6("finished_at"),
+  createdAt: ts6("created_at").notNull().defaultNow(),
+  updatedAt: ts6("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey9({ name: "deal_imports_pkey", columns: [t.organizationId, t.id] }),
-  check19("deal_imports_id_shape", idShape6("id", "dimp")),
-  check19("deal_imports_organization_id_shape", idShape6("organization_id", "org")),
-  check19("deal_imports_organization_not_global", notGlobal5),
-  check19("deal_imports_uploaded_by_shape", idShape6("uploaded_by", "usr")),
-  check19("deal_imports_state_known", sql24`${t.state} in (${list7(DEAL_IMPORT_STATES2)})`),
-  check19("deal_imports_failure_reason_known", sql24`${t.failureReason} is null or ${t.failureReason} in (${list7(DEAL_IMPORT_FAILURE_REASONS2)})`),
-  check19("deal_imports_failure_matches_state", sql24`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
-  check19("deal_imports_size_range", sql24`${t.sizeBytes} between 1 and ${sql24.raw(String(DEAL_IMPORT_MAX_BYTES2))}`),
-  check19("deal_imports_attempts_range", sql24`${t.attempts} between 0 and ${sql24.raw(String(DEAL_IMPORT_MAX_ATTEMPTS2))}`),
-  check19("deal_imports_counts_range", sql24`${t.appliedCount} between 0 and ${sql24.raw(String(DEAL_IMPORT_MAX_ROWS2))}
-        and ${t.rejectedCount} between 0 and ${sql24.raw(String(DEAL_IMPORT_MAX_ROWS2))}
-        and ${t.appliedCount} + ${t.rejectedCount} <= ${sql24.raw(String(DEAL_IMPORT_MAX_ROWS2))}`),
-  check19("deal_imports_report_contiguous", sql24`${t.reportThrough} between 1 and ${sql24.raw(String(DEAL_IMPORT_MAX_ROWS2 + 1))}
+  primaryKey10({ name: "deal_imports_pkey", columns: [t.organizationId, t.id] }),
+  check20("deal_imports_id_shape", idShape7("id", "dimp")),
+  check20("deal_imports_organization_id_shape", idShape7("organization_id", "org")),
+  check20("deal_imports_organization_not_global", notGlobal6),
+  check20("deal_imports_uploaded_by_shape", idShape7("uploaded_by", "usr")),
+  check20("deal_imports_state_known", sql25`${t.state} in (${list8(DEAL_IMPORT_STATES2)})`),
+  check20("deal_imports_failure_reason_known", sql25`${t.failureReason} is null or ${t.failureReason} in (${list8(DEAL_IMPORT_FAILURE_REASONS2)})`),
+  check20("deal_imports_failure_matches_state", sql25`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check20("deal_imports_size_range", sql25`${t.sizeBytes} between 1 and ${sql25.raw(String(DEAL_IMPORT_MAX_BYTES2))}`),
+  check20("deal_imports_attempts_range", sql25`${t.attempts} between 0 and ${sql25.raw(String(DEAL_IMPORT_MAX_ATTEMPTS2))}`),
+  check20("deal_imports_counts_range", sql25`${t.appliedCount} between 0 and ${sql25.raw(String(DEAL_IMPORT_MAX_ROWS2))}
+        and ${t.rejectedCount} between 0 and ${sql25.raw(String(DEAL_IMPORT_MAX_ROWS2))}
+        and ${t.appliedCount} + ${t.rejectedCount} <= ${sql25.raw(String(DEAL_IMPORT_MAX_ROWS2))}`),
+  check20("deal_imports_report_contiguous", sql25`${t.reportThrough} between 1 and ${sql25.raw(String(DEAL_IMPORT_MAX_ROWS2 + 1))}
         and ${t.appliedCount} + ${t.rejectedCount} = ${t.reportThrough} - 1`),
-  check19("deal_imports_row_count_matches_state", sql24`(${t.state} = 'completed') = (${t.rowCount} is not null)
+  check20("deal_imports_row_count_matches_state", sql25`(${t.state} = 'completed') = (${t.rowCount} is not null)
         and (${t.rowCount} is null or ${t.rowCount} = ${t.appliedCount} + ${t.rejectedCount})`),
-  check19("deal_imports_claim_only_while_processing", sql24`${t.claimToken} is null or ${t.state} = 'processing'`),
-  check19("deal_imports_finished_matches_state", sql24`(${t.state} in ('completed', 'failed')) = (${t.finishedAt} is not null)`),
-  check19("deal_imports_erased_is_final", sql24`${t.erasedAt} is null or ${t.state} in ('completed', 'failed')`),
-  index30("deal_imports_list_idx").on(t.organizationId, t.createdAt, t.id),
-  index30("deal_imports_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql24`${t.state} in ('uploaded', 'processing')`),
-  index30("deal_imports_erased_idx").on(t.organizationId, t.id).where(sql24`${t.erasedAt} is not null`),
-  index30("deal_imports_unerased_idx").on(t.organizationId, t.id).where(sql24`${t.erasedAt} is null`)
+  check20("deal_imports_claim_only_while_processing", sql25`${t.claimToken} is null or ${t.state} = 'processing'`),
+  check20("deal_imports_finished_matches_state", sql25`(${t.state} in ('completed', 'failed')) = (${t.finishedAt} is not null)`),
+  check20("deal_imports_erased_is_final", sql25`${t.erasedAt} is null or ${t.state} in ('completed', 'failed')`),
+  index31("deal_imports_list_idx").on(t.organizationId, t.createdAt, t.id),
+  index31("deal_imports_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql25`${t.state} in ('uploaded', 'processing')`),
+  index31("deal_imports_erased_idx").on(t.organizationId, t.id).where(sql25`${t.erasedAt} is not null`),
+  index31("deal_imports_unerased_idx").on(t.organizationId, t.id).where(sql25`${t.erasedAt} is null`)
 ]);
 var dealImportRows2 = playbookSchema2.table("deal_import_rows", {
-  organizationId: text38("organization_id").notNull(),
-  importId: text38("import_id").notNull(),
-  rowNumber: integer18("row_number").notNull(),
-  dealId: text38("deal_id"),
-  result: text38("result", { enum: DEAL_IMPORT_ROW_RESULTS2 }).notNull(),
-  reason: text38("reason", { enum: DEAL_IMPORT_ROW_REASONS2 })
+  organizationId: text39("organization_id").notNull(),
+  importId: text39("import_id").notNull(),
+  rowNumber: integer19("row_number").notNull(),
+  dealId: text39("deal_id"),
+  result: text39("result", { enum: DEAL_IMPORT_ROW_RESULTS2 }).notNull(),
+  reason: text39("reason", { enum: DEAL_IMPORT_ROW_REASONS2 })
 }, (t) => [
-  primaryKey9({
+  primaryKey10({
     name: "deal_import_rows_pkey",
     columns: [t.organizationId, t.importId, t.rowNumber]
   }),
-  foreignKey9({
+  foreignKey10({
     name: "deal_import_rows_import_fkey",
     columns: [t.organizationId, t.importId],
     foreignColumns: [dealImports2.organizationId, dealImports2.id]
   }),
-  check19("deal_import_rows_organization_id_shape", idShape6("organization_id", "org")),
-  check19("deal_import_rows_organization_not_global", notGlobal5),
-  check19("deal_import_rows_row_number_range", sql24`${t.rowNumber} between 2 and ${sql24.raw(String(DEAL_IMPORT_MAX_ROWS2 + 1))}`),
-  check19("deal_import_rows_result_known", sql24`${t.result} in (${list7(DEAL_IMPORT_ROW_RESULTS2)})`),
-  check19("deal_import_rows_reason_known", sql24`${t.reason} is null or ${t.reason} in (${list7(DEAL_IMPORT_ROW_REASONS2)})`),
-  check19("deal_import_rows_reason_matches_result", sql24`(${t.result} = 'rejected') = (${t.reason} is not null)`),
-  check19("deal_import_rows_deal_id_shape", sql24`${t.dealId} is null or (char_length(${t.dealId}) between 1 and ${sql24.raw(String(DEAL_ID_MAX_LENGTH2))}
-        and octet_length(${t.dealId}) <= ${sql24.raw(String(DEAL_ID_MAX_BYTES2))})`),
-  check19("deal_import_rows_deal_id_missing_only_when_unusable", sql24`${t.dealId} is not null or ${t.reason} in (${list7(DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2)})`),
-  uniqueIndex7("deal_import_rows_first_key").on(t.organizationId, t.importId, t.dealId).where(sql24`${t.dealId} is not null and ${t.reason} is distinct from 'duplicate_in_file'`),
-  index30("deal_import_rows_result_idx").on(t.organizationId, t.importId, t.result, t.rowNumber)
+  check20("deal_import_rows_organization_id_shape", idShape7("organization_id", "org")),
+  check20("deal_import_rows_organization_not_global", notGlobal6),
+  check20("deal_import_rows_row_number_range", sql25`${t.rowNumber} between 2 and ${sql25.raw(String(DEAL_IMPORT_MAX_ROWS2 + 1))}`),
+  check20("deal_import_rows_result_known", sql25`${t.result} in (${list8(DEAL_IMPORT_ROW_RESULTS2)})`),
+  check20("deal_import_rows_reason_known", sql25`${t.reason} is null or ${t.reason} in (${list8(DEAL_IMPORT_ROW_REASONS2)})`),
+  check20("deal_import_rows_reason_matches_result", sql25`(${t.result} = 'rejected') = (${t.reason} is not null)`),
+  check20("deal_import_rows_deal_id_shape", sql25`${t.dealId} is null or (char_length(${t.dealId}) between 1 and ${sql25.raw(String(DEAL_ID_MAX_LENGTH2))}
+        and octet_length(${t.dealId}) <= ${sql25.raw(String(DEAL_ID_MAX_BYTES2))})`),
+  check20("deal_import_rows_deal_id_missing_only_when_unusable", sql25`${t.dealId} is not null or ${t.reason} in (${list8(DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2)})`),
+  uniqueIndex8("deal_import_rows_first_key").on(t.organizationId, t.importId, t.dealId).where(sql25`${t.dealId} is not null and ${t.reason} is distinct from 'duplicate_in_file'`),
+  index31("deal_import_rows_result_idx").on(t.organizationId, t.importId, t.result, t.rowNumber)
 ]);
 var rightsConfirmations2 = playbookSchema2.table("rights_confirmations", {
-  organizationId: text38("organization_id").primaryKey(),
-  confirmedBy: text38("confirmed_by").notNull(),
-  confirmedAt: ts5("confirmed_at").notNull().defaultNow(),
-  wordingVersion: integer18("wording_version").notNull()
+  organizationId: text39("organization_id").primaryKey(),
+  confirmedBy: text39("confirmed_by").notNull(),
+  confirmedAt: ts6("confirmed_at").notNull().defaultNow(),
+  wordingVersion: integer19("wording_version").notNull()
 }, (t) => [
-  check19("rights_confirmations_organization_id_shape", idShape6("organization_id", "org")),
-  check19("rights_confirmations_organization_not_global", notGlobal5),
-  check19("rights_confirmations_confirmed_by_shape", idShape6("confirmed_by", "usr")),
-  check19("rights_confirmations_wording_version_range", sql24`${t.wordingVersion} between 1 and ${sql24.raw(String(RIGHTS_MAX_WORDING_VERSION2))}`)
+  check20("rights_confirmations_organization_id_shape", idShape7("organization_id", "org")),
+  check20("rights_confirmations_organization_not_global", notGlobal6),
+  check20("rights_confirmations_confirmed_by_shape", idShape7("confirmed_by", "usr")),
+  check20("rights_confirmations_wording_version_range", sql25`${t.wordingVersion} between 1 and ${sql25.raw(String(RIGHTS_MAX_WORDING_VERSION2))}`)
 ]);
 
 // src/schema/playbook-calls.ts
@@ -2757,237 +3097,237 @@ var bytes8 = customType9({
 var textArray3 = customType9({
   dataType: () => "text[]"
 });
-var list8 = (values) => sql25.raw(values.map((v) => `'${v}'`).join(", "));
-var idShape7 = (column, prefix) => sql25.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var notGlobal6 = sql25.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
-var ts6 = (name) => timestamp33(name, { withTimezone: true });
+var list9 = (values) => sql26.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape8 = (column, prefix) => sql26.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var notGlobal7 = sql26.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`);
+var ts7 = (name) => timestamp34(name, { withTimezone: true });
 var CALL_PENDING_CLEANUP_PREDICATE2 = "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)";
 var calls2 = playbookSchema2.table("calls", {
-  id: text39("id").notNull(),
-  organizationId: text39("organization_id").notNull(),
-  dealRecordId: text39("deal_record_id").notNull(),
-  kind: text39("kind", { enum: CALL_KINDS2 }).notNull(),
-  fileName: text39("file_name").notNull(),
-  mediaType: text39("media_type", { enum: CALL_MEDIA_TYPES2 }).notNull(),
-  sizeBytes: bigint8("size_bytes", { mode: "number" }).notNull(),
+  id: text40("id").notNull(),
+  organizationId: text40("organization_id").notNull(),
+  dealRecordId: text40("deal_record_id").notNull(),
+  kind: text40("kind", { enum: CALL_KINDS2 }).notNull(),
+  fileName: text40("file_name").notNull(),
+  mediaType: text40("media_type", { enum: CALL_MEDIA_TYPES2 }).notNull(),
+  sizeBytes: bigint9("size_bytes", { mode: "number" }).notNull(),
   contentHash: bytes8("content_hash").notNull(),
-  durationSeconds: integer19("duration_seconds"),
-  state: text39("state", { enum: CALL_STATES2 }).notNull().default("uploaded"),
-  failureReason: text39("failure_reason", { enum: CALL_FAILURE_REASONS2 }),
-  repBy: text39("rep_by", { enum: CALL_REP_BY2 }),
-  repLabel: text39("rep_label"),
-  repChannel: text39("rep_channel", { enum: CALL_CHANNELS2 }),
-  speakerLabels: textArray3("speaker_labels").notNull().default(sql25`'{}'::text[]`),
-  uploadedBy: text39("uploaded_by").notNull(),
-  objectKey: text39("object_key").notNull(),
-  transcriptKey: text39("transcript_key"),
-  epoch: integer19("epoch").notNull().default(0),
-  repSeq: integer19("rep_seq").notNull().default(0),
-  deletionSeq: integer19("deletion_seq").notNull().default(0),
-  vectorsRemovedSeq: integer19("vectors_removed_seq"),
-  taggedOutcomeSeq: integer19("tagged_outcome_seq").notNull().default(0),
-  sentToVendorAt: ts6("sent_to_vendor_at"),
-  vendorSendSeq: integer19("vendor_send_seq").notNull().default(0),
-  vendorRemovedAt: ts6("vendor_removed_at"),
-  deletedAt: ts6("deleted_at"),
-  deletedBy: text39("deleted_by"),
-  purgeDueAt: ts6("purge_due_at"),
-  purgeStartedAt: ts6("purge_started_at"),
-  purgeLeaseUntil: ts6("purge_lease_until"),
-  purgeAttempts: integer19("purge_attempts").notNull().default(0),
-  restoreBarredAt: ts6("restore_barred_at"),
-  embeddedMoments: integer19("embedded_moments"),
-  skippedMoments: integer19("skipped_moments"),
-  createdAt: ts6("created_at").notNull().defaultNow(),
-  updatedAt: ts6("updated_at").notNull().defaultNow()
+  durationSeconds: integer20("duration_seconds"),
+  state: text40("state", { enum: CALL_STATES2 }).notNull().default("uploaded"),
+  failureReason: text40("failure_reason", { enum: CALL_FAILURE_REASONS2 }),
+  repBy: text40("rep_by", { enum: CALL_REP_BY2 }),
+  repLabel: text40("rep_label"),
+  repChannel: text40("rep_channel", { enum: CALL_CHANNELS2 }),
+  speakerLabels: textArray3("speaker_labels").notNull().default(sql26`'{}'::text[]`),
+  uploadedBy: text40("uploaded_by").notNull(),
+  objectKey: text40("object_key").notNull(),
+  transcriptKey: text40("transcript_key"),
+  epoch: integer20("epoch").notNull().default(0),
+  repSeq: integer20("rep_seq").notNull().default(0),
+  deletionSeq: integer20("deletion_seq").notNull().default(0),
+  vectorsRemovedSeq: integer20("vectors_removed_seq"),
+  taggedOutcomeSeq: integer20("tagged_outcome_seq").notNull().default(0),
+  sentToVendorAt: ts7("sent_to_vendor_at"),
+  vendorSendSeq: integer20("vendor_send_seq").notNull().default(0),
+  vendorRemovedAt: ts7("vendor_removed_at"),
+  deletedAt: ts7("deleted_at"),
+  deletedBy: text40("deleted_by"),
+  purgeDueAt: ts7("purge_due_at"),
+  purgeStartedAt: ts7("purge_started_at"),
+  purgeLeaseUntil: ts7("purge_lease_until"),
+  purgeAttempts: integer20("purge_attempts").notNull().default(0),
+  restoreBarredAt: ts7("restore_barred_at"),
+  embeddedMoments: integer20("embedded_moments"),
+  skippedMoments: integer20("skipped_moments"),
+  createdAt: ts7("created_at").notNull().defaultNow(),
+  updatedAt: ts7("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey10({ name: "calls_pkey", columns: [t.organizationId, t.id] }),
-  foreignKey10({
+  primaryKey11({ name: "calls_pkey", columns: [t.organizationId, t.id] }),
+  foreignKey11({
     name: "calls_deal_fk",
     columns: [t.organizationId, t.dealRecordId],
     foreignColumns: [deals2.organizationId, deals2.id]
   }),
-  check20("calls_id_shape", idShape7("id", "call")),
-  check20("calls_organization_id_shape", idShape7("organization_id", "org")),
-  check20("calls_organization_not_global", notGlobal6),
-  check20("calls_deal_record_id_shape", idShape7("deal_record_id", "deal")),
-  check20("calls_uploaded_by_shape", idShape7("uploaded_by", "usr")),
-  check20("calls_deleted_by_shape", sql25`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
-  check20("calls_kind_known", sql25`${t.kind} in (${list8(CALL_KINDS2)})`),
-  check20("calls_media_type_known", sql25`${t.mediaType} in (${list8(CALL_MEDIA_TYPES2)})`),
-  check20("calls_kind_matches_media_type", sql25`(${t.kind} = 'recording') = (${t.mediaType} like 'audio/%')`),
-  check20("calls_file_name_shape", sql25`char_length(btrim(${t.fileName})) between 1 and 255`),
-  check20("calls_content_hash_length", sql25`octet_length(${t.contentHash}) = 32`),
-  check20("calls_size_bounds", sql25`${t.sizeBytes} between 1 and ${sql25.raw(String(CALL_MAX_RECORDING_BYTES2))}
-        and (${t.kind} = 'recording' or ${t.sizeBytes} <= ${sql25.raw(String(CALL_MAX_TRANSCRIPT_BYTES2))})`),
-  check20("calls_duration_bounds", sql25`${t.durationSeconds} is null or (${t.durationSeconds} between 1 and ${sql25.raw(String(CALL_MAX_RECORDING_SECONDS2))}
+  check21("calls_id_shape", idShape8("id", "call")),
+  check21("calls_organization_id_shape", idShape8("organization_id", "org")),
+  check21("calls_organization_not_global", notGlobal7),
+  check21("calls_deal_record_id_shape", idShape8("deal_record_id", "deal")),
+  check21("calls_uploaded_by_shape", idShape8("uploaded_by", "usr")),
+  check21("calls_deleted_by_shape", sql26`${t.deletedBy} ~ '^usr_[0-9a-f]{32}$'`),
+  check21("calls_kind_known", sql26`${t.kind} in (${list9(CALL_KINDS2)})`),
+  check21("calls_media_type_known", sql26`${t.mediaType} in (${list9(CALL_MEDIA_TYPES2)})`),
+  check21("calls_kind_matches_media_type", sql26`(${t.kind} = 'recording') = (${t.mediaType} like 'audio/%')`),
+  check21("calls_file_name_shape", sql26`char_length(btrim(${t.fileName})) between 1 and 255`),
+  check21("calls_content_hash_length", sql26`octet_length(${t.contentHash}) = 32`),
+  check21("calls_size_bounds", sql26`${t.sizeBytes} between 1 and ${sql26.raw(String(CALL_MAX_RECORDING_BYTES2))}
+        and (${t.kind} = 'recording' or ${t.sizeBytes} <= ${sql26.raw(String(CALL_MAX_TRANSCRIPT_BYTES2))})`),
+  check21("calls_duration_bounds", sql26`${t.durationSeconds} is null or (${t.durationSeconds} between 1 and ${sql26.raw(String(CALL_MAX_RECORDING_SECONDS2))}
         and ${t.kind} = 'recording')`),
-  check20("calls_state_known", sql25`${t.state} in (${list8(CALL_STATES2)})`),
-  check20("calls_failure_reason_known", sql25`${t.failureReason} in (${list8(CALL_FAILURE_REASONS2)})`),
-  check20("calls_failed_has_reason", sql25`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
-  check20("calls_transcript_states", sql25`${t.kind} = 'recording' or ${t.state} not in ('transcribing', 'awaiting_rep')`),
-  check20("calls_rep_shape", sql25`(${t.repBy} is null and ${t.repLabel} is null and ${t.repChannel} is null)
+  check21("calls_state_known", sql26`${t.state} in (${list9(CALL_STATES2)})`),
+  check21("calls_failure_reason_known", sql26`${t.failureReason} in (${list9(CALL_FAILURE_REASONS2)})`),
+  check21("calls_failed_has_reason", sql26`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check21("calls_transcript_states", sql26`${t.kind} = 'recording' or ${t.state} not in ('transcribing', 'awaiting_rep')`),
+  check21("calls_rep_shape", sql26`(${t.repBy} is null and ${t.repLabel} is null and ${t.repChannel} is null)
         or (${t.repBy} = 'speaker' and ${t.repLabel} is not null and ${t.repChannel} is null)
         or (${t.repBy} = 'channel' and ${t.repChannel} is not null and ${t.repLabel} is null
             and ${t.kind} = 'recording')`),
-  check20("calls_rep_label_shape", sql25`${t.repLabel} is null or char_length(${t.repLabel}) between 1 and ${sql25.raw(String(CALL_SPEAKER_LABEL_MAX_LENGTH2))}
-      and octet_length(${t.repLabel}) <= ${sql25.raw(String(CALL_SPEAKER_LABEL_MAX_BYTES2))}`),
-  check20("calls_awaiting_rep_has_none", sql25`${t.state} <> 'awaiting_rep' or ${t.repBy} is null`),
-  check20("calls_ready_has_rep", sql25`${t.state} <> 'ready' or ${t.repBy} is not null`),
-  check20("calls_ready_label_listed", sql25`${t.state} <> 'ready' or ${t.repBy} is distinct from 'speaker' or ${t.repLabel} = any(${t.speakerLabels})`),
-  check20("calls_moment_counts", sql25`(${t.embeddedMoments} is null) = (${t.skippedMoments} is null)
-        and (${t.embeddedMoments} is null or (${t.embeddedMoments} between 0 and ${sql25.raw(String(CALL_MAX_MOMENTS2))}
-          and ${t.skippedMoments} between 0 and ${sql25.raw(String(CALL_MAX_MOMENTS2))}))`),
-  check20("calls_speaker_labels_valid", sql25`playbook.speaker_labels_ok(${t.speakerLabels})`),
-  check20("calls_too_many_speakers_lists_none", sql25`${t.failureReason} is distinct from 'too_many_speakers' or cardinality(${t.speakerLabels}) = 0`),
-  check20("calls_object_key_shape", sql25`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`),
-  check20("calls_transcript_key_shape", sql25`char_length(${t.transcriptKey}) between 1 and 1024 and ${t.transcriptKey} collate "C" ~ '^[!-~]+$'`),
-  check20("calls_seq_bounds", sql25`${t.epoch} >= 0 and ${t.deletionSeq} >= 0
-        and ${t.repSeq} between 0 and ${sql25.raw(String(CALL_MAX_SEQ2))}
-        and ${t.taggedOutcomeSeq} between 0 and ${sql25.raw(String(CALL_MAX_SEQ2))}`),
-  check20("calls_vectors_removed_seq_bounds", sql25`${t.vectorsRemovedSeq} between 0 and ${t.deletionSeq}`),
-  check20("calls_deleted_has_times", sql25`(${t.state} = 'deleted') = (${t.deletedAt} is not null)
+  check21("calls_rep_label_shape", sql26`${t.repLabel} is null or char_length(${t.repLabel}) between 1 and ${sql26.raw(String(CALL_SPEAKER_LABEL_MAX_LENGTH2))}
+      and octet_length(${t.repLabel}) <= ${sql26.raw(String(CALL_SPEAKER_LABEL_MAX_BYTES2))}`),
+  check21("calls_awaiting_rep_has_none", sql26`${t.state} <> 'awaiting_rep' or ${t.repBy} is null`),
+  check21("calls_ready_has_rep", sql26`${t.state} <> 'ready' or ${t.repBy} is not null`),
+  check21("calls_ready_label_listed", sql26`${t.state} <> 'ready' or ${t.repBy} is distinct from 'speaker' or ${t.repLabel} = any(${t.speakerLabels})`),
+  check21("calls_moment_counts", sql26`(${t.embeddedMoments} is null) = (${t.skippedMoments} is null)
+        and (${t.embeddedMoments} is null or (${t.embeddedMoments} between 0 and ${sql26.raw(String(CALL_MAX_MOMENTS2))}
+          and ${t.skippedMoments} between 0 and ${sql26.raw(String(CALL_MAX_MOMENTS2))}))`),
+  check21("calls_speaker_labels_valid", sql26`playbook.speaker_labels_ok(${t.speakerLabels})`),
+  check21("calls_too_many_speakers_lists_none", sql26`${t.failureReason} is distinct from 'too_many_speakers' or cardinality(${t.speakerLabels}) = 0`),
+  check21("calls_object_key_shape", sql26`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`),
+  check21("calls_transcript_key_shape", sql26`char_length(${t.transcriptKey}) between 1 and 1024 and ${t.transcriptKey} collate "C" ~ '^[!-~]+$'`),
+  check21("calls_seq_bounds", sql26`${t.epoch} >= 0 and ${t.deletionSeq} >= 0
+        and ${t.repSeq} between 0 and ${sql26.raw(String(CALL_MAX_SEQ2))}
+        and ${t.taggedOutcomeSeq} between 0 and ${sql26.raw(String(CALL_MAX_SEQ2))}`),
+  check21("calls_vectors_removed_seq_bounds", sql26`${t.vectorsRemovedSeq} between 0 and ${t.deletionSeq}`),
+  check21("calls_deleted_has_times", sql26`(${t.state} = 'deleted') = (${t.deletedAt} is not null)
         and (${t.state} = 'deleted') = (${t.purgeDueAt} is not null)`),
-  check20("calls_deleted_by_when_deleted", sql25`${t.state} = 'deleted' or ${t.deletedBy} is null`),
-  check20("calls_deleted_is_counted", sql25`${t.state} <> 'deleted' or ${t.deletionSeq} >= 1`),
-  check20("calls_purge_due_after_delete", sql25`${t.purgeDueAt} >= ${t.deletedAt}`),
-  check20("calls_purge_only_when_deleted", sql25`(${t.purgeStartedAt} is null or ${t.state} = 'deleted')
+  check21("calls_deleted_by_when_deleted", sql26`${t.state} = 'deleted' or ${t.deletedBy} is null`),
+  check21("calls_deleted_is_counted", sql26`${t.state} <> 'deleted' or ${t.deletionSeq} >= 1`),
+  check21("calls_purge_due_after_delete", sql26`${t.purgeDueAt} >= ${t.deletedAt}`),
+  check21("calls_purge_only_when_deleted", sql26`(${t.purgeStartedAt} is null or ${t.state} = 'deleted')
         and (${t.purgeStartedAt} is null) = (${t.purgeLeaseUntil} is null)
         and (${t.purgeStartedAt} is null) = (${t.purgeAttempts} = 0)`),
-  check20("calls_purge_attempts_bounds", sql25`${t.purgeAttempts} between 0 and ${sql25.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
-  check20("calls_barred_only_when_deleted", sql25`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`),
-  check20("calls_vendor_removal_after_send", sql25`${t.vendorRemovedAt} is null or ${t.sentToVendorAt} is not null`),
-  check20("calls_vendor_send_seq_max", sql25`${t.vendorSendSeq} <= ${sql25.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
-  check20("calls_vendor_send_seq_matches", sql25`${t.vendorSendSeq} >= 0 and (${t.sentToVendorAt} is null) = (${t.vendorSendSeq} = 0)`),
-  check20("calls_transcript_has_rep", sql25`${t.kind} <> 'transcript' or ${t.repBy} is not null`),
-  uniqueIndex8("calls_content_hash_key").on(t.organizationId, t.contentHash).where(sql25`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
-  index31("calls_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql25`${t.state} <> 'deleted'`),
-  index31("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id),
-  index31("calls_deal_list_idx").on(t.organizationId, t.dealRecordId, t.createdAt, t.id).where(sql25`${t.state} <> 'deleted'`),
-  index31("calls_deal_state_list_idx").on(t.organizationId, t.dealRecordId, t.state, t.createdAt, t.id),
-  index31("calls_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql25`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql25.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
-  index31("calls_unbarred_idx").on(t.organizationId, t.id).where(sql25`${t.restoreBarredAt} is null`),
-  index31("calls_cleanup_idx").on(t.organizationId, t.deletedAt, t.id).where(sql25.raw(CALL_PENDING_CLEANUP_PREDICATE2)),
-  index31("calls_spent_purge_idx").on(t.organizationId, t.id).where(sql25`${t.state} = 'deleted' and ${t.purgeAttempts} >= ${sql25.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
-  index31("calls_retag_idx").on(t.organizationId, t.dealRecordId, t.id).where(sql25`${t.state} = 'ready'`)
+  check21("calls_purge_attempts_bounds", sql26`${t.purgeAttempts} between 0 and ${sql26.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
+  check21("calls_barred_only_when_deleted", sql26`${t.restoreBarredAt} is null or ${t.state} = 'deleted'`),
+  check21("calls_vendor_removal_after_send", sql26`${t.vendorRemovedAt} is null or ${t.sentToVendorAt} is not null`),
+  check21("calls_vendor_send_seq_max", sql26`${t.vendorSendSeq} <= ${sql26.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
+  check21("calls_vendor_send_seq_matches", sql26`${t.vendorSendSeq} >= 0 and (${t.sentToVendorAt} is null) = (${t.vendorSendSeq} = 0)`),
+  check21("calls_transcript_has_rep", sql26`${t.kind} <> 'transcript' or ${t.repBy} is not null`),
+  uniqueIndex9("calls_content_hash_key").on(t.organizationId, t.contentHash).where(sql26`${t.purgeStartedAt} is null and ${t.restoreBarredAt} is null`),
+  index32("calls_list_idx").on(t.organizationId, t.createdAt, t.id).where(sql26`${t.state} <> 'deleted'`),
+  index32("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt, t.id),
+  index32("calls_deal_list_idx").on(t.organizationId, t.dealRecordId, t.createdAt, t.id).where(sql26`${t.state} <> 'deleted'`),
+  index32("calls_deal_state_list_idx").on(t.organizationId, t.dealRecordId, t.state, t.createdAt, t.id),
+  index32("calls_purge_idx").on(t.organizationId, t.purgeDueAt, t.id).where(sql26`${t.state} = 'deleted' and ${t.purgeAttempts} < ${sql26.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
+  index32("calls_unbarred_idx").on(t.organizationId, t.id).where(sql26`${t.restoreBarredAt} is null`),
+  index32("calls_cleanup_idx").on(t.organizationId, t.deletedAt, t.id).where(sql26.raw(CALL_PENDING_CLEANUP_PREDICATE2)),
+  index32("calls_spent_purge_idx").on(t.organizationId, t.id).where(sql26`${t.state} = 'deleted' and ${t.purgeAttempts} >= ${sql26.raw(String(CALL_PURGE_MAX_ATTEMPTS2))}`),
+  index32("calls_retag_idx").on(t.organizationId, t.dealRecordId, t.id).where(sql26`${t.state} = 'ready'`)
 ]);
 var callJobs2 = playbookSchema2.table("call_jobs", {
-  id: text39("id").notNull(),
-  organizationId: text39("organization_id").notNull(),
-  callId: text39("call_id").notNull(),
-  kind: text39("kind", { enum: CALL_JOB_KINDS2 }).notNull(),
-  epoch: integer19("epoch").notNull(),
-  repSeq: integer19("rep_seq").notNull().default(0),
-  state: text39("state", { enum: CALL_JOB_STATES2 }).notNull().default("queued"),
-  attempts: integer19("attempts").notNull().default(0),
-  nextAttemptAt: ts6("next_attempt_at").notNull(),
+  id: text40("id").notNull(),
+  organizationId: text40("organization_id").notNull(),
+  callId: text40("call_id").notNull(),
+  kind: text40("kind", { enum: CALL_JOB_KINDS2 }).notNull(),
+  epoch: integer20("epoch").notNull(),
+  repSeq: integer20("rep_seq").notNull().default(0),
+  state: text40("state", { enum: CALL_JOB_STATES2 }).notNull().default("queued"),
+  attempts: integer20("attempts").notNull().default(0),
+  nextAttemptAt: ts7("next_attempt_at").notNull(),
   claimToken: uuid25("claim_token"),
-  failureReason: text39("failure_reason", { enum: CALL_FAILURE_REASONS2 }),
-  finishedAt: ts6("finished_at"),
-  createdAt: ts6("created_at").notNull().defaultNow(),
-  updatedAt: ts6("updated_at").notNull().defaultNow()
+  failureReason: text40("failure_reason", { enum: CALL_FAILURE_REASONS2 }),
+  finishedAt: ts7("finished_at"),
+  createdAt: ts7("created_at").notNull().defaultNow(),
+  updatedAt: ts7("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey10({ name: "call_jobs_pkey", columns: [t.organizationId, t.id] }),
-  foreignKey10({
+  primaryKey11({ name: "call_jobs_pkey", columns: [t.organizationId, t.id] }),
+  foreignKey11({
     name: "call_jobs_call_fk",
     columns: [t.organizationId, t.callId],
     foreignColumns: [calls2.organizationId, calls2.id]
   }).onDelete("cascade"),
-  check20("call_jobs_id_shape", idShape7("id", "cjob")),
-  check20("call_jobs_organization_id_shape", idShape7("organization_id", "org")),
-  check20("call_jobs_organization_not_global", notGlobal6),
-  check20("call_jobs_kind_known", sql25`${t.kind} in (${list8(CALL_JOB_KINDS2)})`),
-  check20("call_jobs_state_known", sql25`${t.state} in (${list8(CALL_JOB_STATES2)})`),
-  check20("call_jobs_epoch_seq_bounds", sql25`${t.epoch} >= 0 and ${t.repSeq} between 0 and ${sql25.raw(String(CALL_MAX_SEQ2))}`),
-  check20("call_jobs_attempts_bounds", sql25`${t.attempts} between 0 and ${sql25.raw(String(CALL_JOB_MAX_ATTEMPTS2))}`),
-  check20("call_jobs_running_has_token", sql25`(${t.state} = 'running') = (${t.claimToken} is not null)`),
-  check20("call_jobs_failure_reason_known", sql25`${t.failureReason} in (${list8(CALL_FAILURE_REASONS2)})`),
-  check20("call_jobs_failed_has_reason", sql25`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
-  check20("call_jobs_final_has_finish", sql25`(${t.state} in ('succeeded', 'failed', 'cancelled')) = (${t.finishedAt} is not null)`),
-  index31("call_jobs_call_idx").on(t.organizationId, t.callId),
-  uniqueIndex8("call_jobs_active_call_key").on(t.organizationId, t.callId).where(sql25`${t.state} in ('queued', 'running')`),
-  index31("call_jobs_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql25`${t.state} in ('queued', 'running')`)
+  check21("call_jobs_id_shape", idShape8("id", "cjob")),
+  check21("call_jobs_organization_id_shape", idShape8("organization_id", "org")),
+  check21("call_jobs_organization_not_global", notGlobal7),
+  check21("call_jobs_kind_known", sql26`${t.kind} in (${list9(CALL_JOB_KINDS2)})`),
+  check21("call_jobs_state_known", sql26`${t.state} in (${list9(CALL_JOB_STATES2)})`),
+  check21("call_jobs_epoch_seq_bounds", sql26`${t.epoch} >= 0 and ${t.repSeq} between 0 and ${sql26.raw(String(CALL_MAX_SEQ2))}`),
+  check21("call_jobs_attempts_bounds", sql26`${t.attempts} between 0 and ${sql26.raw(String(CALL_JOB_MAX_ATTEMPTS2))}`),
+  check21("call_jobs_running_has_token", sql26`(${t.state} = 'running') = (${t.claimToken} is not null)`),
+  check21("call_jobs_failure_reason_known", sql26`${t.failureReason} in (${list9(CALL_FAILURE_REASONS2)})`),
+  check21("call_jobs_failed_has_reason", sql26`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check21("call_jobs_final_has_finish", sql26`(${t.state} in ('succeeded', 'failed', 'cancelled')) = (${t.finishedAt} is not null)`),
+  index32("call_jobs_call_idx").on(t.organizationId, t.callId),
+  uniqueIndex9("call_jobs_active_call_key").on(t.organizationId, t.callId).where(sql26`${t.state} in ('queued', 'running')`),
+  index32("call_jobs_due_idx").on(t.organizationId, t.nextAttemptAt).where(sql26`${t.state} in ('queued', 'running')`)
 ]);
 var callVendorSends2 = playbookSchema2.table("call_vendor_sends", {
-  organizationId: text39("organization_id").notNull(),
-  callId: text39("call_id").notNull(),
-  seq: integer19("seq").notNull(),
-  vendorId: text39("vendor_id"),
-  createdAt: ts6("created_at").notNull().defaultNow(),
-  recordedAt: ts6("recorded_at")
+  organizationId: text40("organization_id").notNull(),
+  callId: text40("call_id").notNull(),
+  seq: integer20("seq").notNull(),
+  vendorId: text40("vendor_id"),
+  createdAt: ts7("created_at").notNull().defaultNow(),
+  recordedAt: ts7("recorded_at")
 }, (t) => [
-  primaryKey10({
+  primaryKey11({
     name: "call_vendor_sends_pkey",
     columns: [t.organizationId, t.callId, t.seq]
   }),
-  foreignKey10({
+  foreignKey11({
     name: "call_vendor_sends_call_fk",
     columns: [t.organizationId, t.callId],
     foreignColumns: [calls2.organizationId, calls2.id]
   }).onDelete("cascade"),
-  check20("call_vendor_sends_organization_id_shape", idShape7("organization_id", "org")),
-  check20("call_vendor_sends_organization_not_global", notGlobal6),
-  check20("call_vendor_sends_seq_bounds", sql25`${t.seq} between 1 and ${sql25.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
-  check20("call_vendor_sends_vendor_id_shape", sql25.raw(`"vendor_id" is null or "vendor_id" ~ '${CALL_VENDOR_ID_PATTERN2}'`)),
-  check20("call_vendor_sends_recorded_matches", sql25`(${t.vendorId} is null) = (${t.recordedAt} is null)`),
-  uniqueIndex8("call_vendor_sends_org_vendor_id_key").on(t.organizationId, t.vendorId).where(sql25`${t.vendorId} is not null`)
+  check21("call_vendor_sends_organization_id_shape", idShape8("organization_id", "org")),
+  check21("call_vendor_sends_organization_not_global", notGlobal7),
+  check21("call_vendor_sends_seq_bounds", sql26`${t.seq} between 1 and ${sql26.raw(String(CALL_MAX_VENDOR_SENDS2))}`),
+  check21("call_vendor_sends_vendor_id_shape", sql26.raw(`"vendor_id" is null or "vendor_id" ~ '${CALL_VENDOR_ID_PATTERN2}'`)),
+  check21("call_vendor_sends_recorded_matches", sql26`(${t.vendorId} is null) = (${t.recordedAt} is null)`),
+  uniqueIndex9("call_vendor_sends_org_vendor_id_key").on(t.organizationId, t.vendorId).where(sql26`${t.vendorId} is not null`)
 ]);
 // src/schema/playbook-consumed.ts
-import { sql as sql26 } from "drizzle-orm";
-import { check as check21, index as index32, primaryKey as primaryKey11, text as text40, timestamp as timestamp34, uuid as uuid26 } from "drizzle-orm/pg-core";
-var list9 = (values) => sql26.raw(values.map((v) => `'${v}'`).join(", "));
-var idShape8 = (column, prefix) => sql26.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var ts7 = (name) => timestamp34(name, { withTimezone: true });
+import { sql as sql27 } from "drizzle-orm";
+import { check as check22, index as index33, primaryKey as primaryKey12, text as text41, timestamp as timestamp35, uuid as uuid26 } from "drizzle-orm/pg-core";
+var list10 = (values) => sql27.raw(values.map((v) => `'${v}'`).join(", "));
+var idShape9 = (column, prefix) => sql27.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var ts8 = (name) => timestamp35(name, { withTimezone: true });
 var consumedMessage2 = playbookSchema2.table("consumed_message", {
-  consumer: text40("consumer").notNull(),
-  organizationId: text40("organization_id").notNull(),
-  messageId: text40("message_id").notNull(),
-  state: text40("state", { enum: CONSUMED_MESSAGE_STATES2 }).notNull(),
+  consumer: text41("consumer").notNull(),
+  organizationId: text41("organization_id").notNull(),
+  messageId: text41("message_id").notNull(),
+  state: text41("state", { enum: CONSUMED_MESSAGE_STATES2 }).notNull(),
   claimToken: uuid26("claim_token").notNull(),
-  leaseExpiresAt: ts7("lease_expires_at"),
-  completedAt: ts7("completed_at")
+  leaseExpiresAt: ts8("lease_expires_at"),
+  completedAt: ts8("completed_at")
 }, (t) => [
-  primaryKey11({
+  primaryKey12({
     name: "consumed_message_pkey",
     columns: [t.consumer, t.organizationId, t.messageId]
   }),
-  check21("consumed_message_organization_id_shape", idShape8("organization_id", "org")),
-  check21("consumed_message_consumer_shape", sql26`char_length(${t.consumer}) between 1 and 128 and ${t.consumer} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
-  check21("consumed_message_message_id_shape", sql26`char_length(${t.messageId}) between 1 and 128 and ${t.messageId} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
-  check21("consumed_message_state_known", sql26`${t.state} in (${list9(CONSUMED_MESSAGE_STATES2)})`),
-  check21("consumed_message_state_columns", sql26`(${t.state} = 'claimed' and ${t.leaseExpiresAt} is not null and ${t.completedAt} is null)
+  check22("consumed_message_organization_id_shape", idShape9("organization_id", "org")),
+  check22("consumed_message_consumer_shape", sql27`char_length(${t.consumer}) between 1 and 128 and ${t.consumer} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
+  check22("consumed_message_message_id_shape", sql27`char_length(${t.messageId}) between 1 and 128 and ${t.messageId} collate "C" ~ '^[A-Za-z0-9_.:-]+$'`),
+  check22("consumed_message_state_known", sql27`${t.state} in (${list10(CONSUMED_MESSAGE_STATES2)})`),
+  check22("consumed_message_state_columns", sql27`(${t.state} = 'claimed' and ${t.leaseExpiresAt} is not null and ${t.completedAt} is null)
         or (${t.state} = 'done' and ${t.leaseExpiresAt} is null and ${t.completedAt} is not null)`),
-  index32("consumed_message_done_idx").on(t.organizationId, t.completedAt).where(sql26`${t.state} = 'done'`),
-  index32("consumed_message_lease_idx").on(t.organizationId, t.leaseExpiresAt).where(sql26`${t.state} = 'claimed'`)
+  index33("consumed_message_done_idx").on(t.organizationId, t.completedAt).where(sql27`${t.state} = 'done'`),
+  index33("consumed_message_lease_idx").on(t.organizationId, t.leaseExpiresAt).where(sql27`${t.state} = 'claimed'`)
 ]);
 // src/schema/playbook-embed-usage.ts
-import { sql as sql27 } from "drizzle-orm";
-import { check as check22, date as date3, integer as integer20, primaryKey as primaryKey12, text as text41 } from "drizzle-orm/pg-core";
+import { sql as sql28 } from "drizzle-orm";
+import { check as check23, date as date3, integer as integer21, primaryKey as primaryKey13, text as text42 } from "drizzle-orm/pg-core";
 var EMBED_USAGE_MAX_ADD2 = 1e6;
 var EMBED_USAGE_MAX_MOMENTS2 = 1e9;
 var playbookEmbedUsage2 = playbookSchema2.table("embed_usage", {
-  organizationId: text41("organization_id").notNull(),
+  organizationId: text42("organization_id").notNull(),
   day: date3("day", { mode: "string" }).notNull(),
-  moments: integer20("moments").notNull().default(0)
+  moments: integer21("moments").notNull().default(0)
 }, (t) => [
-  primaryKey12({ name: "embed_usage_pkey", columns: [t.organizationId, t.day] }),
-  check22("embed_usage_organization_id_shape", sql27.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
-  check22("embed_usage_organization_not_global", sql27.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)),
-  check22("embed_usage_moments_bounds", sql27`${t.moments} between 0 and ${sql27.raw(String(EMBED_USAGE_MAX_MOMENTS2))}`)
+  primaryKey13({ name: "embed_usage_pkey", columns: [t.organizationId, t.day] }),
+  check23("embed_usage_organization_id_shape", sql28.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
+  check23("embed_usage_organization_not_global", sql28.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)),
+  check23("embed_usage_moments_bounds", sql28`${t.moments} between 0 and ${sql28.raw(String(EMBED_USAGE_MAX_MOMENTS2))}`)
 ]);
 // src/schema/playbook-idempotency.ts
-import { sql as sql28 } from "drizzle-orm";
+import { sql as sql29 } from "drizzle-orm";
 import {
-  check as check23,
+  check as check24,
   customType as customType10,
-  index as index33,
-  jsonb as jsonb13,
-  primaryKey as primaryKey13,
+  index as index34,
+  jsonb as jsonb14,
+  primaryKey as primaryKey14,
   smallint as smallint2,
-  text as text42,
-  timestamp as timestamp35
+  text as text43,
+  timestamp as timestamp36
 } from "drizzle-orm/pg-core";
-var idShape9 = (column, prefix) => sql28.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var idShape10 = (column, prefix) => sql29.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
 var bytes9 = customType10({
   dataType: () => "bytea",
   toDriver: (value) => Buffer.from(value),
@@ -2995,52 +3335,52 @@ var bytes9 = customType10({
 });
 var INTERNAL_CALL_USER_ID2 = "usr_00000000000000000000000000000000";
 var playbookIdempotencyKeys2 = playbookSchema2.table("idempotency_keys", {
-  organizationId: text42("organization_id").notNull(),
-  userId: text42("user_id").notNull(),
-  route: text42("route").notNull(),
-  key: text42("key").notNull(),
+  organizationId: text43("organization_id").notNull(),
+  userId: text43("user_id").notNull(),
+  route: text43("route").notNull(),
+  key: text43("key").notNull(),
   requestHash: bytes9("request_hash").notNull(),
   status: smallint2("status"),
-  response: jsonb13("response").$type(),
-  createdAt: timestamp35("created_at", { withTimezone: true }).notNull().defaultNow()
+  response: jsonb14("response").$type(),
+  createdAt: timestamp36("created_at", { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
-  primaryKey13({
+  primaryKey14({
     name: "idempotency_keys_pkey",
     columns: [t.organizationId, t.userId, t.route, t.key]
   }),
-  check23("idempotency_keys_organization_id_shape", idShape9("organization_id", "org")),
-  check23("idempotency_keys_organization_not_global", sql28.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)),
-  check23("idempotency_keys_user_id_shape", idShape9("user_id", "usr")),
-  check23("idempotency_keys_route_shape", sql28`char_length(${t.route}) between 1 and ${sql28.raw(String(IDEMPOTENCY_ROUTE_MAX2))}
+  check24("idempotency_keys_organization_id_shape", idShape10("organization_id", "org")),
+  check24("idempotency_keys_organization_not_global", sql29.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)),
+  check24("idempotency_keys_user_id_shape", idShape10("user_id", "usr")),
+  check24("idempotency_keys_route_shape", sql29`char_length(${t.route}) between 1 and ${sql29.raw(String(IDEMPOTENCY_ROUTE_MAX2))}
         and ${t.route} collate "C" ~ '^[a-z0-9._]+$'`),
-  check23("idempotency_keys_key_shape", sql28`char_length(${t.key}) between 1 and ${sql28.raw(String(IDEMPOTENCY_KEY_MAX2))}
+  check24("idempotency_keys_key_shape", sql29`char_length(${t.key}) between 1 and ${sql29.raw(String(IDEMPOTENCY_KEY_MAX2))}
         and ${t.key} collate "C" ~ '^[!-~]+$'`),
-  check23("idempotency_keys_request_hash_length", sql28`octet_length(${t.requestHash}) = ${sql28.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
-  check23("idempotency_keys_status_range", sql28`${t.status} between 100 and 599`),
-  check23("idempotency_keys_response_matches_status", sql28`(${t.status} is null) = (${t.response} is null)`),
-  check23("idempotency_keys_response_size", sql28`octet_length(${t.response}::text) <= ${sql28.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
-  index33("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
+  check24("idempotency_keys_request_hash_length", sql29`octet_length(${t.requestHash}) = ${sql29.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
+  check24("idempotency_keys_status_range", sql29`${t.status} between 100 and 599`),
+  check24("idempotency_keys_response_matches_status", sql29`(${t.status} is null) = (${t.response} is null)`),
+  check24("idempotency_keys_response_size", sql29`octet_length(${t.response}::text) <= ${sql29.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
+  index34("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
 ]);
 // src/schema/playbook-orphan-sweeps.ts
-import { sql as sql29 } from "drizzle-orm";
-import { check as check24, text as text43, timestamp as timestamp36 } from "drizzle-orm/pg-core";
+import { sql as sql30 } from "drizzle-orm";
+import { check as check25, text as text44, timestamp as timestamp37 } from "drizzle-orm/pg-core";
 var ORPHAN_SWEEP_CURSOR_MAX_BYTES2 = 1024;
 var ORPHAN_SWEEP_MIN_CLAIM_MS2 = 1000;
 var ORPHAN_SWEEP_MAX_CLAIM_MS2 = 3600000;
 var playbookOrphanSweeps2 = playbookSchema2.table("orphan_sweeps", {
-  organizationId: text43("organization_id").primaryKey(),
-  sweptThrough: timestamp36("swept_through", { withTimezone: true }).notNull(),
-  erasedAttemptAt: timestamp36("erased_attempt_at", { withTimezone: true }),
-  sweepCursor: text43("sweep_cursor"),
-  sweepClaimUntil: timestamp36("sweep_claim_until", { withTimezone: true })
+  organizationId: text44("organization_id").primaryKey(),
+  sweptThrough: timestamp37("swept_through", { withTimezone: true }).notNull(),
+  erasedAttemptAt: timestamp37("erased_attempt_at", { withTimezone: true }),
+  sweepCursor: text44("sweep_cursor"),
+  sweepClaimUntil: timestamp37("sweep_claim_until", { withTimezone: true })
 }, (t) => [
-  check24("orphan_sweeps_organization_id_shape", sql29.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
-  check24("orphan_sweeps_cursor_bounds", sql29`${t.sweepCursor} is null or octet_length(${t.sweepCursor}) between 1 and ${sql29.raw(String(ORPHAN_SWEEP_CURSOR_MAX_BYTES2))}`),
-  check24("orphan_sweeps_organization_not_global", sql29.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`))
+  check25("orphan_sweeps_organization_id_shape", sql30.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
+  check25("orphan_sweeps_cursor_bounds", sql30`${t.sweepCursor} is null or octet_length(${t.sweepCursor}) between 1 and ${sql30.raw(String(ORPHAN_SWEEP_CURSOR_MAX_BYTES2))}`),
+  check25("orphan_sweeps_organization_not_global", sql30.raw(`"organization_id" <> '${GLOBAL_SCOPE_ORGANIZATION_ID2}'`))
 ]);
 // src/schema/playbook-work-hints.ts
-import { sql as sql30 } from "drizzle-orm";
-import { check as check25, index as index34, primaryKey as primaryKey14, text as text44, timestamp as timestamp37 } from "drizzle-orm/pg-core";
+import { sql as sql31 } from "drizzle-orm";
+import { check as check26, index as index35, primaryKey as primaryKey15, text as text45, timestamp as timestamp38 } from "drizzle-orm/pg-core";
 var WORK_KINDS2 = [
   "purge_due",
   "jobs_due",
@@ -3057,33 +3397,33 @@ var WORK_KINDS2 = [
   "outcome_retag"
 ];
 var playbookWorkHints2 = playbookSchema2.table("work_hints", {
-  kind: text44("kind", { enum: WORK_KINDS2 }).notNull(),
-  organizationId: text44("organization_id").notNull(),
-  dueAt: timestamp37("due_at", { withTimezone: true }).notNull()
+  kind: text45("kind", { enum: WORK_KINDS2 }).notNull(),
+  organizationId: text45("organization_id").notNull(),
+  dueAt: timestamp38("due_at", { withTimezone: true }).notNull()
 }, (t) => [
-  primaryKey14({ name: "work_hints_pkey", columns: [t.kind, t.organizationId] }),
-  check25("work_hints_kind_known", sql30`${t.kind} in (${sql30.raw(WORK_KINDS2.map((k) => `'${k}'`).join(", "))})`),
-  check25("work_hints_organization_id_shape", sql30.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
-  check25("work_hints_global_only_consumed", sql30`${t.kind} = 'consumed_purge' or ${t.organizationId} <> ${sql30.raw(`'${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)}`),
-  index34("work_hints_due_idx").on(t.kind, t.dueAt, t.organizationId)
+  primaryKey15({ name: "work_hints_pkey", columns: [t.kind, t.organizationId] }),
+  check26("work_hints_kind_known", sql31`${t.kind} in (${sql31.raw(WORK_KINDS2.map((k) => `'${k}'`).join(", "))})`),
+  check26("work_hints_organization_id_shape", sql31.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
+  check26("work_hints_global_only_consumed", sql31`${t.kind} = 'consumed_purge' or ${t.organizationId} <> ${sql31.raw(`'${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)}`),
+  index35("work_hints_due_idx").on(t.kind, t.dueAt, t.organizationId)
 ]);
 // src/schema/voice.ts
 import { pgSchema as pgSchema4 } from "drizzle-orm/pg-core";
 var voiceSchema2 = pgSchema4("voice");
 // src/schema/voice-tables.ts
-import { sql as sql31 } from "drizzle-orm";
+import { sql as sql32 } from "drizzle-orm";
 import {
-  bigint as bigint9,
-  boolean as boolean10,
-  check as check26,
-  foreignKey as foreignKey11,
-  index as index35,
-  integer as integer21,
-  primaryKey as primaryKey15,
+  bigint as bigint10,
+  boolean as boolean11,
+  check as check27,
+  foreignKey as foreignKey12,
+  index as index36,
+  integer as integer22,
+  primaryKey as primaryKey16,
   smallint as smallint3,
-  text as text45,
-  timestamp as timestamp38,
-  uniqueIndex as uniqueIndex9
+  text as text46,
+  timestamp as timestamp39,
+  uniqueIndex as uniqueIndex10
 } from "drizzle-orm/pg-core";
 var LINE_STATES2 = ["porting", "active", "released"];
 var LINE_ASSIGNMENT_KINDS2 = ["unassigned", "team", "rep"];
@@ -3126,200 +3466,200 @@ var VOICE_CALL_EVENT_KINDS2 = [
 ];
 var MAX_PROVIDER_EVENT_ID_LENGTH2 = 200;
 var MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2 = 255;
-var list10 = (values) => sql31.raw(values.map((v) => `'${v}'`).join(", "));
-var num = (value) => sql31.raw(String(value));
-var idShape10 = (column, prefix) => sql31.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var orgShape4 = sql31.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
-var notGlobal7 = sql31.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
-var ts8 = (name) => timestamp38(name, { withTimezone: true });
+var list11 = (values) => sql32.raw(values.map((v) => `'${v}'`).join(", "));
+var num2 = (value) => sql32.raw(String(value));
+var idShape11 = (column, prefix) => sql32.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var orgShape5 = sql32.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
+var notGlobal8 = sql32.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
+var ts9 = (name) => timestamp39(name, { withTimezone: true });
 var voiceLines2 = voiceSchema2.table("lines", {
-  id: text45("id").notNull(),
-  organizationId: text45("organization_id").notNull(),
-  number: text45("number").notNull(),
-  country: text45("country").notNull(),
-  label: text45("label"),
-  state: text45("state", { enum: LINE_STATES2 }).notNull(),
-  assignmentKind: text45("assignment_kind", { enum: LINE_ASSIGNMENT_KINDS2 }).notNull().default("unassigned"),
-  assignmentTeamId: text45("assignment_team_id"),
-  assignmentMembershipId: text45("assignment_membership_id"),
-  providerSid: text45("provider_sid"),
-  createdAt: ts8("created_at").notNull().defaultNow(),
-  releasedAt: ts8("released_at")
+  id: text46("id").notNull(),
+  organizationId: text46("organization_id").notNull(),
+  number: text46("number").notNull(),
+  country: text46("country").notNull(),
+  label: text46("label"),
+  state: text46("state", { enum: LINE_STATES2 }).notNull(),
+  assignmentKind: text46("assignment_kind", { enum: LINE_ASSIGNMENT_KINDS2 }).notNull().default("unassigned"),
+  assignmentTeamId: text46("assignment_team_id"),
+  assignmentMembershipId: text46("assignment_membership_id"),
+  providerSid: text46("provider_sid"),
+  createdAt: ts9("created_at").notNull().defaultNow(),
+  releasedAt: ts9("released_at")
 }, (t) => [
-  primaryKey15({ name: "lines_pkey", columns: [t.organizationId, t.id] }),
-  check26("lines_id_shape", idShape10("id", "line")),
-  check26("lines_organization_id_shape", orgShape4),
-  check26("lines_organization_not_global", notGlobal7),
-  check26("lines_number_shape", sql31`${t.number} ~ '${sql31.raw(IDENTITY_VALUE_PATTERNS2.phone)}'`),
-  check26("lines_country_shape", sql31`${t.country} ~ '^[A-Z]{2}$'`),
-  check26("lines_label_shape", sql31`${t.label} is null or char_length(${t.label}) between 1 and ${num(MAX_LINE_LABEL_LENGTH2)}`),
-  check26("lines_state_known", sql31`${t.state} in (${list10(LINE_STATES2)})`),
-  check26("lines_assignment_kind_known", sql31`${t.assignmentKind} in (${list10(LINE_ASSIGNMENT_KINDS2)})`),
-  check26("lines_assignment_team_id_shape", idShape10("assignment_team_id", "team")),
-  check26("lines_assignment_membership_id_shape", idShape10("assignment_membership_id", "mem")),
-  check26("lines_assignment_matches_kind", sql31`(${t.assignmentKind} = 'team') = (${t.assignmentTeamId} is not null)
+  primaryKey16({ name: "lines_pkey", columns: [t.organizationId, t.id] }),
+  check27("lines_id_shape", idShape11("id", "line")),
+  check27("lines_organization_id_shape", orgShape5),
+  check27("lines_organization_not_global", notGlobal8),
+  check27("lines_number_shape", sql32`${t.number} ~ '${sql32.raw(IDENTITY_VALUE_PATTERNS2.phone)}'`),
+  check27("lines_country_shape", sql32`${t.country} ~ '^[A-Z]{2}$'`),
+  check27("lines_label_shape", sql32`${t.label} is null or char_length(${t.label}) between 1 and ${num2(MAX_LINE_LABEL_LENGTH2)}`),
+  check27("lines_state_known", sql32`${t.state} in (${list11(LINE_STATES2)})`),
+  check27("lines_assignment_kind_known", sql32`${t.assignmentKind} in (${list11(LINE_ASSIGNMENT_KINDS2)})`),
+  check27("lines_assignment_team_id_shape", idShape11("assignment_team_id", "team")),
+  check27("lines_assignment_membership_id_shape", idShape11("assignment_membership_id", "mem")),
+  check27("lines_assignment_matches_kind", sql32`(${t.assignmentKind} = 'team') = (${t.assignmentTeamId} is not null)
         and (${t.assignmentKind} = 'rep') = (${t.assignmentMembershipId} is not null)`),
-  check26("lines_provider_sid_shape", sql31`${t.providerSid} is null or char_length(${t.providerSid}) between 1 and 64`),
-  check26("lines_released_at", sql31`(${t.state} = 'released') = (${t.releasedAt} is not null)`),
-  check26("lines_released_unassigned", sql31`${t.state} <> 'released' or ${t.assignmentKind} = 'unassigned'`),
-  uniqueIndex9("lines_number_live_key").on(t.number).where(sql31`${t.state} <> 'released'`),
-  uniqueIndex9("lines_provider_sid_key").on(t.organizationId, t.providerSid).where(sql31`${t.providerSid} is not null`),
-  index35("lines_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
-  index35("lines_state_list_idx").on(t.organizationId, t.state, t.createdAt.desc(), t.id.desc()),
-  index35("lines_team_idx").on(t.organizationId, t.assignmentTeamId).where(sql31`${t.assignmentTeamId} is not null`),
-  index35("lines_rep_idx").on(t.organizationId, t.assignmentMembershipId).where(sql31`${t.assignmentMembershipId} is not null`)
+  check27("lines_provider_sid_shape", sql32`${t.providerSid} is null or char_length(${t.providerSid}) between 1 and 64`),
+  check27("lines_released_at", sql32`(${t.state} = 'released') = (${t.releasedAt} is not null)`),
+  check27("lines_released_unassigned", sql32`${t.state} <> 'released' or ${t.assignmentKind} = 'unassigned'`),
+  uniqueIndex10("lines_number_live_key").on(t.number).where(sql32`${t.state} <> 'released'`),
+  uniqueIndex10("lines_provider_sid_key").on(t.organizationId, t.providerSid).where(sql32`${t.providerSid} is not null`),
+  index36("lines_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+  index36("lines_state_list_idx").on(t.organizationId, t.state, t.createdAt.desc(), t.id.desc()),
+  index36("lines_team_idx").on(t.organizationId, t.assignmentTeamId).where(sql32`${t.assignmentTeamId} is not null`),
+  index36("lines_rep_idx").on(t.organizationId, t.assignmentMembershipId).where(sql32`${t.assignmentMembershipId} is not null`)
 ]);
 var voiceLineDirectory2 = voiceSchema2.table("line_directory", {
-  number: text45("number").primaryKey(),
-  organizationId: text45("organization_id").notNull(),
-  lineId: text45("line_id").notNull(),
-  state: text45("state", { enum: LINE_STATES2 }).notNull()
+  number: text46("number").primaryKey(),
+  organizationId: text46("organization_id").notNull(),
+  lineId: text46("line_id").notNull(),
+  state: text46("state", { enum: LINE_STATES2 }).notNull()
 }, (t) => [
-  check26("line_directory_number_shape", sql31`${t.number} ~ '${sql31.raw(IDENTITY_VALUE_PATTERNS2.phone)}'`),
-  check26("line_directory_organization_id_shape", orgShape4),
-  check26("line_directory_organization_not_global", notGlobal7),
-  check26("line_directory_line_id_shape", idShape10("line_id", "line")),
-  check26("line_directory_state_known", sql31`${t.state} in ('porting', 'active')`)
+  check27("line_directory_number_shape", sql32`${t.number} ~ '${sql32.raw(IDENTITY_VALUE_PATTERNS2.phone)}'`),
+  check27("line_directory_organization_id_shape", orgShape5),
+  check27("line_directory_organization_not_global", notGlobal8),
+  check27("line_directory_line_id_shape", idShape11("line_id", "line")),
+  check27("line_directory_state_known", sql32`${t.state} in ('porting', 'active')`)
 ]);
 var voiceCalls2 = voiceSchema2.table("calls", {
-  id: text45("id").notNull(),
-  organizationId: text45("organization_id").notNull(),
-  direction: text45("direction", { enum: VOICE_CALL_DIRECTIONS2 }).notNull(),
-  state: text45("state", { enum: VOICE_CALL_STATES2 }).notNull(),
-  lineId: text45("line_id").notNull(),
-  repMembershipId: text45("rep_membership_id"),
-  prospectId: text45("prospect_id"),
-  prospectNumber: text45("prospect_number").notNull(),
-  providerCallSid: text45("provider_call_sid"),
-  idempotencyKey: text45("idempotency_key"),
-  requestFingerprint: text45("request_fingerprint"),
-  disclosureWordingVersion: integer21("disclosure_wording_version"),
-  disclosurePlayedAt: ts8("disclosure_played_at"),
-  aiAssisted: boolean10("ai_assisted").notNull().default(false),
-  createdAt: ts8("created_at").notNull().defaultNow(),
-  answeredAt: ts8("answered_at"),
-  endedAt: ts8("ended_at"),
-  durationSeconds: integer21("duration_seconds"),
-  endedBy: text45("ended_by", { enum: VOICE_CALL_ENDED_BY2 }),
-  failureReason: text45("failure_reason", { enum: VOICE_CALL_FAILURE_REASONS2 }),
-  dealId: text45("deal_id"),
-  note: text45("note"),
-  transcriptState: text45("transcript_state", { enum: VOICE_TRANSCRIPT_STATES2 }).notNull().default("pending"),
-  updatedAt: ts8("updated_at").notNull().defaultNow()
+  id: text46("id").notNull(),
+  organizationId: text46("organization_id").notNull(),
+  direction: text46("direction", { enum: VOICE_CALL_DIRECTIONS2 }).notNull(),
+  state: text46("state", { enum: VOICE_CALL_STATES2 }).notNull(),
+  lineId: text46("line_id").notNull(),
+  repMembershipId: text46("rep_membership_id"),
+  prospectId: text46("prospect_id"),
+  prospectNumber: text46("prospect_number").notNull(),
+  providerCallSid: text46("provider_call_sid"),
+  idempotencyKey: text46("idempotency_key"),
+  requestFingerprint: text46("request_fingerprint"),
+  disclosureWordingVersion: integer22("disclosure_wording_version"),
+  disclosurePlayedAt: ts9("disclosure_played_at"),
+  aiAssisted: boolean11("ai_assisted").notNull().default(false),
+  createdAt: ts9("created_at").notNull().defaultNow(),
+  answeredAt: ts9("answered_at"),
+  endedAt: ts9("ended_at"),
+  durationSeconds: integer22("duration_seconds"),
+  endedBy: text46("ended_by", { enum: VOICE_CALL_ENDED_BY2 }),
+  failureReason: text46("failure_reason", { enum: VOICE_CALL_FAILURE_REASONS2 }),
+  dealId: text46("deal_id"),
+  note: text46("note"),
+  transcriptState: text46("transcript_state", { enum: VOICE_TRANSCRIPT_STATES2 }).notNull().default("pending"),
+  updatedAt: ts9("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey15({ name: "calls_pkey", columns: [t.organizationId, t.id] }),
-  check26("calls_id_shape", idShape10("id", "call")),
-  check26("calls_organization_id_shape", orgShape4),
-  check26("calls_organization_not_global", notGlobal7),
-  check26("calls_line_id_shape", idShape10("line_id", "line")),
-  check26("calls_rep_membership_id_shape", idShape10("rep_membership_id", "mem")),
-  check26("calls_prospect_id_shape", idShape10("prospect_id", "prs")),
-  check26("calls_prospect_number_shape", sql31`${t.prospectNumber} ~ '${sql31.raw(IDENTITY_VALUE_PATTERNS2.phone)}'`),
-  check26("calls_direction_known", sql31`${t.direction} in (${list10(VOICE_CALL_DIRECTIONS2)})`),
-  check26("calls_state_known", sql31`${t.state} in (${list10(VOICE_CALL_STATES2)})`),
-  check26("calls_ended_by_known", sql31`${t.endedBy} is null or ${t.endedBy} in (${list10(VOICE_CALL_ENDED_BY2)})`),
-  check26("calls_failure_reason_known", sql31`${t.failureReason} is null or ${t.failureReason} in (${list10(VOICE_CALL_FAILURE_REASONS2)})`),
-  check26("calls_transcript_state_known", sql31`${t.transcriptState} in (${list10(VOICE_TRANSCRIPT_STATES2)})`),
-  check26("calls_provider_call_sid_shape", sql31`${t.providerCallSid} is null or char_length(${t.providerCallSid}) between 1 and 64`),
-  check26("calls_idempotency_shape", sql31`(${t.idempotencyKey} is null) = (${t.requestFingerprint} is null)
-        and (${t.idempotencyKey} is null or char_length(${t.idempotencyKey}) between 1 and ${num(MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2)})
+  primaryKey16({ name: "calls_pkey", columns: [t.organizationId, t.id] }),
+  check27("calls_id_shape", idShape11("id", "call")),
+  check27("calls_organization_id_shape", orgShape5),
+  check27("calls_organization_not_global", notGlobal8),
+  check27("calls_line_id_shape", idShape11("line_id", "line")),
+  check27("calls_rep_membership_id_shape", idShape11("rep_membership_id", "mem")),
+  check27("calls_prospect_id_shape", idShape11("prospect_id", "prs")),
+  check27("calls_prospect_number_shape", sql32`${t.prospectNumber} ~ '${sql32.raw(IDENTITY_VALUE_PATTERNS2.phone)}'`),
+  check27("calls_direction_known", sql32`${t.direction} in (${list11(VOICE_CALL_DIRECTIONS2)})`),
+  check27("calls_state_known", sql32`${t.state} in (${list11(VOICE_CALL_STATES2)})`),
+  check27("calls_ended_by_known", sql32`${t.endedBy} is null or ${t.endedBy} in (${list11(VOICE_CALL_ENDED_BY2)})`),
+  check27("calls_failure_reason_known", sql32`${t.failureReason} is null or ${t.failureReason} in (${list11(VOICE_CALL_FAILURE_REASONS2)})`),
+  check27("calls_transcript_state_known", sql32`${t.transcriptState} in (${list11(VOICE_TRANSCRIPT_STATES2)})`),
+  check27("calls_provider_call_sid_shape", sql32`${t.providerCallSid} is null or char_length(${t.providerCallSid}) between 1 and 64`),
+  check27("calls_idempotency_shape", sql32`(${t.idempotencyKey} is null) = (${t.requestFingerprint} is null)
+        and (${t.idempotencyKey} is null or char_length(${t.idempotencyKey}) between 1 and ${num2(MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2)})
         and (${t.requestFingerprint} is null or ${t.requestFingerprint} ~ '^[0-9a-f]{64}$')`),
-  check26("calls_disclosure_all_or_none", sql31`(${t.disclosureWordingVersion} is null) = (${t.disclosurePlayedAt} is null)
+  check27("calls_disclosure_all_or_none", sql32`(${t.disclosureWordingVersion} is null) = (${t.disclosurePlayedAt} is null)
         and (${t.disclosureWordingVersion} is null or ${t.disclosureWordingVersion} >= 1)`),
-  check26("calls_live_has_disclosure", sql31`${t.state} not in ('live', 'ended') or ${t.disclosurePlayedAt} is not null`),
-  check26("calls_failed_has_reason", sql31`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
-  check26("calls_disclosure_failure", sql31`${t.failureReason} is distinct from 'disclosure_failed' or ${t.disclosurePlayedAt} is null`),
-  check26("calls_final_has_end", sql31`(${t.state} in (${list10(VOICE_CALL_FINAL_STATES2)})) = (${t.endedAt} is not null)`),
-  check26("calls_answered", sql31`(${t.state} in ('live', 'ended')) = (${t.answeredAt} is not null)`),
-  check26("calls_duration", sql31`(${t.state} = 'ended') = (${t.durationSeconds} is not null)`),
-  check26("calls_duration_bounds", sql31`${t.durationSeconds} is null or ${t.durationSeconds} between 0 and ${num(MAX_CALL_DURATION_SECONDS2)}`),
-  check26("calls_ended_by_final", sql31`${t.endedBy} is null or ${t.state} in (${list10(VOICE_CALL_FINAL_STATES2)})`),
-  check26("calls_times_ordered", sql31`(${t.answeredAt} is null or ${t.answeredAt} >= ${t.createdAt})
+  check27("calls_live_has_disclosure", sql32`${t.state} not in ('live', 'ended') or ${t.disclosurePlayedAt} is not null`),
+  check27("calls_failed_has_reason", sql32`(${t.state} = 'failed') = (${t.failureReason} is not null)`),
+  check27("calls_disclosure_failure", sql32`${t.failureReason} is distinct from 'disclosure_failed' or ${t.disclosurePlayedAt} is null`),
+  check27("calls_final_has_end", sql32`(${t.state} in (${list11(VOICE_CALL_FINAL_STATES2)})) = (${t.endedAt} is not null)`),
+  check27("calls_answered", sql32`(${t.state} in ('live', 'ended')) = (${t.answeredAt} is not null)`),
+  check27("calls_duration", sql32`(${t.state} = 'ended') = (${t.durationSeconds} is not null)`),
+  check27("calls_duration_bounds", sql32`${t.durationSeconds} is null or ${t.durationSeconds} between 0 and ${num2(MAX_CALL_DURATION_SECONDS2)}`),
+  check27("calls_ended_by_final", sql32`${t.endedBy} is null or ${t.state} in (${list11(VOICE_CALL_FINAL_STATES2)})`),
+  check27("calls_times_ordered", sql32`(${t.answeredAt} is null or ${t.answeredAt} >= ${t.createdAt})
         and (${t.endedAt} is null or ${t.endedAt} >= ${t.createdAt})
         and (${t.answeredAt} is null or ${t.endedAt} is null or ${t.endedAt} >= ${t.answeredAt})`),
-  check26("calls_wrap_up_only_ended", sql31`${t.state} = 'ended' or (${t.dealId} is null and ${t.note} is null)`),
-  check26("calls_deal_id_shape", sql31`${t.dealId} is null or (char_length(${t.dealId}) between 1 and ${num(DEAL_ID_MAX_LENGTH2)}
-        and octet_length(${t.dealId}) <= ${num(DEAL_ID_MAX_BYTES2)}
+  check27("calls_wrap_up_only_ended", sql32`${t.state} = 'ended' or (${t.dealId} is null and ${t.note} is null)`),
+  check27("calls_deal_id_shape", sql32`${t.dealId} is null or (char_length(${t.dealId}) between 1 and ${num2(DEAL_ID_MAX_LENGTH2)}
+        and octet_length(${t.dealId}) <= ${num2(DEAL_ID_MAX_BYTES2)}
         and ${t.dealId} = btrim(${t.dealId}, E' \\t\\n\\r\\f\\v'))`),
-  check26("calls_note_shape", sql31`${t.note} is null or char_length(${t.note}) between 1 and ${num(MAX_WRAP_UP_NOTE_LENGTH2)}`),
-  foreignKey11({
+  check27("calls_note_shape", sql32`${t.note} is null or char_length(${t.note}) between 1 and ${num2(MAX_WRAP_UP_NOTE_LENGTH2)}`),
+  foreignKey12({
     name: "calls_line_fk",
     columns: [t.organizationId, t.lineId],
     foreignColumns: [voiceLines2.organizationId, voiceLines2.id]
   }),
-  uniqueIndex9("calls_provider_call_sid_key").on(t.organizationId, t.providerCallSid).where(sql31`${t.providerCallSid} is not null`),
-  uniqueIndex9("calls_idempotency_key_key").on(t.organizationId, t.idempotencyKey).where(sql31`${t.idempotencyKey} is not null`),
-  index35("calls_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
-  index35("calls_rep_list_idx").on(t.organizationId, t.repMembershipId, t.createdAt.desc(), t.id.desc()).where(sql31`${t.repMembershipId} is not null`),
-  index35("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt.desc(), t.id.desc()),
-  index35("calls_prospect_list_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()).where(sql31`${t.prospectId} is not null`),
-  index35("calls_line_list_idx").on(t.organizationId, t.lineId, t.createdAt.desc(), t.id.desc())
+  uniqueIndex10("calls_provider_call_sid_key").on(t.organizationId, t.providerCallSid).where(sql32`${t.providerCallSid} is not null`),
+  uniqueIndex10("calls_idempotency_key_key").on(t.organizationId, t.idempotencyKey).where(sql32`${t.idempotencyKey} is not null`),
+  index36("calls_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+  index36("calls_rep_list_idx").on(t.organizationId, t.repMembershipId, t.createdAt.desc(), t.id.desc()).where(sql32`${t.repMembershipId} is not null`),
+  index36("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt.desc(), t.id.desc()),
+  index36("calls_prospect_list_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()).where(sql32`${t.prospectId} is not null`),
+  index36("calls_line_list_idx").on(t.organizationId, t.lineId, t.createdAt.desc(), t.id.desc())
 ]);
 var voiceCallEvents2 = voiceSchema2.table("call_events", {
-  id: text45("id").notNull(),
-  organizationId: text45("organization_id").notNull(),
-  seq: bigint9("seq", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
-  callId: text45("call_id").notNull(),
-  kind: text45("kind", { enum: VOICE_CALL_EVENT_KINDS2 }).notNull(),
-  fromState: text45("from_state", { enum: VOICE_CALL_STATES2 }),
-  toState: text45("to_state", { enum: VOICE_CALL_STATES2 }),
-  providerEventId: text45("provider_event_id"),
-  occurredAt: ts8("occurred_at").notNull(),
-  recordedAt: ts8("recorded_at").notNull().defaultNow()
+  id: text46("id").notNull(),
+  organizationId: text46("organization_id").notNull(),
+  seq: bigint10("seq", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+  callId: text46("call_id").notNull(),
+  kind: text46("kind", { enum: VOICE_CALL_EVENT_KINDS2 }).notNull(),
+  fromState: text46("from_state", { enum: VOICE_CALL_STATES2 }),
+  toState: text46("to_state", { enum: VOICE_CALL_STATES2 }),
+  providerEventId: text46("provider_event_id"),
+  occurredAt: ts9("occurred_at").notNull(),
+  recordedAt: ts9("recorded_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey15({ name: "call_events_pkey", columns: [t.organizationId, t.id] }),
-  check26("call_events_id_shape", idShape10("id", "vev")),
-  check26("call_events_organization_id_shape", orgShape4),
-  check26("call_events_organization_not_global", notGlobal7),
-  check26("call_events_call_id_shape", idShape10("call_id", "call")),
-  check26("call_events_kind_known", sql31`${t.kind} in (${list10(VOICE_CALL_EVENT_KINDS2)})`),
-  check26("call_events_from_state_known", sql31`${t.fromState} is null or ${t.fromState} in (${list10(VOICE_CALL_STATES2)})`),
-  check26("call_events_to_state_known", sql31`${t.toState} is null or ${t.toState} in (${list10(VOICE_CALL_STATES2)})`),
-  check26("call_events_state_change", sql31`(${t.kind} = 'state_changed') = (${t.toState} is not null)
+  primaryKey16({ name: "call_events_pkey", columns: [t.organizationId, t.id] }),
+  check27("call_events_id_shape", idShape11("id", "vev")),
+  check27("call_events_organization_id_shape", orgShape5),
+  check27("call_events_organization_not_global", notGlobal8),
+  check27("call_events_call_id_shape", idShape11("call_id", "call")),
+  check27("call_events_kind_known", sql32`${t.kind} in (${list11(VOICE_CALL_EVENT_KINDS2)})`),
+  check27("call_events_from_state_known", sql32`${t.fromState} is null or ${t.fromState} in (${list11(VOICE_CALL_STATES2)})`),
+  check27("call_events_to_state_known", sql32`${t.toState} is null or ${t.toState} in (${list11(VOICE_CALL_STATES2)})`),
+  check27("call_events_state_change", sql32`(${t.kind} = 'state_changed') = (${t.toState} is not null)
         and (${t.fromState} is null or ${t.toState} is not null)`),
-  check26("call_events_provider_event_id_shape", sql31`${t.providerEventId} is null or char_length(${t.providerEventId}) between 1 and ${num(MAX_PROVIDER_EVENT_ID_LENGTH2)}`),
-  foreignKey11({
+  check27("call_events_provider_event_id_shape", sql32`${t.providerEventId} is null or char_length(${t.providerEventId}) between 1 and ${num2(MAX_PROVIDER_EVENT_ID_LENGTH2)}`),
+  foreignKey12({
     name: "call_events_call_fk",
     columns: [t.organizationId, t.callId],
     foreignColumns: [voiceCalls2.organizationId, voiceCalls2.id]
   }).onDelete("cascade"),
-  uniqueIndex9("call_events_provider_event_key").on(t.organizationId, t.providerEventId),
-  index35("call_events_call_idx").on(t.organizationId, t.callId, t.seq)
+  uniqueIndex10("call_events_provider_event_key").on(t.organizationId, t.providerEventId),
+  index36("call_events_call_idx").on(t.organizationId, t.callId, t.seq)
 ]);
 var voiceRecordings2 = voiceSchema2.table("recordings", {
-  id: text45("id").notNull(),
-  organizationId: text45("organization_id").notNull(),
-  callId: text45("call_id").notNull(),
-  storageKey: text45("storage_key").notNull(),
-  sizeBytes: bigint9("size_bytes", { mode: "number" }),
+  id: text46("id").notNull(),
+  organizationId: text46("organization_id").notNull(),
+  callId: text46("call_id").notNull(),
+  storageKey: text46("storage_key").notNull(),
+  sizeBytes: bigint10("size_bytes", { mode: "number" }),
   channels: smallint3("channels").notNull(),
-  state: text45("state", { enum: VOICE_RECORDING_STATES2 }).notNull().default("storing"),
-  createdAt: ts8("created_at").notNull().defaultNow(),
-  storedAt: ts8("stored_at"),
-  deletedAt: ts8("deleted_at"),
-  purgeDueAt: ts8("purge_due_at"),
-  updatedAt: ts8("updated_at").notNull().defaultNow()
+  state: text46("state", { enum: VOICE_RECORDING_STATES2 }).notNull().default("storing"),
+  createdAt: ts9("created_at").notNull().defaultNow(),
+  storedAt: ts9("stored_at"),
+  deletedAt: ts9("deleted_at"),
+  purgeDueAt: ts9("purge_due_at"),
+  updatedAt: ts9("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey15({ name: "recordings_pkey", columns: [t.organizationId, t.id] }),
-  check26("recordings_id_shape", idShape10("id", "rec")),
-  check26("recordings_organization_id_shape", orgShape4),
-  check26("recordings_organization_not_global", notGlobal7),
-  check26("recordings_call_id_shape", idShape10("call_id", "call")),
-  check26("recordings_storage_key_shape", sql31`char_length(${t.storageKey}) between 1 and ${num(MAX_RECORDING_KEY_LENGTH2)}
+  primaryKey16({ name: "recordings_pkey", columns: [t.organizationId, t.id] }),
+  check27("recordings_id_shape", idShape11("id", "rec")),
+  check27("recordings_organization_id_shape", orgShape5),
+  check27("recordings_organization_not_global", notGlobal8),
+  check27("recordings_call_id_shape", idShape11("call_id", "call")),
+  check27("recordings_storage_key_shape", sql32`char_length(${t.storageKey}) between 1 and ${num2(MAX_RECORDING_KEY_LENGTH2)}
         and ${t.storageKey} collate "C" ~ '^[A-Za-z0-9][A-Za-z0-9/_.-]*$'`),
-  check26("recordings_channels_known", sql31`${t.channels} in (1, 2)`),
-  check26("recordings_state_known", sql31`${t.state} in (${list10(VOICE_RECORDING_STATES2)})`),
-  check26("recordings_size_bounds", sql31`${t.sizeBytes} is null or ${t.sizeBytes} >= 0`),
-  check26("recordings_stored", sql31`(${t.state} <> 'storing' or (${t.storedAt} is null and ${t.sizeBytes} is null)) and (${t.state} <> 'stored' or (${t.storedAt} is not null and ${t.sizeBytes} is not null))`),
-  check26("recordings_deleted", sql31`(${t.state} = 'deleted') = (${t.deletedAt} is not null)`),
-  check26("recordings_purge_only_deleted", sql31`${t.purgeDueAt} is null or ${t.state} = 'deleted'`),
-  foreignKey11({
+  check27("recordings_channels_known", sql32`${t.channels} in (1, 2)`),
+  check27("recordings_state_known", sql32`${t.state} in (${list11(VOICE_RECORDING_STATES2)})`),
+  check27("recordings_size_bounds", sql32`${t.sizeBytes} is null or ${t.sizeBytes} >= 0`),
+  check27("recordings_stored", sql32`(${t.state} <> 'storing' or (${t.storedAt} is null and ${t.sizeBytes} is null)) and (${t.state} <> 'stored' or (${t.storedAt} is not null and ${t.sizeBytes} is not null))`),
+  check27("recordings_deleted", sql32`(${t.state} = 'deleted') = (${t.deletedAt} is not null)`),
+  check27("recordings_purge_only_deleted", sql32`${t.purgeDueAt} is null or ${t.state} = 'deleted'`),
+  foreignKey12({
     name: "recordings_call_fk",
     columns: [t.organizationId, t.callId],
     foreignColumns: [voiceCalls2.organizationId, voiceCalls2.id]
   }).onDelete("cascade"),
-  uniqueIndex9("recordings_call_key").on(t.organizationId, t.callId),
-  uniqueIndex9("recordings_storage_key_key").on(t.organizationId, t.storageKey),
-  index35("recordings_purge_idx").on(t.organizationId, t.purgeDueAt).where(sql31`${t.state} = 'deleted' and ${t.purgeDueAt} is not null`)
+  uniqueIndex10("recordings_call_key").on(t.organizationId, t.callId),
+  uniqueIndex10("recordings_storage_key_key").on(t.organizationId, t.storageKey),
+  index36("recordings_purge_idx").on(t.organizationId, t.purgeDueAt).where(sql32`${t.state} = 'deleted' and ${t.purgeDueAt} is not null`)
 ]);
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, PROSPECT_IDENTITY_KINDS2, PROSPECT_STATUSES2, PROSPECT_FIELD_NAMES2, PROSPECT_COMPANY_FIELD_NAMES2, MAX_PROSPECT_COMPANY_TEXT_LENGTH2, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH2, MAX_PROSPECT_COMPANY_TECHNOLOGIES2, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH2, FIELD_HISTORY_STATES2, MAX_FIELD_HISTORY_ENTRIES2, MAX_PROSPECT_FIELD_VALUE_LENGTH2, MAX_SOURCE_REF_LENGTH2, MAX_PROSPECT_COMPANY_NAME_LENGTH2, MAX_PROSPECT_NOTES_LENGTH2, MAX_PROSPECT_TAG_LENGTH2, MAX_PROSPECT_TAGS2, MAX_PROSPECT_IMPORT_BYTES2, MAX_PROSPECT_IMPORT_ROWS2, PROSPECT_IMPORT_STATES2, PROSPECT_IMPORT_FAILURE_REASONS2, PROSPECT_IMPORT_ROW_RESULTS2, PROSPECT_IMPORT_SKIP_REASONS2, PROSPECT_IMPORT_REJECT_REASONS2, PROSPECT_MERGE_STATES2, PROSPECT_MERGE_UNDO_DAYS2, MAX_MERGED_PROSPECTS2, MAX_MERGE_SNAPSHOT_BYTES2, SOURCE_KIND_PATTERN2, IDENTITY_VALUE_PATTERNS2, prospectCompanies2, prospects2, prospectIdentities2, prospectFields2, prospectCompanyFields2, prospectImports2, prospectImportRows2, prospectMerges2, CONSENT_CHANNELS2, CONSENT_GRANT_SOURCES2, CONSENT_WITHDRAWAL_SOURCES2, CONSENT_EVENT_KINDS2, MAX_EVIDENCE_REF_LENGTH2, MAX_SUBMISSION_IP_LENGTH2, MAX_SUBMISSION_USER_AGENT_LENGTH2, MAX_CONSENT_WORDING_LENGTH2, MAX_CONSENT_FORM_NAME_LENGTH2, CONSENT_FORM_STATES2, SUPPRESSION_REASONS2, SUPPRESSION_ADDRESS_KINDS2, SUPPRESSION_REMOVABLE_REASONS2, MAX_SUPPRESSION_NOTE_LENGTH2, MAX_SUPPRESSION_SOURCE_REF_LENGTH2, MAX_MASKED_ADDRESS_LENGTH2, CONTACT_PURPOSES2, LOGGED_DENIAL_CODES2, CONTACT_ALLOW_BASES2, MAX_CALLER_LENGTH2, ADDRESS_HASH_BYTES2, CONTACT_CHECK_RETENTION_DAYS2, FORM_TOKEN_PATTERN2, MIN_FORM_TOKEN_LENGTH2, MAX_FORM_TOKEN_LENGTH2, consentWordings2, consentForms2, consentFormDirectory2, contactConsentEvents2, suppressionEntries2, contactCheckLog2, CRM_PROVIDERS2, CRM_OBJECT_KINDS2, CRM_SCOPE_LEVELS2, CRM_CONNECTION_STATES2, CRM_DIRECTIONS2, CRM_STAGE_OUTCOMES2, CRM_FIELD_KEYS2, CRM_MAPPING_KINDS2, CRM_RUN_TRIGGERS2, CRM_RUN_STATES2, CRM_RUN_ERROR_CODES2, CRM_REF_STATES2, MAX_CRM_EXTERNAL_ID_LENGTH2, MAX_CRM_LABEL_LENGTH2, MAX_CRM_RUN_COUNT2, CRM_SKIP_REASON_COUNT2, MAX_CRM_RUN_FAILURES2, MAX_CRM_SEALED_TOKEN_BYTES2, MAX_CRM_KEY_ID_LENGTH2, MAX_CRM_CURSOR_LENGTH2, MAX_CRM_WRITE_KEY_LENGTH2, MAX_CRM_LOCAL_ID_LENGTH2, CRM_WEBHOOK_WINDOW_SECONDS2, crmConnections2, crmMappings2, crmSyncRuns2, crmExternalRefs2, crmWebhookReceipts2, DEMO_RATE_ADDRESS_HASH_BYTES2, demoRateCounters2, DEMO_NOTIFICATION_STATUSES2, DEMO_REQUEST_NAME_MAX2, DEMO_REQUEST_MESSAGE_MAX2, DEMO_REQUEST_SOURCE_PAGE_MAX2, DEMO_REQUEST_KEY_LENGTH2, demoRequests2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2, MAX_QUEUED_DEAL_IMPORTS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, CALL_STATES2, CALL_FAILURE_REASONS2, CALL_KINDS2, CALL_MEDIA_TYPES2, CALL_CHANNELS2, CALL_REP_BY2, CALL_MAX_TRANSCRIPT_BYTES2, CALL_MAX_RECORDING_BYTES2, CALL_MAX_RECORDING_SECONDS2, CALL_MAX_SPEAKERS2, CALL_SPEAKER_LABEL_MAX_LENGTH2, CALL_SPEAKER_LABEL_MAX_BYTES2, CALL_MAX_SEQ2, CALL_MAX_MOMENTS2, CALL_PURGE_MAX_ATTEMPTS2, CALL_JOB_MAX_ATTEMPTS2, CALL_MAX_VENDOR_SENDS2, MAX_SEARCH_STATE_IDS2, CALL_VENDOR_ID_PATTERN2, CALL_JOB_KINDS2, CALL_JOB_STATES2, repChangeAllowed2, callReuploadRequeues2, CALL_PENDING_CLEANUP_PREDICATE2, calls2, callJobs2, callVendorSends2, consumedMessage2, EMBED_USAGE_MAX_ADD2, EMBED_USAGE_MAX_MOMENTS2, playbookEmbedUsage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, ORPHAN_SWEEP_CURSOR_MAX_BYTES2, ORPHAN_SWEEP_MIN_CLAIM_MS2, ORPHAN_SWEEP_MAX_CLAIM_MS2, playbookOrphanSweeps2, WORK_KINDS2, playbookWorkHints2, voiceSchema2, LINE_STATES2, LINE_ASSIGNMENT_KINDS2, MAX_LINE_LABEL_LENGTH2, VOICE_CALL_DIRECTIONS2, VOICE_CALL_STATES2, VOICE_CALL_FINAL_STATES2, VOICE_CALL_FAILURE_REASONS2, VOICE_CALL_ENDED_BY2, VOICE_TRANSCRIPT_STATES2, MAX_CALL_DURATION_SECONDS2, MAX_WRAP_UP_NOTE_LENGTH2, VOICE_RECORDING_STATES2, MAX_RECORDING_KEY_LENGTH2, VOICE_RECORDING_CHANNELS2, VOICE_CALL_EVENT_KINDS2, MAX_PROVIDER_EVENT_ID_LENGTH2, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2, voiceLines2, voiceLineDirectory2, voiceCalls2, voiceCallEvents2, voiceRecordings2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, PROSPECT_IDENTITY_KINDS2, PROSPECT_STATUSES2, PROSPECT_FIELD_NAMES2, PROSPECT_COMPANY_FIELD_NAMES2, MAX_PROSPECT_COMPANY_TEXT_LENGTH2, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH2, MAX_PROSPECT_COMPANY_TECHNOLOGIES2, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH2, FIELD_HISTORY_STATES2, MAX_FIELD_HISTORY_ENTRIES2, MAX_PROSPECT_FIELD_VALUE_LENGTH2, MAX_SOURCE_REF_LENGTH2, MAX_PROSPECT_COMPANY_NAME_LENGTH2, MAX_PROSPECT_NOTES_LENGTH2, MAX_PROSPECT_TAG_LENGTH2, MAX_PROSPECT_TAGS2, MAX_PROSPECT_IMPORT_BYTES2, MAX_PROSPECT_IMPORT_ROWS2, PROSPECT_IMPORT_STATES2, PROSPECT_IMPORT_FAILURE_REASONS2, PROSPECT_IMPORT_ROW_RESULTS2, PROSPECT_IMPORT_SKIP_REASONS2, PROSPECT_IMPORT_REJECT_REASONS2, PROSPECT_MERGE_STATES2, PROSPECT_MERGE_UNDO_DAYS2, MAX_MERGED_PROSPECTS2, MAX_MERGE_SNAPSHOT_BYTES2, SOURCE_KIND_PATTERN2, IDENTITY_VALUE_PATTERNS2, prospectCompanies2, prospects2, prospectIdentities2, prospectFields2, prospectCompanyFields2, prospectImports2, prospectImportRows2, prospectMerges2, CONSENT_CHANNELS2, CONSENT_GRANT_SOURCES2, CONSENT_WITHDRAWAL_SOURCES2, CONSENT_EVENT_KINDS2, MAX_EVIDENCE_REF_LENGTH2, MAX_SUBMISSION_IP_LENGTH2, MAX_SUBMISSION_USER_AGENT_LENGTH2, MAX_CONSENT_WORDING_LENGTH2, MAX_CONSENT_FORM_NAME_LENGTH2, CONSENT_FORM_STATES2, SUPPRESSION_REASONS2, SUPPRESSION_ADDRESS_KINDS2, SUPPRESSION_REMOVABLE_REASONS2, MAX_SUPPRESSION_NOTE_LENGTH2, MAX_SUPPRESSION_SOURCE_REF_LENGTH2, MAX_MASKED_ADDRESS_LENGTH2, CONTACT_PURPOSES2, LOGGED_DENIAL_CODES2, CONTACT_ALLOW_BASES2, MAX_CALLER_LENGTH2, ADDRESS_HASH_BYTES2, CONTACT_CHECK_RETENTION_DAYS2, FORM_TOKEN_PATTERN2, MIN_FORM_TOKEN_LENGTH2, MAX_FORM_TOKEN_LENGTH2, consentWordings2, consentForms2, consentFormDirectory2, contactConsentEvents2, suppressionEntries2, contactCheckLog2, AGENT_KINDS2, MAX_AGENT_INSTRUCTION_LENGTH2, CONTROL_LEVELS2, AGENT_SETTING_CHANNELS2, DEFAULT_CHANNEL2, ORGANIZATION_AGENT_KIND2, MAX_ESCALATION_RULES2, AUDIT_ACTOR_KINDS2, MAX_AUDIT_METADATA_BYTES2, EXPORT_KINDS2, EXPORT_FORMATS2, EXPORT_STATES2, EXPORT_ACTIVE_STATES2, EXPORT_FAILURE_REASONS2, EXPORT_SERVICES2, EXPORT_PART_STATES2, EXPORT_PART_FAILURE_REASONS2, MAX_EXPORT_PART_FILES2, MAX_EXPORT_PART_BYTES2, MAX_EXPORT_PREFIX_LENGTH2, API_KEY_SCOPES2, MAX_API_KEY_NAME_LENGTH2, API_KEY_ROLE_CEILINGS2, agentInstructionVersions2, agentInstructionPointers2, agentSettings2, auditEvents2, exportJobs2, exportParts2, coreApiKeys2, apiKeyUsage2, CRM_PROVIDERS2, CRM_OBJECT_KINDS2, CRM_SCOPE_LEVELS2, CRM_CONNECTION_STATES2, CRM_DIRECTIONS2, CRM_STAGE_OUTCOMES2, CRM_FIELD_KEYS2, CRM_MAPPING_KINDS2, CRM_RUN_TRIGGERS2, CRM_RUN_STATES2, CRM_RUN_ERROR_CODES2, CRM_REF_STATES2, MAX_CRM_EXTERNAL_ID_LENGTH2, MAX_CRM_LABEL_LENGTH2, MAX_CRM_RUN_COUNT2, CRM_SKIP_REASON_COUNT2, MAX_CRM_RUN_FAILURES2, MAX_CRM_SEALED_TOKEN_BYTES2, MAX_CRM_KEY_ID_LENGTH2, MAX_CRM_CURSOR_LENGTH2, MAX_CRM_WRITE_KEY_LENGTH2, MAX_CRM_LOCAL_ID_LENGTH2, CRM_WEBHOOK_WINDOW_SECONDS2, crmConnections2, crmMappings2, crmSyncRuns2, crmExternalRefs2, crmWebhookReceipts2, DEMO_RATE_ADDRESS_HASH_BYTES2, demoRateCounters2, DEMO_NOTIFICATION_STATUSES2, DEMO_REQUEST_NAME_MAX2, DEMO_REQUEST_MESSAGE_MAX2, DEMO_REQUEST_SOURCE_PAGE_MAX2, DEMO_REQUEST_KEY_LENGTH2, demoRequests2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2, MAX_QUEUED_DEAL_IMPORTS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, CALL_STATES2, CALL_FAILURE_REASONS2, CALL_KINDS2, CALL_MEDIA_TYPES2, CALL_CHANNELS2, CALL_REP_BY2, CALL_MAX_TRANSCRIPT_BYTES2, CALL_MAX_RECORDING_BYTES2, CALL_MAX_RECORDING_SECONDS2, CALL_MAX_SPEAKERS2, CALL_SPEAKER_LABEL_MAX_LENGTH2, CALL_SPEAKER_LABEL_MAX_BYTES2, CALL_MAX_SEQ2, CALL_MAX_MOMENTS2, CALL_PURGE_MAX_ATTEMPTS2, CALL_JOB_MAX_ATTEMPTS2, CALL_MAX_VENDOR_SENDS2, MAX_SEARCH_STATE_IDS2, CALL_VENDOR_ID_PATTERN2, CALL_JOB_KINDS2, CALL_JOB_STATES2, repChangeAllowed2, callReuploadRequeues2, CALL_PENDING_CLEANUP_PREDICATE2, calls2, callJobs2, callVendorSends2, consumedMessage2, EMBED_USAGE_MAX_ADD2, EMBED_USAGE_MAX_MOMENTS2, playbookEmbedUsage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, ORPHAN_SWEEP_CURSOR_MAX_BYTES2, ORPHAN_SWEEP_MIN_CLAIM_MS2, ORPHAN_SWEEP_MAX_CLAIM_MS2, playbookOrphanSweeps2, WORK_KINDS2, playbookWorkHints2, voiceSchema2, LINE_STATES2, LINE_ASSIGNMENT_KINDS2, MAX_LINE_LABEL_LENGTH2, VOICE_CALL_DIRECTIONS2, VOICE_CALL_STATES2, VOICE_CALL_FINAL_STATES2, VOICE_CALL_FAILURE_REASONS2, VOICE_CALL_ENDED_BY2, VOICE_TRANSCRIPT_STATES2, MAX_CALL_DURATION_SECONDS2, MAX_WRAP_UP_NOTE_LENGTH2, VOICE_RECORDING_STATES2, MAX_RECORDING_KEY_LENGTH2, VOICE_RECORDING_CHANNELS2, VOICE_CALL_EVENT_KINDS2, MAX_PROVIDER_EVENT_ID_LENGTH2, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2, voiceLines2, voiceLineDirectory2, voiceCalls2, voiceCallEvents2, voiceRecordings2, exports_schema };

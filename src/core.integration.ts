@@ -1911,6 +1911,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   describe('every function in core is owned, pinned and callable by exactly the roles meant to', () => {
     /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
+      audit_events_extend_chain: [false, true, false],
       claim_demo_notices: [true, false, true],
       consent_channels_valid: [false, false, true],
       consent_form_for_token: [true, false, true],

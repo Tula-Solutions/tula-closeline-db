@@ -239,6 +239,13 @@
       "when": 1792739505854,
       "tag": "0033_core_crm_webhook_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792741122757,
+      "tag": "0034_core_agent_controls",
+      "breakpoints": true
     }
   ]
 }
