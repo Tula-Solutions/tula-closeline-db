@@ -9,6 +9,8 @@ import {
   MAX_MERGED_PROSPECTS,
   MAX_PROSPECT_IMPORT_BYTES,
   MAX_PROSPECT_IMPORT_ROWS,
+  MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH,
+  PROSPECT_COMPANY_FIELD_NAMES,
   PROSPECT_FIELD_NAMES,
   PROSPECT_IDENTITY_KINDS,
   PROSPECT_IMPORT_REJECT_REASONS,
@@ -83,6 +85,43 @@ describe('the prospect tables', () => {
     expect(MAX_PROSPECT_IMPORT_BYTES).toBe(10 * 1024 * 1024)
     expect(PROSPECT_IMPORT_SKIP_REASONS).toEqual(['no_change', 'manual_values_kept'])
     expect(PROSPECT_IMPORT_REJECT_REASONS).toHaveLength(14)
+  })
+
+  test('the Company enrichment fields, their bounds and provenance names are in the migration', () => {
+    const company = readFileSync(
+      new URL('../../migrations/0028_core_company_enrichment.sql', import.meta.url),
+      'utf8'
+    )
+    expect(PROSPECT_COMPANY_FIELD_NAMES).toEqual([
+      'name',
+      'domain',
+      'industry',
+      'employee_count',
+      'region',
+      'technologies',
+    ])
+    for (const column of [
+      'industry" text',
+      'employee_count" integer',
+      'region" text',
+      'technologies" text[]',
+    ]) {
+      expect(company).toContain(`ADD COLUMN "${column}`)
+    }
+    expect(company).toContain('cardinality(technologies) <= 50')
+    expect(company).toContain('NOT BETWEEN 1 AND 100')
+    expect(company).toContain('"employee_count" >= 0')
+    expect(MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH).toBe(5300)
+    expect(company).toContain('between 1 and 5300')
+    expect(company).toContain('IMMUTABLE PARALLEL SAFE')
+    expect(company).toContain('^[0-9]{1,9}$')
+    expect(company).toContain(
+      'REVOKE ALL ON FUNCTION "core"."prospect_company_technologies_text_valid"(text) FROM PUBLIC'
+    )
+    const columns = getTableConfig(prospectCompanies).columns.map((c) => c.name)
+    expect(columns).toEqual(
+      expect.arrayContaining(['industry', 'employee_count', 'region', 'technologies'])
+    )
   })
 
   test('the history cap in the trigger equals the constant', () => {

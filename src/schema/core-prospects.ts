@@ -40,7 +40,22 @@ export const PROSPECT_FIELD_NAMES = [
   'linkedin_url',
 ] as const
 /** The Prospect Company fields that carry a Source. Mirrors the contract's `PROSPECT_COMPANY_FIELD_NAMES`. */
-export const PROSPECT_COMPANY_FIELD_NAMES = ['name', 'domain'] as const
+export const PROSPECT_COMPANY_FIELD_NAMES = [
+  'name',
+  'domain',
+  'industry',
+  'employee_count',
+  'region',
+  'technologies',
+] as const
+/** The longest Prospect Company industry or region, in characters. */
+export const MAX_PROSPECT_COMPANY_TEXT_LENGTH = 200
+/** The longest `technologies` history value, a JSON array of up to 50 items of 100 characters. */
+export const MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH = 5300
+/** The most technologies one Prospect Company carries. */
+export const MAX_PROSPECT_COMPANY_TECHNOLOGIES = 50
+/** The longest technology, in characters. */
+export const MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH = 100
 /** The states of a field history entry. Mirrors the contract's `FIELD_HISTORY_STATES`. */
 export const FIELD_HISTORY_STATES = ['current', 'superseded', 'suggested'] as const
 /** The most history entries kept per field. Mirrors the contract's `MAX_FIELD_HISTORY_ENTRIES`. */
@@ -132,8 +147,9 @@ const textArray = customType<{ data: string[]; driverData: string[] }>({
 })
 
 /**
- * A Prospect Company of an Organization. `name` and `domain` are the current values; their
- * Sources and history are in `prospect_company_fields`. `domain` is the normalised domain
+ * A Prospect Company of an Organization. `name`, `domain` and the enrichment fields (`industry`,
+ * `employee_count`, `region`, `technologies`, all nullable) are the current values; their
+ * Sources and history are in `prospect_company_fields`, which keeps each value as text. `domain` is the normalised domain
  * (ASCII-folded host), unique per Organization when set.
  *
  * Lists served (keyset `(created_at, id)`, newest first): `prospect_companies_list_idx`. Lookup by
@@ -148,6 +164,10 @@ export const prospectCompanies = coreSchema.table(
       .references(() => organizations.organizationId, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     domain: text('domain'),
+    industry: text('industry'),
+    employeeCount: integer('employee_count'),
+    region: text('region'),
+    technologies: textArray('technologies'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -164,6 +184,22 @@ export const prospectCompanies = coreSchema.table(
       'prospect_companies_domain_shape',
       sql`${t.domain} is null or (char_length(${t.domain}) between 3 and 253
         and ${t.domain} collate "C" ~ '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$')`
+    ),
+    check(
+      'prospect_companies_industry_shape',
+      sql`${t.industry} is null or (char_length(${t.industry}) between 1 and ${sql.raw(String(MAX_PROSPECT_COMPANY_TEXT_LENGTH))} and ${t.industry} = btrim(${t.industry}))`
+    ),
+    check(
+      'prospect_companies_region_shape',
+      sql`${t.region} is null or (char_length(${t.region}) between 1 and ${sql.raw(String(MAX_PROSPECT_COMPANY_TEXT_LENGTH))} and ${t.region} = btrim(${t.region}))`
+    ),
+    check(
+      'prospect_companies_employee_count_shape',
+      sql`${t.employeeCount} is null or ${t.employeeCount} >= 0`
+    ),
+    check(
+      'prospect_companies_technologies_shape',
+      sql`${t.technologies} is null or core.prospect_technologies_valid(${t.technologies})`
     ),
     uniqueIndex('prospect_companies_domain_key')
       .on(t.organizationId, t.domain)
@@ -311,17 +347,27 @@ const fieldHistoryColumns = () => ({
   setByUserId: text('set_by_user_id'),
 })
 
-/** The checks every field-history table shares. */
+/**
+ * The value check of a field-history table: 1 to 320 characters. Prospect Company history
+ * relaxes it for `technologies`, whose value is a JSON array of strings.
+ */
+const fieldValueCheck = (table: string, companyFields = false) =>
+  check(
+    `${table}_value_shape`,
+    sql.raw(
+      companyFields
+        ? `("field_name" <> 'technologies' and char_length("value") between 1 and ${MAX_PROSPECT_FIELD_VALUE_LENGTH}) or ("field_name" = 'technologies' and char_length("value") between 1 and ${MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH} and core.prospect_company_technologies_text_valid("value"))`
+        : `char_length("value") between 1 and ${MAX_PROSPECT_FIELD_VALUE_LENGTH}`
+    )
+  )
+
+/** The checks every field-history table shares, except the value check ({@link fieldValueCheck}). */
 const fieldHistoryChecks = (table: string) => [
   check(`${table}_organization_id_shape`, orgShape),
   check(`${table}_organization_not_global`, notGlobal),
   check(
     `${table}_state_known`,
     sql.raw(`"state" in (${FIELD_HISTORY_STATES.map((s) => `'${s}'`).join(', ')})`)
-  ),
-  check(
-    `${table}_value_shape`,
-    sql.raw(`char_length("value") between 1 and ${MAX_PROSPECT_FIELD_VALUE_LENGTH}`)
   ),
   check(`${table}_source_known`, sql.raw(`"source" collate "C" ~ '${SOURCE_KIND_PATTERN}'`)),
   check(
@@ -353,6 +399,7 @@ export const prospectFields = coreSchema.table(
   (t) => [
     primaryKey({ name: 'prospect_fields_pkey', columns: [t.organizationId, t.seq] }),
     ...fieldHistoryChecks('prospect_fields'),
+    fieldValueCheck('prospect_fields'),
     check('prospect_fields_prospect_id_shape', idShape('prospect_id', 'prs')),
     check(
       'prospect_fields_field_name_known',
@@ -378,7 +425,9 @@ export const prospectFields = coreSchema.table(
 
 /**
  * One entry of a Prospect Company field's history, as {@link prospectFields} is for a Prospect.
- * The fields are `name` and `domain`.
+ * The fields are `name`, `domain`, `industry`, `employee_count`, `region` and `technologies`; a
+ * value is kept as text: `employee_count` as 1 to 9 digits and `technologies` as a JSON array of
+ * strings.
  */
 export const prospectCompanyFields = coreSchema.table(
   'prospect_company_fields',
@@ -386,6 +435,11 @@ export const prospectCompanyFields = coreSchema.table(
   (t) => [
     primaryKey({ name: 'prospect_company_fields_pkey', columns: [t.organizationId, t.seq] }),
     ...fieldHistoryChecks('prospect_company_fields'),
+    fieldValueCheck('prospect_company_fields', true),
+    check(
+      'prospect_company_fields_employee_count_value',
+      sql`${t.fieldName} <> 'employee_count' or ${t.value} collate "C" ~ '^[0-9]{1,9}$'`
+    ),
     check('prospect_company_fields_company_id_shape', idShape('company_id', 'pco')),
     check(
       'prospect_company_fields_field_name_known',
