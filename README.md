@@ -3702,3 +3702,31 @@ credentials) and `source_retrieved_at`; `moment` has `source_call_id` and `sourc
 (the Playbook service resolves it, and a second Organization's ids resolve to nothing), that a Brief
 has at most 20 statements and 20 angle sources, the 100-character limit on each voice term, and that
 every check passed when a Draft is `auto_sendable`.
+
+## Organizations with expired Twilio rows (v0.45.0, migration `0042`)
+
+`voice.twilio_orgs_with_expired(p_now timestamptz, p_after text, p_limit integer)` returns the
+distinct `organization_id`s that hold a row with `expires_at <= p_now` in `voice.twilio_calls` or
+`voice.twilio_placements`, ascending and strictly after `p_after` (null starts at the beginning).
+`p_limit` is cut to 500; a null or smaller-than-one limit, or a null `p_now`, gives no row. Page by
+passing the last id back as `p_after`. It returns ids only, never row data. `closeline_voice` is
+the only role granted EXECUTE (revoked from PUBLIC), and the purge then runs per Organization with
+ordinary row-level security. (`p_after` is `text`, not `uuid`: Organization ids are
+`org_<32 hex>`.)
+
+Row-level security stops `closeline_voice` listing Organizations, so the function is `SECURITY
+DEFINER` with `search_path = pg_catalog, pg_temp`, owned by `closeline_voice_purge_scan`
+(`VOICE_PURGE_SCAN_ROLE`): `NOLOGIN`, `BYPASSRLS`, `NOINHERIT`, a member of no role but
+`closeline_owner`. It holds USAGE on `voice` and SELECT on `organization_id` and `expires_at` of
+the two tables only. It reads through the existing `(organization_id, expires_at)` purge indexes.
+
+**Deployed Regions** (tula-closeline-infra) must create the role in the Region bootstrap, before
+migration `0042` runs:
+
+```sql
+CREATE ROLE closeline_voice_purge_scan NOLOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_voice_purge_scan TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+```
+
+The migration fails naming the role if it is missing or wrongly configured. Locally
+`docker/postgres/init.sql` does this; a volume created before v0.45.0 lacks the role, so recreate it.

@@ -578,6 +578,34 @@ describe('the role check', () => {
     expect(await roleGaps()).toEqual([])
   })
 
+  test('closeline_voice_purge_scan, the Twilio purge scan definer, bypasses row-level security by design', async () => {
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('closeline_voice_purge_scan is reported if it can log in', async () => {
+    await admin.query('alter role closeline_voice_purge_scan login')
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_voice_purge_scan'])
+      expect(gaps[0]?.reason).toContain('log in')
+    } finally {
+      await admin.query('alter role closeline_voice_purge_scan nologin')
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
+  test('a service role that is a member of closeline_voice_purge_scan is reported', async () => {
+    await admin.query('grant closeline_voice_purge_scan to closeline_core')
+    try {
+      const gaps = await roleGaps()
+      expect(gaps.map((gap) => gap.table)).toEqual(['closeline_core'])
+      expect(gaps[0]?.reason).toContain('closeline_voice_purge_scan')
+    } finally {
+      await admin.query('revoke closeline_voice_purge_scan from closeline_core')
+    }
+    expect(await roleGaps()).toEqual([])
+  })
+
   test('a killed run that left closeline_core_search altered is reset before the suite starts', async () => {
     await admin.query('alter role closeline_core_search login nobypassrls')
     await admin.query('grant closeline_core_search to closeline_core')
