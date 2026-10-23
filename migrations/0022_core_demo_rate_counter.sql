@@ -47,7 +47,7 @@ BEGIN
     * p_window_seconds);
   INSERT INTO "core"."demo_rate_counter" AS c ("address_hash", "window_start", "hits")
   VALUES (p_address_hash, v_window_start, 1)
-  ON CONFLICT ("address_hash", "window_start") DO UPDATE SET "hits" = c."hits" + 1
+  ON CONFLICT ("address_hash", "window_start") DO UPDATE SET "hits" = least(c."hits", 2147483646) + 1
   RETURNING c."hits" INTO v_hits;
   RETURN v_hits <= p_limit;
 END

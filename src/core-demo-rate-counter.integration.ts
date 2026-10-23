@@ -96,7 +96,9 @@ describe('core demo rate counter', () => {
 
     test('50 concurrent hits never allow more than the limit', async () => {
       const addressHash = newHash()
-      const answers = await Promise.all(Array.from({ length: 50 }, () => hit(addressHash, 10)))
+      const answers = await Promise.all(
+        Array.from({ length: 50 }, () => hit(addressHash, 10, 86_400))
+      )
       expect(answers.filter(Boolean)).toHaveLength(10)
       expect(await hitsOf(addressHash)).toBe(50)
     })
@@ -104,9 +106,20 @@ describe('core demo rate counter', () => {
     test('concurrent hits on a fresh hash are exact over many rounds', async () => {
       for (let round = 0; round < 5; round++) {
         const addressHash = newHash()
-        const answers = await Promise.all(Array.from({ length: 30 }, () => hit(addressHash, 7)))
+        const answers = await Promise.all(
+          Array.from({ length: 30 }, () => hit(addressHash, 7, 86_400))
+        )
         expect(answers.filter(Boolean)).toHaveLength(7)
       }
+    })
+
+    test('a counter at the integer maximum denies instead of raising', async () => {
+      const addressHash = newHash()
+      await hit(addressHash, 5, 86_400)
+      await owner.query(`update ${TABLE} set hits = 2147483647 where address_hash = $1`, [
+        Buffer.from(addressHash),
+      ])
+      expect(await hit(addressHash, 5, 86_400)).toBe(false)
     })
 
     test('the database refuses a bad hash, window or limit', async () => {
