@@ -3349,7 +3349,7 @@ worker must cap `attempts` itself and settle the row `failed` past its cap.
 `core.demo_rate_counter` counts requests per address for the public demo-request route, so core
 rate-limits in Postgres and not in process memory. Like `core.demo_request` it has no
 `organization_id`, sits outside row-level security, is on the allowlist, and is revoked from
-`closeline_core`; only the two `SECURITY DEFINER` functions below reach it.
+`closeline_core`; only the `SECURITY DEFINER` functions below reach it.
 
 | Column | Rule |
 | --- | --- |
@@ -3373,18 +3373,19 @@ Core's search over Prospects (`ilike '%text%'` on field values, Company names an
 sequential scan whatever the trigram indexes of `0029`: `ilike` is not leakproof, and Postgres
 will not give an index a clause that is not leakproof while a row-level security policy guards the
 table. A role that bypasses row-level security has no such limit, but `closeline_core` must not be
-that role. The search therefore runs in two `SECURITY DEFINER` functions owned by
+that role. The search therefore runs in `SECURITY DEFINER` functions owned by
 `closeline_core_search`: `NOLOGIN`, `BYPASSRLS`, `NOINHERIT`, a member of no role and held by no
 service role (`closeline_owner` is a member `WITH SET TRUE, INHERIT FALSE`, only so the migration can
-run `ALTER FUNCTION ... OWNER TO`). It holds `USAGE` on `core` and column `SELECT` on three tables
-(`prospects`, `prospect_fields`, `prospect_companies`), nothing else.
+run `ALTER FUNCTION ... OWNER TO`). It holds `USAGE` on `core` and column `SELECT` on four tables
+(`prospects`, `prospect_fields`, `prospect_companies`, `memberships`), nothing else.
 
 | Function | Returns |
 | --- | --- |
 | `core.search_prospect_ids(q text, "after" text, max_rows integer)` | `TABLE(id text)`: the Prospects with a current field value, or a Company name or domain, containing `q` |
 | `core.search_prospect_company_ids(q text, "after" text, max_rows integer)` | `TABLE(id text)`: the Prospect Companies whose name or domain contains `q` |
+| `core.search_membership_ids(q text, "after" text, max_rows integer)` | `TABLE(id text)`: the memberships whose `name` contains `q`, on `memberships_name_trgm_idx` (`0037`); the members list filter `q`. Role also holds column `SELECT` on `memberships (id, organization_id, name)` |
 
-Both are `STABLE`, with `search_path = pg_catalog, core, public, pg_temp`, `EXECUTE` revoked from
+All three are `STABLE`, with `search_path = pg_catalog, core, public, pg_temp`, `EXECUTE` revoked from
 `PUBLIC` and granted to `closeline_core` alone. Ids are distinct, in id order, strictly after the
 cursor `after` (null starts at the beginning). Core calls them inside `withOrganization`, for
 example `id IN (select id from core.search_prospect_ids($1, $2, $3))`.

@@ -1272,7 +1272,8 @@ var memberships2 = coreSchema2.table("memberships", {
   check12("memberships_name_shape", sql17`${t.name} is null or char_length(btrim(${t.name})) between 1 and ${sql17.raw(String(MEMBER_NAME_MAX2))}`),
   unique22("memberships_organization_user_key").on(t.organizationId, t.userId),
   unique22("memberships_organization_id_id_key").on(t.organizationId, t.id),
-  index23("memberships_organization_email_idx").on(t.organizationId, t.email)
+  index23("memberships_organization_email_idx").on(t.organizationId, t.email),
+  index23("memberships_name_trgm_idx").using("gin", t.name.op("gin_trgm_ops"))
 ]);
 var teams2 = coreSchema2.table("teams", {
   id: text32("id").primaryKey(),

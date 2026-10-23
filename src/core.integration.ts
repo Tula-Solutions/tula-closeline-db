@@ -1939,6 +1939,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       refuse_truncate: [false, true, false],
       refuse_unacceptable_invitation: [false, true, false],
       require_owner: [false, true, false],
+      search_membership_ids: [true, false, true],
       search_prospect_company_ids: [true, false, true],
       search_prospect_ids: [true, false, true],
       settle_demo_notice: [true, false, true],
@@ -1951,7 +1952,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       track_owner_count: [true, true, false],
     }
 
-    const SEARCH_FUNCTION_NAMES = ['search_prospect_ids', 'search_prospect_company_ids']
+    const SEARCH_FUNCTION_NAMES = [
+      'search_membership_ids',
+      'search_prospect_ids',
+      'search_prospect_company_ids',
+    ]
 
     interface FunctionRow {
       name: string
@@ -2037,6 +2042,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         prospect_tags_valid: 'i',
         prospect_technologies_valid: 'i',
         prospect_company_technologies_text_valid: 'i',
+        search_membership_ids: 's',
         search_prospect_ids: 's',
         search_prospect_company_ids: 's',
       }

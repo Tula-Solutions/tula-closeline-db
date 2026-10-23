@@ -353,9 +353,10 @@ describe('a member email and name', () => {
     )
   })
 
-  test('one plain index serves the "already a member" check, and none is on name', () => {
+  test('one plain index serves the "already a member" check, and name has only the trigram one', () => {
     expect(config?.indexes.map((i) => i.config.name)).toEqual([
       'memberships_organization_email_idx',
+      'memberships_name_trgm_idx',
     ])
     const index = config?.indexes[0]
     expect(index?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([

@@ -152,6 +152,8 @@ export const memberships = coreSchema.table(
     unique('memberships_organization_user_key').on(t.organizationId, t.userId),
     unique('memberships_organization_id_id_key').on(t.organizationId, t.id),
     index('memberships_organization_email_idx').on(t.organizationId, t.email),
+    // Serves the members list filter `q` (`name ilike '%text%'`) through core.search_membership_ids; see 0029 and 0037.
+    index('memberships_name_trgm_idx').using('gin', t.name.op('gin_trgm_ops')),
   ]
 )
 
