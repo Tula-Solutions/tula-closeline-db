@@ -2970,7 +2970,7 @@ var outbox2 = coreSchema2.table("outbox", {
   check20("outbox_attempts_range", sql25`${t.attempts} between 0 and ${sql25.raw(String(OUTBOX_MAX_ATTEMPTS2))}`),
   check20("outbox_last_error_code_shape", sql25`${t.lastErrorCode} is null or (char_length(${t.lastErrorCode}) <= ${sql25.raw(String(OUTBOX_ERROR_CODE_MAX_LENGTH2))} and ${t.lastErrorCode} ~ '^[a-z][a-z0-9_.]*$')`),
   uniqueIndex8("outbox_dedupe_key").on(t.organizationId, t.dedupeKey),
-  index31("outbox_drain_idx").on(t.availableAt, t.id).where(sql25`${t.publishedAt} is null`),
+  index31("outbox_drain_idx").on(t.availableAt, t.id).where(sql25`${t.publishedAt} is null and ${t.attempts} < ${sql25.raw(String(OUTBOX_MAX_ATTEMPTS2))}`),
   index31("outbox_published_idx").on(t.publishedAt).where(sql25`${t.publishedAt} is not null`)
 ]);
 // src/schema/playbook.ts

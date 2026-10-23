@@ -351,6 +351,7 @@ describe('core.outbox, the transactional outbox and its drain', () => {
     )
     expect(plan.rows[0].indexdef).toContain('(available_at, id)')
     expect(plan.rows[0].indexdef).toContain('published_at IS NULL')
+    expect(plan.rows[0].indexdef).toContain('attempts < 50')
   })
 
   test('closeline_core cannot read the outbox without an Organization, and the drain role is narrow', async () => {

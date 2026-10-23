@@ -22,7 +22,7 @@ CREATE TABLE "core"."outbox" (
 --> statement-breakpoint
 ALTER TABLE "core"."outbox" ADD CONSTRAINT "outbox_organization_id_organizations_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "core"."organizations"("organization_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "outbox_dedupe_key" ON "core"."outbox" USING btree ("organization_id","dedupe_key");--> statement-breakpoint
-CREATE INDEX "outbox_drain_idx" ON "core"."outbox" USING btree ("available_at","id") WHERE "core"."outbox"."published_at" is null;--> statement-breakpoint
+CREATE INDEX "outbox_drain_idx" ON "core"."outbox" USING btree ("available_at","id") WHERE "core"."outbox"."published_at" is null and "core"."outbox"."attempts" < 50;--> statement-breakpoint
 CREATE INDEX "outbox_published_idx" ON "core"."outbox" USING btree ("published_at") WHERE "core"."outbox"."published_at" is not null;
 --> statement-breakpoint
 -- A tenant table: forced row-level security and the one canonical policy.

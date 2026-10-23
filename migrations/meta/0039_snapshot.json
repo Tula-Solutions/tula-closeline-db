@@ -11371,7 +11371,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"core\".\"outbox\".\"published_at\" is null",
+          "where": "\"core\".\"outbox\".\"published_at\" is null and \"core\".\"outbox\".\"attempts\" < 50",
           "concurrently": false,
           "method": "btree",
           "with": {}

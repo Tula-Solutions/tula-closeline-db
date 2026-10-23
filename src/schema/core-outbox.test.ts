@@ -69,6 +69,8 @@ describe('core.outbox', () => {
       'id',
     ])
     expect(drain?.config.where).toBeDefined()
+    // Parked rows (50 attempts) stay out of the index, so a claim never steps over them.
+    expect(migration).toMatch(/outbox_drain_idx[^;]*"attempts" < 50/)
     expect(indexOf('outbox_published_idx')?.config.where).toBeDefined()
   })
 

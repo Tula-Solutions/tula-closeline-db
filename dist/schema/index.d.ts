@@ -12505,7 +12505,7 @@ declare const OUTBOX_MAX_RETRY_DELAY_MS = 864e5;
 *
 * Lists served:
 * - The drain claim: unpublished rows with `available_at <= now()`, oldest first
-*   (`outbox_drain_idx`, partial on `published_at is null`), `for update skip locked`, at most
+*   (`outbox_drain_idx`, partial on `published_at is null and attempts < 50`), `for update skip locked`, at most
 *   {@link OUTBOX_MAX_BATCH}.
 * - The retention purge of published rows: `published_at < $cutoff` (`outbox_published_idx`).
 */

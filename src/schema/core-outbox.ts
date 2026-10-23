@@ -56,7 +56,7 @@ const orgRef = () =>
  *
  * Lists served:
  * - The drain claim: unpublished rows with `available_at <= now()`, oldest first
- *   (`outbox_drain_idx`, partial on `published_at is null`), `for update skip locked`, at most
+ *   (`outbox_drain_idx`, partial on `published_at is null and attempts < 50`), `for update skip locked`, at most
  *   {@link OUTBOX_MAX_BATCH}.
  * - The retention purge of published rows: `published_at < $cutoff` (`outbox_published_idx`).
  */
@@ -103,7 +103,11 @@ export const outbox = coreSchema.table(
       sql`${t.lastErrorCode} is null or (char_length(${t.lastErrorCode}) <= ${sql.raw(String(OUTBOX_ERROR_CODE_MAX_LENGTH))} and ${t.lastErrorCode} ~ '^[a-z][a-z0-9_.]*$')`
     ),
     uniqueIndex('outbox_dedupe_key').on(t.organizationId, t.dedupeKey),
-    index('outbox_drain_idx').on(t.availableAt, t.id).where(sql`${t.publishedAt} is null`),
+    index('outbox_drain_idx')
+      .on(t.availableAt, t.id)
+      .where(
+        sql`${t.publishedAt} is null and ${t.attempts} < ${sql.raw(String(OUTBOX_MAX_ATTEMPTS))}`
+      ),
     index('outbox_published_idx').on(t.publishedAt).where(sql`${t.publishedAt} is not null`),
   ]
 )

@@ -3566,9 +3566,12 @@ statements and the drain's access path.
   reads and writes nothing, and `closeline_core` sees no row without an Organization set.
 - **Dedupe:** `outbox_dedupe_key` is unique on `(organization_id, dedupe_key)`, so a replayed write
   adds no second row.
-- **Indexes:** `outbox_drain_idx` on `(available_at, id)` where `published_at is null` serves the
-  drain; `outbox_published_idx` on `published_at` where it is not null is for a retention purge
+- **Indexes:** `outbox_drain_idx` on `(available_at, id)` where `published_at is null and attempts < 50`
+  serves the drain (rows parked at 50 attempts stay out of it); `outbox_published_idx` on `published_at` where it is not null is for a retention purge
   (not provided here).
+- **Lease-unaware completion:** `outbox_complete` and `outbox_fail` do not check who holds the
+  lease. A stale worker can overwrite a newer holder's retry time or error code; publishing is
+  at-least-once, so consumers dedupe on the row `id`.
 
 **Write** (`OUTBOX_ENQUEUE`), inside `withOrganization`, in the transaction of the change; it returns
 the `id` of a new row and no row for a replay:
