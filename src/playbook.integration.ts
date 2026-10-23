@@ -3273,6 +3273,7 @@ describe('the playbook schema', () => {
             'organization_usage',
             'orphan_sweeps',
             'rights_confirmations',
+            'suggestions',
           ]
             .map((relname) => ({ relname, forced: true, policies: 1 }))
             .concat([{ relname: 'work_hints', forced: false, policies: 0 }])
@@ -3280,8 +3281,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        // 0000 to 0037: the nine before the playbook (0000 to 0008) plus 0009 to 0037.
-        expect(applied.rows[0].n).toBe(38)
+        // 0000 to 0038: the nine before the playbook (0000 to 0008) plus 0009 to 0038.
+        expect(applied.rows[0].n).toBe(39)
         await runMigrations(url.toString())
       } finally {
         await pool.end()

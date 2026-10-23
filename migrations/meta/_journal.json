@@ -267,6 +267,13 @@
       "when": 1792750466078,
       "tag": "0037_core_member_name_trigram",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792755273557,
+      "tag": "0038_core_analytics_playbook_suggestions",
+      "breakpoints": true
     }
   ]
 }

@@ -6921,6 +6921,1174 @@ import { PgSchema as PgSchema_mtt0uw2 } from "drizzle-orm/pg-core";
 declare const coreSchema: PgSchema_mtt0uw2<"core">;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g33 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp33 } from "drizzle-orm/pg-core";
+/** The counts a dashboard shows, per day. Mirrors the contract's `ANALYTICS_METRICS`. */
+declare const ROLLUP_METRICS: readonly ["sends", "replies", "positive_replies", "meetings", "outcomes_won", "outcomes_lost"];
+/** What a rollup row is split by; `total` has the empty key. The rest mirror `ANALYTICS_GROUP_BYS`. */
+declare const ROLLUP_GROUP_KINDS: readonly ["total", "channel", "agent_kind", "campaign", "rep"];
+/** The longest group key. Mirrors the contract's `analyticsGroupKeySchema` (an id is shorter). */
+declare const MAX_ROLLUP_GROUP_KEY_LENGTH = 64;
+/** The largest count a rollup row holds: the table's bound, far above any real day. */
+declare const MAX_ROLLUP_COUNT = 0xe8d4a51000;
+/** What a touch was. Mirrors the contract's `TOUCH_KINDS`. */
+declare const TOUCH_KINDS: readonly ["message", "call"];
+/** The channels a touch happened on: the inbox channels and the phone. */
+declare const TOUCH_CHANNELS: readonly ["email", "linkedin", "chat", "phone"];
+/** The Agent kinds a touch can be credited to. Mirrors the contract's `AGENT_KINDS`. */
+declare const TOUCH_AGENT_KINDS: readonly ["inbound", "outbound"];
+/** The most Playbook sources one touch cites. Mirrors the contract's `MAX_TOUCH_SOURCES`. */
+declare const MAX_TOUCH_SOURCES = 20;
+/** What a source of performance is: a Moment or a Document passage. */
+declare const SOURCE_KINDS: readonly ["moment", "document"];
+/** The longest source key: a Call id and a Moment number, or a document id and a page. */
+declare const MAX_SOURCE_KEY_LENGTH = 120;
+/** The flag a source can carry. Mirrors the contract's `SOURCE_FLAGS`. */
+declare const SOURCE_PERFORMANCE_FLAGS: readonly ["cited_often_lost"];
+/** The largest Deal count a source holds: the table's bound. */
+declare const MAX_SOURCE_DEALS = 1e9;
+/** What an Assessment judged. Mirrors the contract's `ASSESSMENT_SUBJECT_KINDS`. */
+declare const ASSESSMENT_SUBJECT_KINDS: readonly ["draft", "call_turn"];
+/** What an Assessment decided. Mirrors the contract's `ASSESSMENT_VERDICTS`. */
+declare const ASSESSMENT_VERDICTS: readonly ["pass", "warn", "fail"];
+/** Who judged. Mirrors the contract's `assessmentJudgeSourceSchema`. */
+declare const ASSESSMENT_JUDGE_SOURCES: readonly ["model", "rules"];
+/** What a finding is about. Mirrors the contract's `FINDING_CATEGORIES`. */
+declare const FINDING_CATEGORIES: readonly ["unsupported_claim", "policy_deviation", "missing_disclosure", "tone"];
+/** How serious a finding is, worst last. Mirrors the contract's `FINDING_SEVERITIES`. */
+declare const FINDING_SEVERITIES: readonly ["low", "medium", "high"];
+/** What an Admin says about a finding. Mirrors the contract's `FINDING_FEEDBACKS`. */
+declare const FINDING_FEEDBACKS: readonly ["correct", "false_alarm"];
+/** The largest offset a finding's span may reach. Mirrors the contract's `MAX_FINDING_SPAN_OFFSET`. */
+declare const MAX_FINDING_SPAN_OFFSET = 2e4;
+/** The longest explanation of a finding. Mirrors the contract's `MAX_FINDING_EXPLANATION_LENGTH`. */
+declare const MAX_FINDING_EXPLANATION_LENGTH = 500;
+/** The largest Draft version number and Call turn number the table holds. */
+declare const MAX_ASSESSED_NUMBER = 1e5;
+/** The Outcome label of a Conversation. Mirrors the contract's `CONVERSATION_OUTCOME_LABELS`. */
+declare const CONVERSATION_OUTCOME_LABELS: readonly ["won", "lost", "open", "no_response", "meeting_booked"];
+/** The longest Conversation summary. Mirrors the contract's `MAX_SUMMARY_LENGTH`. */
+declare const MAX_SUMMARY_LENGTH = 500;
+/**
+* One day's count of one metric for one group of an Organization: the read model every dashboard
+* series is served from, so a request never scans history. The row is unique per Organization,
+* metric, group and UTC day (`rollup_daily_pkey`), so a consumer upserts the count it computed and
+* replaying an event stream can only write the same number again; a late event is added to its
+* original `day`. `group_kind = 'total'` has the empty `group_key`; any other kind names a
+* channel, an Agent kind, a Campaign id or a Membership id in `group_key`.
+*
+* Lists served: a metric's series over a date range, one group kind, by day then group key, on the
+* primary key (`organization_id, metric, group_kind, day, group_key`).
+*/
+declare const rollupDaily: PgTableWithColumns_a5zn0g33<{
+	name: "rollup_daily";
+	schema: "core";
+	columns: {
+		organizationId: PgColumn_ffrhhp33<{
+			name: "organization_id";
+			tableName: "rollup_daily";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		metric: PgColumn_ffrhhp33<{
+			name: "metric";
+			tableName: "rollup_daily";
+			dataType: "string";
+			columnType: "PgText";
+			data: "meetings" | "outcomes_lost" | "outcomes_won" | "positive_replies" | "replies" | "sends";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["sends", "replies", "positive_replies", "meetings", "outcomes_won", "outcomes_lost"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		groupKind: PgColumn_ffrhhp33<{
+			name: "group_kind";
+			tableName: "rollup_daily";
+			dataType: "string";
+			columnType: "PgText";
+			data: "agent_kind" | "campaign" | "channel" | "rep" | "total";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["total", "channel", "agent_kind", "campaign", "rep"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		day: PgColumn_ffrhhp33<{
+			name: "day";
+			tableName: "rollup_daily";
+			dataType: "string";
+			columnType: "PgDateString";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		groupKey: PgColumn_ffrhhp33<{
+			name: "group_key";
+			tableName: "rollup_daily";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		count: PgColumn_ffrhhp33<{
+			name: "count";
+			tableName: "rollup_daily";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "rollup_daily";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* One Message or Call that Attribution links to a Prospect, kept so a Deal's Outcome can be traced
+* to what touched the Prospect. **References only**: the Message or Call is named by `ref_id`
+* and holds no text. One row per Message or Call (`touches_ref_key`), so a replayed event is the
+* same row. `deal_record_id`, `first_touch` and `last_touch` are set when an Outcome is
+* attributed: a touch has credit only with a Deal. `cited_sources` is the Playbook sources
+* (Moments and Documents) the touch cited, as the contract's Citation references, at most 20.
+*
+* Lists served (keyset `occurred_at < $cursor`, newest first): a Prospect's touches
+* (`touches_prospect_idx`) and a Deal's touches (`touches_deal_idx`).
+*/
+declare const touches: PgTableWithColumns_a5zn0g33<{
+	name: "touches";
+	schema: "core";
+	columns: {
+		id: PgColumn_ffrhhp33<{
+			name: "id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp33<{
+			name: "organization_id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		kind: PgColumn_ffrhhp33<{
+			name: "kind";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: "call" | "message";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["message", "call"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		refId: PgColumn_ffrhhp33<{
+			name: "ref_id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		prospectId: PgColumn_ffrhhp33<{
+			name: "prospect_id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		channel: PgColumn_ffrhhp33<{
+			name: "channel";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: "chat" | "email" | "linkedin" | "phone";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["email", "linkedin", "chat", "phone"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		agentKind: PgColumn_ffrhhp33<{
+			name: "agent_kind";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: "inbound" | "outbound";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["inbound", "outbound"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repMembershipId: PgColumn_ffrhhp33<{
+			name: "rep_membership_id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		campaignId: PgColumn_ffrhhp33<{
+			name: "campaign_id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		occurredAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "touches";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealRecordId: PgColumn_ffrhhp33<{
+			name: "deal_record_id";
+			tableName: "touches";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		firstTouch: PgColumn_ffrhhp33<{
+			name: "first_touch";
+			tableName: "touches";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		lastTouch: PgColumn_ffrhhp33<{
+			name: "last_touch";
+			tableName: "touches";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		citedSources: PgColumn_ffrhhp33<{
+			name: "cited_sources";
+			tableName: "touches";
+			dataType: "json";
+			columnType: "PgJsonb";
+			data: unknown;
+			driverParam: unknown;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "touches";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* How the Deals a Playbook source touched ended: one row per Moment or Document passage of an
+* Organization (`source_key` is the Call id and Moment number, or the document id and page).
+* `deals_touched` and `deals_won` are counts; the win rate is computed by the reader, and only
+* from the minimum sample. `flag` marks a source cited often but correlated with lost Deals.
+*
+* Lists served (keyset `(deals_touched, source_key)`, most touched first): all sources
+* (`source_performance_list_idx`) and flagged ones (`source_performance_flag_idx`).
+*/
+declare const sourcePerformance: PgTableWithColumns_a5zn0g33<{
+	name: "source_performance";
+	schema: "core";
+	columns: {
+		organizationId: PgColumn_ffrhhp33<{
+			name: "organization_id";
+			tableName: "source_performance";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sourceKind: PgColumn_ffrhhp33<{
+			name: "source_kind";
+			tableName: "source_performance";
+			dataType: "string";
+			columnType: "PgText";
+			data: "document" | "moment";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["moment", "document"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sourceKey: PgColumn_ffrhhp33<{
+			name: "source_key";
+			tableName: "source_performance";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealsTouched: PgColumn_ffrhhp33<{
+			name: "deals_touched";
+			tableName: "source_performance";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealsWon: PgColumn_ffrhhp33<{
+			name: "deals_won";
+			tableName: "source_performance";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		flag: PgColumn_ffrhhp33<{
+			name: "flag";
+			tableName: "source_performance";
+			dataType: "string";
+			columnType: "PgText";
+			data: "cited_often_lost";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["cited_often_lost"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "source_performance";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* The automatic check of one Agent turn: a Draft version before release or a Call turn after it.
+* Unique per subject (`assessments_draft_key`, `assessments_call_turn_key`), so a retried check
+* is the same row. `worst_severity_rank` is the worst finding (1 low, 2 medium, 3 high, null for
+* none) so a review list can sort by severity on an index. **No text of the turn is stored**: the
+* findings hold spans, and the offending sentence is read from the Draft or Call.
+*
+* Lists served (keyset, newest first): all (`assessments_list_idx`), one verdict
+* (`assessments_verdict_idx`), flagged turns by severity (`assessments_review_idx`), and the
+* weekly failed rate by Agent kind and instruction version (`assessments_rate_idx`).
+*/
+declare const assessments: PgTableWithColumns_a5zn0g33<{
+	name: "assessments";
+	schema: "core";
+	columns: {
+		id: PgColumn_ffrhhp33<{
+			name: "id";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp33<{
+			name: "organization_id";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		subjectKind: PgColumn_ffrhhp33<{
+			name: "subject_kind";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: "call_turn" | "draft";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["draft", "call_turn"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		draftId: PgColumn_ffrhhp33<{
+			name: "draft_id";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		draftVersion: PgColumn_ffrhhp33<{
+			name: "draft_version";
+			tableName: "assessments";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		callId: PgColumn_ffrhhp33<{
+			name: "call_id";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		turnIndex: PgColumn_ffrhhp33<{
+			name: "turn_index";
+			tableName: "assessments";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		prospectId: PgColumn_ffrhhp33<{
+			name: "prospect_id";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		agentKind: PgColumn_ffrhhp33<{
+			name: "agent_kind";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: "inbound" | "outbound";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["inbound", "outbound"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		instructionVersion: PgColumn_ffrhhp33<{
+			name: "instruction_version";
+			tableName: "assessments";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		verdict: PgColumn_ffrhhp33<{
+			name: "verdict";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: "fail" | "pass" | "warn";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["pass", "warn", "fail"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		judgeSource: PgColumn_ffrhhp33<{
+			name: "judge_source";
+			tableName: "assessments";
+			dataType: "string";
+			columnType: "PgText";
+			data: "model" | "rules";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["model", "rules"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		worstSeverityRank: PgColumn_ffrhhp33<{
+			name: "worst_severity_rank";
+			tableName: "assessments";
+			dataType: "number";
+			columnType: "PgSmallInt";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "assessments";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* One problem an Assessment found: a category, a severity and the **sentence span** (character
+* offsets, start included, end excluded) with a short explanation. There is no body or text
+* column, so the table cannot hold the turn: the offending sentence is read from the Draft or
+* Call by the span. An Admin's feedback (`correct` or `false_alarm`) is stored with who and when,
+* all three or none.
+*
+* Lists served: an Assessment's findings by id (`assessment_findings_assessment_idx`).
+*/
+declare const assessmentFindings: PgTableWithColumns_a5zn0g33<{
+	name: "assessment_findings";
+	schema: "core";
+	columns: {
+		id: PgColumn_ffrhhp33<{
+			name: "id";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp33<{
+			name: "organization_id";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		assessmentId: PgColumn_ffrhhp33<{
+			name: "assessment_id";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		category: PgColumn_ffrhhp33<{
+			name: "category";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: "missing_disclosure" | "policy_deviation" | "tone" | "unsupported_claim";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["unsupported_claim", "policy_deviation", "missing_disclosure", "tone"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		severity: PgColumn_ffrhhp33<{
+			name: "severity";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: "high" | "low" | "medium";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["low", "medium", "high"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		spanStart: PgColumn_ffrhhp33<{
+			name: "span_start";
+			tableName: "assessment_findings";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		spanEnd: PgColumn_ffrhhp33<{
+			name: "span_end";
+			tableName: "assessment_findings";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		explanation: PgColumn_ffrhhp33<{
+			name: "explanation";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		feedback: PgColumn_ffrhhp33<{
+			name: "feedback";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: "correct" | "false_alarm";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["correct", "false_alarm"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		feedbackByMembershipId: PgColumn_ffrhhp33<{
+			name: "feedback_by_membership_id";
+			tableName: "assessment_findings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		feedbackAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "assessment_findings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "assessment_findings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A Conversation's short summary and Outcome label, written by a model from the Conversation: the
+* summary is untrusted model output, shown as text and never run, and is stored apart from Message
+* bodies. One row per Conversation; regenerating replaces it.
+*
+* Lists served: none; the primary key is the lookup.
+*/
+declare const conversationSummaries: PgTableWithColumns_a5zn0g33<{
+	name: "conversation_summaries";
+	schema: "core";
+	columns: {
+		organizationId: PgColumn_ffrhhp33<{
+			name: "organization_id";
+			tableName: "conversation_summaries";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		conversationId: PgColumn_ffrhhp33<{
+			name: "conversation_id";
+			tableName: "conversation_summaries";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		summary: PgColumn_ffrhhp33<{
+			name: "summary";
+			tableName: "conversation_summaries";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		outcomeLabel: PgColumn_ffrhhp33<{
+			name: "outcome_label";
+			tableName: "conversation_summaries";
+			dataType: "string";
+			columnType: "PgText";
+			data: "lost" | "meeting_booked" | "no_response" | "open" | "won";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["won", "lost", "open", "no_response", "meeting_booked"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		generatedAt: PgColumn_ffrhhp33<{
+			name: string;
+			tableName: "conversation_summaries";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g34 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp34 } from "drizzle-orm/pg-core";
 /** The channels a Prospect can be contacted on. Mirrors the contract's `CONSENT_CHANNELS`. */
 declare const CONSENT_CHANNELS: readonly ["phone", "sms", "whatsapp", "email", "linkedin"];
 /** Where a granted consent came from. Mirrors the contract's `CONSENT_GRANT_SOURCES`. */
@@ -6980,11 +8148,11 @@ declare const MAX_FORM_TOKEN_LENGTH = 256;
 *
 * Lists served (newest first, keyset `(created_at, id)`): `consent_wordings_list_idx`.
 */
-declare const consentWordings: PgTableWithColumns_a5zn0g33<{
+declare const consentWordings: PgTableWithColumns_a5zn0g34<{
 	name: "consent_wording";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp33<{
+		id: PgColumn_ffrhhp34<{
 			name: "id";
 			tableName: "consent_wording";
 			dataType: "string";
@@ -7001,7 +8169,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp33<{
+		organizationId: PgColumn_ffrhhp34<{
 			name: "organization_id";
 			tableName: "consent_wording";
 			dataType: "string";
@@ -7018,7 +8186,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		version: PgColumn_ffrhhp33<{
+		version: PgColumn_ffrhhp34<{
 			name: "version";
 			tableName: "consent_wording";
 			dataType: "number";
@@ -7035,7 +8203,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		text: PgColumn_ffrhhp33<{
+		text: PgColumn_ffrhhp34<{
 			name: "text";
 			tableName: "consent_wording";
 			dataType: "string";
@@ -7052,7 +8220,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channels: PgColumn_ffrhhp33<{
+		channels: PgColumn_ffrhhp34<{
 			name: "channels";
 			tableName: "consent_wording";
 			dataType: "custom";
@@ -7071,7 +8239,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		supersedesId: PgColumn_ffrhhp33<{
+		supersedesId: PgColumn_ffrhhp34<{
 			name: "supersedes_id";
 			tableName: "consent_wording";
 			dataType: "string";
@@ -7088,7 +8256,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp33<{
+		createdAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "consent_wording";
 			dataType: "date";
@@ -7105,7 +8273,7 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdByUserId: PgColumn_ffrhhp33<{
+		createdByUserId: PgColumn_ffrhhp34<{
 			name: "created_by_user_id";
 			tableName: "consent_wording";
 			dataType: "string";
@@ -7133,11 +8301,11 @@ declare const consentWordings: PgTableWithColumns_a5zn0g33<{
 * Lists served (newest first, keyset `(created_at, id)`, optionally one state):
 * `consent_forms_list_idx` and `consent_forms_state_list_idx`.
 */
-declare const consentForms: PgTableWithColumns_a5zn0g33<{
+declare const consentForms: PgTableWithColumns_a5zn0g34<{
 	name: "consent_form";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp33<{
+		id: PgColumn_ffrhhp34<{
 			name: "id";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7154,7 +8322,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp33<{
+		organizationId: PgColumn_ffrhhp34<{
 			name: "organization_id";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7171,7 +8339,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		wordingId: PgColumn_ffrhhp33<{
+		wordingId: PgColumn_ffrhhp34<{
 			name: "wording_id";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7188,7 +8356,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp33<{
+		name: PgColumn_ffrhhp34<{
 			name: "name";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7205,7 +8373,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channels: PgColumn_ffrhhp33<{
+		channels: PgColumn_ffrhhp34<{
 			name: "channels";
 			tableName: "consent_form";
 			dataType: "custom";
@@ -7224,7 +8392,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		state: PgColumn_ffrhhp33<{
+		state: PgColumn_ffrhhp34<{
 			name: "state";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7241,7 +8409,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		token: PgColumn_ffrhhp33<{
+		token: PgColumn_ffrhhp34<{
 			name: "token";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7258,7 +8426,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp33<{
+		createdAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "consent_form";
 			dataType: "date";
@@ -7275,7 +8443,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdByUserId: PgColumn_ffrhhp33<{
+		createdByUserId: PgColumn_ffrhhp34<{
 			name: "created_by_user_id";
 			tableName: "consent_form";
 			dataType: "string";
@@ -7292,7 +8460,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		publishedAt: PgColumn_ffrhhp33<{
+		publishedAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "consent_form";
 			dataType: "date";
@@ -7309,7 +8477,7 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		closedAt: PgColumn_ffrhhp33<{
+		closedAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "consent_form";
 			dataType: "date";
@@ -7340,11 +8508,11 @@ declare const consentForms: PgTableWithColumns_a5zn0g33<{
 * role holds any privilege on it. One-click unsubscribe needs no such table: its token is signed
 * and carries the Organization (M03, ADR 0021).
 */
-declare const consentFormDirectory: PgTableWithColumns_a5zn0g33<{
+declare const consentFormDirectory: PgTableWithColumns_a5zn0g34<{
 	name: "consent_form_directory";
 	schema: "core";
 	columns: {
-		token: PgColumn_ffrhhp33<{
+		token: PgColumn_ffrhhp34<{
 			name: "token";
 			tableName: "consent_form_directory";
 			dataType: "string";
@@ -7361,7 +8529,7 @@ declare const consentFormDirectory: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp33<{
+		organizationId: PgColumn_ffrhhp34<{
 			name: "organization_id";
 			tableName: "consent_form_directory";
 			dataType: "string";
@@ -7378,7 +8546,7 @@ declare const consentFormDirectory: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		formId: PgColumn_ffrhhp33<{
+		formId: PgColumn_ffrhhp34<{
 			name: "form_id";
 			tableName: "consent_form_directory";
 			dataType: "string";
@@ -7395,7 +8563,7 @@ declare const consentFormDirectory: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		wordingId: PgColumn_ffrhhp33<{
+		wordingId: PgColumn_ffrhhp34<{
 			name: "wording_id";
 			tableName: "consent_form_directory";
 			dataType: "string";
@@ -7412,7 +8580,7 @@ declare const consentFormDirectory: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp33<{
+		state: PgColumn_ffrhhp34<{
 			name: "state";
 			tableName: "consent_form_directory";
 			dataType: "string";
@@ -7445,11 +8613,11 @@ declare const consentFormDirectory: PgTableWithColumns_a5zn0g33<{
 * a Prospect's history newest first (`contact_consent_events_prospect_idx`), and the events that
 * reference a wording (`contact_consent_events_wording_idx`).
 */
-declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
+declare const contactConsentEvents: PgTableWithColumns_a5zn0g34<{
 	name: "contact_consent_event";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp33<{
+		id: PgColumn_ffrhhp34<{
 			name: "id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7466,7 +8634,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp33<{
+		organizationId: PgColumn_ffrhhp34<{
 			name: "organization_id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7483,7 +8651,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		seq: PgColumn_ffrhhp33<{
+		seq: PgColumn_ffrhhp34<{
 			name: "seq";
 			tableName: "contact_consent_event";
 			dataType: "number";
@@ -7500,7 +8668,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: "always";
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp33<{
+		prospectId: PgColumn_ffrhhp34<{
 			name: "prospect_id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7517,7 +8685,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channel: PgColumn_ffrhhp33<{
+		channel: PgColumn_ffrhhp34<{
 			name: "channel";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7534,7 +8702,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp33<{
+		kind: PgColumn_ffrhhp34<{
 			name: "kind";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7551,7 +8719,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		source: PgColumn_ffrhhp33<{
+		source: PgColumn_ffrhhp34<{
 			name: "source";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7568,7 +8736,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		wordingId: PgColumn_ffrhhp33<{
+		wordingId: PgColumn_ffrhhp34<{
 			name: "wording_id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7585,7 +8753,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		evidenceRef: PgColumn_ffrhhp33<{
+		evidenceRef: PgColumn_ffrhhp34<{
 			name: "evidence_ref";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7602,7 +8770,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp33<{
+		callId: PgColumn_ffrhhp34<{
 			name: "call_id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7619,7 +8787,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		formId: PgColumn_ffrhhp33<{
+		formId: PgColumn_ffrhhp34<{
 			name: "form_id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7636,7 +8804,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		ipAddress: PgColumn_ffrhhp33<{
+		ipAddress: PgColumn_ffrhhp34<{
 			name: "ip_address";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7653,7 +8821,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userAgent: PgColumn_ffrhhp33<{
+		userAgent: PgColumn_ffrhhp34<{
 			name: "user_agent";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7670,7 +8838,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		stopAll: PgColumn_ffrhhp33<{
+		stopAll: PgColumn_ffrhhp34<{
 			name: "stop_all";
 			tableName: "contact_consent_event";
 			dataType: "boolean";
@@ -7687,7 +8855,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordedByUserId: PgColumn_ffrhhp33<{
+		recordedByUserId: PgColumn_ffrhhp34<{
 			name: "recorded_by_user_id";
 			tableName: "contact_consent_event";
 			dataType: "string";
@@ -7704,7 +8872,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		occurredAt: PgColumn_ffrhhp33<{
+		occurredAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "contact_consent_event";
 			dataType: "date";
@@ -7721,7 +8889,7 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordedAt: PgColumn_ffrhhp33<{
+		recordedAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "contact_consent_event";
 			dataType: "date";
@@ -7755,11 +8923,11 @@ declare const contactConsentEvents: PgTableWithColumns_a5zn0g33<{
 * live entries, removed entries, and each filtered by reason or address kind, all ending in the
 * same keyset.
 */
-declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
+declare const suppressionEntries: PgTableWithColumns_a5zn0g34<{
 	name: "suppression_entry";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp33<{
+		id: PgColumn_ffrhhp34<{
 			name: "id";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7776,7 +8944,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp33<{
+		organizationId: PgColumn_ffrhhp34<{
 			name: "organization_id";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7793,7 +8961,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		addressKind: PgColumn_ffrhhp33<{
+		addressKind: PgColumn_ffrhhp34<{
 			name: "address_kind";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7810,7 +8978,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		addressHash: PgColumn_ffrhhp33<{
+		addressHash: PgColumn_ffrhhp34<{
 			name: "address_hash";
 			tableName: "suppression_entry";
 			dataType: "custom";
@@ -7829,7 +8997,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		maskedAddress: PgColumn_ffrhhp33<{
+		maskedAddress: PgColumn_ffrhhp34<{
 			name: "masked_address";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7846,7 +9014,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		reason: PgColumn_ffrhhp33<{
+		reason: PgColumn_ffrhhp34<{
 			name: "reason";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7863,7 +9031,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channel: PgColumn_ffrhhp33<{
+		channel: PgColumn_ffrhhp34<{
 			name: "channel";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7880,7 +9048,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sourceRef: PgColumn_ffrhhp33<{
+		sourceRef: PgColumn_ffrhhp34<{
 			name: "source_ref";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7897,7 +9065,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		addedByUserId: PgColumn_ffrhhp33<{
+		addedByUserId: PgColumn_ffrhhp34<{
 			name: "added_by_user_id";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7914,7 +9082,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		removable: PgColumn_ffrhhp33<{
+		removable: PgColumn_ffrhhp34<{
 			name: "removable";
 			tableName: "suppression_entry";
 			dataType: "boolean";
@@ -7933,7 +9101,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 				type: "always";
 			};
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp33<{
+		createdAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "suppression_entry";
 			dataType: "date";
@@ -7950,7 +9118,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		removedAt: PgColumn_ffrhhp33<{
+		removedAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "suppression_entry";
 			dataType: "date";
@@ -7967,7 +9135,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		removedByUserId: PgColumn_ffrhhp33<{
+		removedByUserId: PgColumn_ffrhhp34<{
 			name: "removed_by_user_id";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -7984,7 +9152,7 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		removalReason: PgColumn_ffrhhp33<{
+		removalReason: PgColumn_ffrhhp34<{
 			name: "removal_reason";
 			tableName: "suppression_entry";
 			dataType: "string";
@@ -8014,11 +9182,11 @@ declare const suppressionEntries: PgTableWithColumns_a5zn0g33<{
 * one Prospect's (`contact_check_log_prospect_idx`); the other filters narrow within the first.
 * The same index serves the per-Organization purge by age.
 */
-declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
+declare const contactCheckLog: PgTableWithColumns_a5zn0g34<{
 	name: "contact_check_log";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp33<{
+		id: PgColumn_ffrhhp34<{
 			name: "id";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8035,7 +9203,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp33<{
+		organizationId: PgColumn_ffrhhp34<{
 			name: "organization_id";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8052,7 +9220,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp33<{
+		prospectId: PgColumn_ffrhhp34<{
 			name: "prospect_id";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8069,7 +9237,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channel: PgColumn_ffrhhp33<{
+		channel: PgColumn_ffrhhp34<{
 			name: "channel";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8086,7 +9254,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purpose: PgColumn_ffrhhp33<{
+		purpose: PgColumn_ffrhhp34<{
 			name: "purpose";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8103,7 +9271,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		caller: PgColumn_ffrhhp33<{
+		caller: PgColumn_ffrhhp34<{
 			name: "caller";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8120,7 +9288,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		allowed: PgColumn_ffrhhp33<{
+		allowed: PgColumn_ffrhhp34<{
 			name: "allowed";
 			tableName: "contact_check_log";
 			dataType: "boolean";
@@ -8137,7 +9305,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		code: PgColumn_ffrhhp33<{
+		code: PgColumn_ffrhhp34<{
 			name: "code";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8154,7 +9322,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		basis: PgColumn_ffrhhp33<{
+		basis: PgColumn_ffrhhp34<{
 			name: "basis";
 			tableName: "contact_check_log";
 			dataType: "string";
@@ -8171,7 +9339,7 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		checkedAt: PgColumn_ffrhhp33<{
+		checkedAt: PgColumn_ffrhhp34<{
 			name: string;
 			tableName: "contact_check_log";
 			dataType: "date";
@@ -8191,8 +9359,8 @@ declare const contactCheckLog: PgTableWithColumns_a5zn0g33<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g34 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp34 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g35 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp35 } from "drizzle-orm/pg-core";
 import { Column as Column_xh1aba4 } from "drizzle-orm";
 import { PgColumnBuilder as PgColumnBuilder_r7cy324 } from "drizzle-orm/pg-core";
 import { ColumnBuilderExtraConfig as ColumnBuilderExtraConfig_359rmb4 } from "drizzle-orm";
@@ -8252,11 +9420,11 @@ declare const API_KEY_ROLE_CEILINGS: readonly ["owner", "admin", "manager", "rep
 * Lists served (by number, newest first, keyset `number < $cursor`): an Agent kind's versions on
 * `agent_instruction_versions_number_key` scanned backwards; one version by id on the primary key.
 */
-declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
+declare const agentInstructionVersions: PgTableWithColumns_a5zn0g35<{
 	name: "agent_instruction_versions";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp34<{
+		id: PgColumn_ffrhhp35<{
 			name: "id";
 			tableName: "agent_instruction_versions";
 			dataType: "string";
@@ -8273,7 +9441,7 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "agent_instruction_versions";
 			dataType: "string";
@@ -8290,7 +9458,7 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		agentKind: PgColumn_ffrhhp34<{
+		agentKind: PgColumn_ffrhhp35<{
 			name: "agent_kind";
 			tableName: "agent_instruction_versions";
 			dataType: "string";
@@ -8307,7 +9475,7 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		number: PgColumn_ffrhhp34<{
+		number: PgColumn_ffrhhp35<{
 			name: "number";
 			tableName: "agent_instruction_versions";
 			dataType: "number";
@@ -8324,7 +9492,7 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		text: PgColumn_ffrhhp34<{
+		text: PgColumn_ffrhhp35<{
 			name: "text";
 			tableName: "agent_instruction_versions";
 			dataType: "string";
@@ -8341,7 +9509,7 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		authorMembershipId: PgColumn_ffrhhp34<{
+		authorMembershipId: PgColumn_ffrhhp35<{
 			name: "author_membership_id";
 			tableName: "agent_instruction_versions";
 			dataType: "string";
@@ -8358,7 +9526,7 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp34<{
+		createdAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "agent_instruction_versions";
 			dataType: "date";
@@ -8386,11 +9554,11 @@ declare const agentInstructionVersions: PgTableWithColumns_a5zn0g34<{
 *
 * Lists served: none; the primary key is the lookup.
 */
-declare const agentInstructionPointers: PgTableWithColumns_a5zn0g34<{
+declare const agentInstructionPointers: PgTableWithColumns_a5zn0g35<{
 	name: "agent_instruction_pointer";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "agent_instruction_pointer";
 			dataType: "string";
@@ -8407,7 +9575,7 @@ declare const agentInstructionPointers: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		agentKind: PgColumn_ffrhhp34<{
+		agentKind: PgColumn_ffrhhp35<{
 			name: "agent_kind";
 			tableName: "agent_instruction_pointer";
 			dataType: "string";
@@ -8424,7 +9592,7 @@ declare const agentInstructionPointers: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		versionNumber: PgColumn_ffrhhp34<{
+		versionNumber: PgColumn_ffrhhp35<{
 			name: "version_number";
 			tableName: "agent_instruction_pointer";
 			dataType: "number";
@@ -8441,7 +9609,7 @@ declare const agentInstructionPointers: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		publishedByMembershipId: PgColumn_ffrhhp34<{
+		publishedByMembershipId: PgColumn_ffrhhp35<{
 			name: "published_by_membership_id";
 			tableName: "agent_instruction_pointer";
 			dataType: "string";
@@ -8458,7 +9626,7 @@ declare const agentInstructionPointers: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		publishedAt: PgColumn_ffrhhp34<{
+		publishedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "agent_instruction_pointer";
 			dataType: "date";
@@ -8489,11 +9657,11 @@ declare const agentInstructionPointers: PgTableWithColumns_a5zn0g34<{
 *
 * Lists served: an Organization's rows by Agent kind and channel on the primary key.
 */
-declare const agentSettings: PgTableWithColumns_a5zn0g34<{
+declare const agentSettings: PgTableWithColumns_a5zn0g35<{
 	name: "agent_settings";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "agent_settings";
 			dataType: "string";
@@ -8510,7 +9678,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		agentKind: PgColumn_ffrhhp34<{
+		agentKind: PgColumn_ffrhhp35<{
 			name: "agent_kind";
 			tableName: "agent_settings";
 			dataType: "string";
@@ -8527,7 +9695,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channel: PgColumn_ffrhhp34<{
+		channel: PgColumn_ffrhhp35<{
 			name: "channel";
 			tableName: "agent_settings";
 			dataType: "string";
@@ -8544,7 +9712,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		level: PgColumn_ffrhhp34<{
+		level: PgColumn_ffrhhp35<{
 			name: "level";
 			tableName: "agent_settings";
 			dataType: "string";
@@ -8561,7 +9729,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sendWindow: PgColumn_ffrhhp34<{
+		sendWindow: PgColumn_ffrhhp35<{
 			name: "send_window";
 			tableName: "agent_settings";
 			dataType: "json";
@@ -8578,7 +9746,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		escalationRules: PgColumn_ffrhhp34<{
+		escalationRules: PgColumn_ffrhhp35<{
 			name: "escalation_rules";
 			tableName: "agent_settings";
 			dataType: "json";
@@ -8595,7 +9763,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		agentsPaused: PgColumn_ffrhhp34<{
+		agentsPaused: PgColumn_ffrhhp35<{
 			name: "agents_paused";
 			tableName: "agent_settings";
 			dataType: "boolean";
@@ -8612,7 +9780,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedByMembershipId: PgColumn_ffrhhp34<{
+		updatedByMembershipId: PgColumn_ffrhhp35<{
 			name: "updated_by_membership_id";
 			tableName: "agent_settings";
 			dataType: "string";
@@ -8629,7 +9797,7 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp34<{
+		updatedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "agent_settings";
 			dataType: "date";
@@ -8666,11 +9834,11 @@ declare const agentSettings: PgTableWithColumns_a5zn0g34<{
 * `audit_events_action_idx`; one subject on `audit_events_subject_idx`; one Prospect (a Manager's
 * view) on `audit_events_prospect_idx`.
 */
-declare const auditEvents: PgTableWithColumns_a5zn0g34<{
+declare const auditEvents: PgTableWithColumns_a5zn0g35<{
 	name: "audit_events";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp34<{
+		id: PgColumn_ffrhhp35<{
 			name: "id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8687,7 +9855,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8704,7 +9872,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sequence: PgColumn_ffrhhp34<{
+		sequence: PgColumn_ffrhhp35<{
 			name: "sequence";
 			tableName: "audit_events";
 			dataType: "number";
@@ -8721,7 +9889,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		occurredAt: PgColumn_ffrhhp34<{
+		occurredAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "audit_events";
 			dataType: "date";
@@ -8738,7 +9906,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		actorKind: PgColumn_ffrhhp34<{
+		actorKind: PgColumn_ffrhhp35<{
 			name: "actor_kind";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8755,7 +9923,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		actorMembershipId: PgColumn_ffrhhp34<{
+		actorMembershipId: PgColumn_ffrhhp35<{
 			name: "actor_membership_id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8772,7 +9940,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		actorAgentKind: PgColumn_ffrhhp34<{
+		actorAgentKind: PgColumn_ffrhhp35<{
 			name: "actor_agent_kind";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8789,7 +9957,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		actorApiKeyId: PgColumn_ffrhhp34<{
+		actorApiKeyId: PgColumn_ffrhhp35<{
 			name: "actor_api_key_id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8806,7 +9974,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		action: PgColumn_ffrhhp34<{
+		action: PgColumn_ffrhhp35<{
 			name: "action";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8823,7 +9991,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		subjectType: PgColumn_ffrhhp34<{
+		subjectType: PgColumn_ffrhhp35<{
 			name: "subject_type";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8840,7 +10008,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		subjectId: PgColumn_ffrhhp34<{
+		subjectId: PgColumn_ffrhhp35<{
 			name: "subject_id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8857,7 +10025,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp34<{
+		prospectId: PgColumn_ffrhhp35<{
 			name: "prospect_id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8874,7 +10042,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		instructionVersion: PgColumn_ffrhhp34<{
+		instructionVersion: PgColumn_ffrhhp35<{
 			name: "instruction_version";
 			tableName: "audit_events";
 			dataType: "number";
@@ -8891,7 +10059,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestId: PgColumn_ffrhhp34<{
+		requestId: PgColumn_ffrhhp35<{
 			name: "request_id";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8908,7 +10076,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		metadata: PgColumn_ffrhhp34<{
+		metadata: PgColumn_ffrhhp35<{
 			name: "metadata";
 			tableName: "audit_events";
 			dataType: "json";
@@ -8925,7 +10093,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		previousHash: PgColumn_ffrhhp34<{
+		previousHash: PgColumn_ffrhhp35<{
 			name: "previous_hash";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8942,7 +10110,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		hash: PgColumn_ffrhhp34<{
+		hash: PgColumn_ffrhhp35<{
 			name: "hash";
 			tableName: "audit_events";
 			dataType: "string";
@@ -8959,7 +10127,7 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordedAt: PgColumn_ffrhhp34<{
+		recordedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "audit_events";
 			dataType: "date";
@@ -8987,11 +10155,11 @@ declare const auditEvents: PgTableWithColumns_a5zn0g34<{
 *
 * Lists served (newest first, keyset `(requested_at, id) < $cursor`): `export_jobs_list_idx`.
 */
-declare const exportJobs: PgTableWithColumns_a5zn0g34<{
+declare const exportJobs: PgTableWithColumns_a5zn0g35<{
 	name: "export_jobs";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp34<{
+		id: PgColumn_ffrhhp35<{
 			name: "id";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9008,7 +10176,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9025,7 +10193,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp34<{
+		kind: PgColumn_ffrhhp35<{
 			name: "kind";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9042,7 +10210,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		format: PgColumn_ffrhhp34<{
+		format: PgColumn_ffrhhp35<{
 			name: "format";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9059,7 +10227,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		filter: PgColumn_ffrhhp34<{
+		filter: PgColumn_ffrhhp35<{
 			name: "filter";
 			tableName: "export_jobs";
 			dataType: "json";
@@ -9076,7 +10244,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp34<{
+		state: PgColumn_ffrhhp35<{
 			name: "state";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9093,7 +10261,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestedByMembershipId: PgColumn_ffrhhp34<{
+		requestedByMembershipId: PgColumn_ffrhhp35<{
 			name: "requested_by_membership_id";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9110,7 +10278,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		includeRecordingLinks: PgColumn_ffrhhp34<{
+		includeRecordingLinks: PgColumn_ffrhhp35<{
 			name: "include_recording_links";
 			tableName: "export_jobs";
 			dataType: "boolean";
@@ -9127,7 +10295,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp34<{
+		failureReason: PgColumn_ffrhhp35<{
 			name: "failure_reason";
 			tableName: "export_jobs";
 			dataType: "string";
@@ -9144,7 +10312,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestedAt: PgColumn_ffrhhp34<{
+		requestedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "export_jobs";
 			dataType: "date";
@@ -9161,7 +10329,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		completedAt: PgColumn_ffrhhp34<{
+		completedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "export_jobs";
 			dataType: "date";
@@ -9178,7 +10346,7 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		expiresAt: PgColumn_ffrhhp34<{
+		expiresAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "export_jobs";
 			dataType: "date";
@@ -9204,11 +10372,11 @@ declare const exportJobs: PgTableWithColumns_a5zn0g34<{
 *
 * Lists served: a job's parts (at most four) on the primary key.
 */
-declare const exportParts: PgTableWithColumns_a5zn0g34<{
+declare const exportParts: PgTableWithColumns_a5zn0g35<{
 	name: "export_parts";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "export_parts";
 			dataType: "string";
@@ -9225,7 +10393,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		exportId: PgColumn_ffrhhp34<{
+		exportId: PgColumn_ffrhhp35<{
 			name: "export_id";
 			tableName: "export_parts";
 			dataType: "string";
@@ -9242,7 +10410,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		service: PgColumn_ffrhhp34<{
+		service: PgColumn_ffrhhp35<{
 			name: "service";
 			tableName: "export_parts";
 			dataType: "string";
@@ -9259,7 +10427,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp34<{
+		state: PgColumn_ffrhhp35<{
 			name: "state";
 			tableName: "export_parts";
 			dataType: "string";
@@ -9276,7 +10444,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prefix: PgColumn_ffrhhp34<{
+		prefix: PgColumn_ffrhhp35<{
 			name: "prefix";
 			tableName: "export_parts";
 			dataType: "string";
@@ -9293,7 +10461,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		fileCount: PgColumn_ffrhhp34<{
+		fileCount: PgColumn_ffrhhp35<{
 			name: "file_count";
 			tableName: "export_parts";
 			dataType: "number";
@@ -9310,7 +10478,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		bytes: PgColumn_ffrhhp34<{
+		bytes: PgColumn_ffrhhp35<{
 			name: "bytes";
 			tableName: "export_parts";
 			dataType: "number";
@@ -9327,7 +10495,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp34<{
+		failureReason: PgColumn_ffrhhp35<{
 			name: "failure_reason";
 			tableName: "export_parts";
 			dataType: "string";
@@ -9344,7 +10512,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		readyAt: PgColumn_ffrhhp34<{
+		readyAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "export_parts";
 			dataType: "date";
@@ -9361,7 +10529,7 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp34<{
+		updatedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "export_parts";
 			dataType: "date";
@@ -9397,11 +10565,11 @@ declare const exportParts: PgTableWithColumns_a5zn0g34<{
 *
 * Lists served (newest first, keyset `(created_at, id) < $cursor`): `api_keys_list_idx`.
 */
-declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
+declare const coreApiKeys: PgTableWithColumns_a5zn0g35<{
 	name: "api_keys";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp34<{
+		id: PgColumn_ffrhhp35<{
 			name: "id";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9418,7 +10586,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9435,7 +10603,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp34<{
+		name: PgColumn_ffrhhp35<{
 			name: "name";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9452,7 +10620,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prefix: PgColumn_ffrhhp34<{
+		prefix: PgColumn_ffrhhp35<{
 			name: "prefix";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9469,7 +10637,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		secretHash: PgColumn_ffrhhp34<{
+		secretHash: PgColumn_ffrhhp35<{
 			name: "secret_hash";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9486,7 +10654,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		scopes: PgColumn_ffrhhp34<{
+		scopes: PgColumn_ffrhhp35<{
 			name: "scopes";
 			tableName: "api_keys";
 			dataType: "array";
@@ -9529,7 +10697,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			}, {}, {}, ColumnBuilderExtraConfig_359rmb4>;
 			size: undefined;
 		}>;
-		roleCeiling: PgColumn_ffrhhp34<{
+		roleCeiling: PgColumn_ffrhhp35<{
 			name: "role_ceiling";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9546,7 +10714,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		expiresAt: PgColumn_ffrhhp34<{
+		expiresAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "api_keys";
 			dataType: "date";
@@ -9563,7 +10731,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lastUsedAt: PgColumn_ffrhhp34<{
+		lastUsedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "api_keys";
 			dataType: "date";
@@ -9580,7 +10748,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		revokedAt: PgColumn_ffrhhp34<{
+		revokedAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "api_keys";
 			dataType: "date";
@@ -9597,7 +10765,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdByMembershipId: PgColumn_ffrhhp34<{
+		createdByMembershipId: PgColumn_ffrhhp35<{
 			name: "created_by_membership_id";
 			tableName: "api_keys";
 			dataType: "string";
@@ -9614,7 +10782,7 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp34<{
+		createdAt: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "api_keys";
 			dataType: "date";
@@ -9642,11 +10810,11 @@ declare const coreApiKeys: PgTableWithColumns_a5zn0g34<{
 *
 * Lists served: none; the primary key is the lookup.
 */
-declare const apiKeyUsage: PgTableWithColumns_a5zn0g34<{
+declare const apiKeyUsage: PgTableWithColumns_a5zn0g35<{
 	name: "api_key_usage";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp34<{
+		organizationId: PgColumn_ffrhhp35<{
 			name: "organization_id";
 			tableName: "api_key_usage";
 			dataType: "string";
@@ -9663,7 +10831,7 @@ declare const apiKeyUsage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		apiKeyId: PgColumn_ffrhhp34<{
+		apiKeyId: PgColumn_ffrhhp35<{
 			name: "api_key_id";
 			tableName: "api_key_usage";
 			dataType: "string";
@@ -9680,7 +10848,7 @@ declare const apiKeyUsage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		windowStart: PgColumn_ffrhhp34<{
+		windowStart: PgColumn_ffrhhp35<{
 			name: string;
 			tableName: "api_key_usage";
 			dataType: "date";
@@ -9697,7 +10865,7 @@ declare const apiKeyUsage: PgTableWithColumns_a5zn0g34<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestCount: PgColumn_ffrhhp34<{
+		requestCount: PgColumn_ffrhhp35<{
 			name: "request_count";
 			tableName: "api_key_usage";
 			dataType: "number";
@@ -9717,8 +10885,8 @@ declare const apiKeyUsage: PgTableWithColumns_a5zn0g34<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g35 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp35 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
 /** The CRMs Closeline connects to. Mirrors the contract's `CRM_PROVIDERS`. */
 declare const CRM_PROVIDERS: readonly ["hubspot", "salesforce"];
 /** The kinds of CRM object a run pulls. Mirrors the contract's `CRM_OBJECT_KINDS`. */
@@ -9785,11 +10953,11 @@ declare const CRM_WEBHOOK_WINDOW_SECONDS = 300;
 * Lists served: the Organization's connections by id (`crm_connection_pkey`) and one provider's
 * (`crm_connection_provider_key`).
 */
-declare const crmConnections: PgTableWithColumns_a5zn0g35<{
+declare const crmConnections: PgTableWithColumns_a5zn0g36<{
 	name: "crm_connection";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp35<{
+		id: PgColumn_ffrhhp36<{
 			name: "id";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9806,7 +10974,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp35<{
+		organizationId: PgColumn_ffrhhp36<{
 			name: "organization_id";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9823,7 +10991,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		provider: PgColumn_ffrhhp35<{
+		provider: PgColumn_ffrhhp36<{
 			name: "provider";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9840,7 +11008,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp35<{
+		state: PgColumn_ffrhhp36<{
 			name: "state";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9857,7 +11025,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		externalAccountId: PgColumn_ffrhhp35<{
+		externalAccountId: PgColumn_ffrhhp36<{
 			name: "external_account_id";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9874,7 +11042,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		accountLabel: PgColumn_ffrhhp35<{
+		accountLabel: PgColumn_ffrhhp36<{
 			name: "account_label";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9891,7 +11059,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		scopeLevel: PgColumn_ffrhhp35<{
+		scopeLevel: PgColumn_ffrhhp36<{
 			name: "scope_level";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9908,7 +11076,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		accessTokenSealed: PgColumn_ffrhhp35<{
+		accessTokenSealed: PgColumn_ffrhhp36<{
 			name: "access_token_sealed";
 			tableName: "crm_connection";
 			dataType: "custom";
@@ -9927,7 +11095,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		refreshTokenSealed: PgColumn_ffrhhp35<{
+		refreshTokenSealed: PgColumn_ffrhhp36<{
 			name: "refresh_token_sealed";
 			tableName: "crm_connection";
 			dataType: "custom";
@@ -9946,7 +11114,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		tokenKeyId: PgColumn_ffrhhp35<{
+		tokenKeyId: PgColumn_ffrhhp36<{
 			name: "token_key_id";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9963,7 +11131,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		accessTokenExpiresAt: PgColumn_ffrhhp35<{
+		accessTokenExpiresAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_connection";
 			dataType: "date";
@@ -9980,7 +11148,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		connectedByMembershipId: PgColumn_ffrhhp35<{
+		connectedByMembershipId: PgColumn_ffrhhp36<{
 			name: "connected_by_membership_id";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -9997,7 +11165,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		connectedAt: PgColumn_ffrhhp35<{
+		connectedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_connection";
 			dataType: "date";
@@ -10014,7 +11182,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lastSyncedAt: PgColumn_ffrhhp35<{
+		lastSyncedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_connection";
 			dataType: "date";
@@ -10031,7 +11199,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		needsReconnectSince: PgColumn_ffrhhp35<{
+		needsReconnectSince: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_connection";
 			dataType: "date";
@@ -10048,7 +11216,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		stageMappingConfirmedByMembershipId: PgColumn_ffrhhp35<{
+		stageMappingConfirmedByMembershipId: PgColumn_ffrhhp36<{
 			name: "stage_mapping_confirmed_by_membership_id";
 			tableName: "crm_connection";
 			dataType: "string";
@@ -10065,7 +11233,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		stageMappingConfirmedAt: PgColumn_ffrhhp35<{
+		stageMappingConfirmedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_connection";
 			dataType: "date";
@@ -10082,7 +11250,7 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp35<{
+		updatedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_connection";
 			dataType: "date";
@@ -10112,11 +11280,11 @@ declare const crmConnections: PgTableWithColumns_a5zn0g35<{
 * Lists served (by key, keyset `key > $cursor`): a connection's stage lines and field lines,
 * both on `crm_mapping_pkey`.
 */
-declare const crmMappings: PgTableWithColumns_a5zn0g35<{
+declare const crmMappings: PgTableWithColumns_a5zn0g36<{
 	name: "crm_mapping";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp35<{
+		organizationId: PgColumn_ffrhhp36<{
 			name: "organization_id";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10133,7 +11301,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		connectionId: PgColumn_ffrhhp35<{
+		connectionId: PgColumn_ffrhhp36<{
 			name: "connection_id";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10150,7 +11318,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp35<{
+		kind: PgColumn_ffrhhp36<{
 			name: "kind";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10167,7 +11335,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		key: PgColumn_ffrhhp35<{
+		key: PgColumn_ffrhhp36<{
 			name: "key";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10184,7 +11352,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		outcome: PgColumn_ffrhhp35<{
+		outcome: PgColumn_ffrhhp36<{
 			name: "outcome";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10201,7 +11369,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		label: PgColumn_ffrhhp35<{
+		label: PgColumn_ffrhhp36<{
 			name: "label";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10218,7 +11386,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		direction: PgColumn_ffrhhp35<{
+		direction: PgColumn_ffrhhp36<{
 			name: "direction";
 			tableName: "crm_mapping";
 			dataType: "string";
@@ -10235,7 +11403,7 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp35<{
+		updatedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_mapping";
 			dataType: "date";
@@ -10270,11 +11438,11 @@ declare const crmMappings: PgTableWithColumns_a5zn0g35<{
 * (`crm_sync_runs_list_idx`), narrowed to one state (`crm_sync_runs_state_list_idx`) or one object
 * kind (`crm_sync_runs_kind_list_idx`, which also finds the cursor to resume from).
 */
-declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
+declare const crmSyncRuns: PgTableWithColumns_a5zn0g36<{
 	name: "crm_sync_run";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp35<{
+		id: PgColumn_ffrhhp36<{
 			name: "id";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10291,7 +11459,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp35<{
+		organizationId: PgColumn_ffrhhp36<{
 			name: "organization_id";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10308,7 +11476,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		connectionId: PgColumn_ffrhhp35<{
+		connectionId: PgColumn_ffrhhp36<{
 			name: "connection_id";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10325,7 +11493,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKind: PgColumn_ffrhhp35<{
+		objectKind: PgColumn_ffrhhp36<{
 			name: "object_kind";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10342,7 +11510,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		trigger: PgColumn_ffrhhp35<{
+		trigger: PgColumn_ffrhhp36<{
 			name: "trigger";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10359,7 +11527,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp35<{
+		state: PgColumn_ffrhhp36<{
 			name: "state";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10376,7 +11544,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestedAt: PgColumn_ffrhhp35<{
+		requestedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_sync_run";
 			dataType: "date";
@@ -10393,7 +11561,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestedByMembershipId: PgColumn_ffrhhp35<{
+		requestedByMembershipId: PgColumn_ffrhhp36<{
 			name: "requested_by_membership_id";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10410,7 +11578,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		startedAt: PgColumn_ffrhhp35<{
+		startedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_sync_run";
 			dataType: "date";
@@ -10427,7 +11595,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		completedAt: PgColumn_ffrhhp35<{
+		completedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_sync_run";
 			dataType: "date";
@@ -10444,7 +11612,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdCount: PgColumn_ffrhhp35<{
+		createdCount: PgColumn_ffrhhp36<{
 			name: "created_count";
 			tableName: "crm_sync_run";
 			dataType: "number";
@@ -10461,7 +11629,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedCount: PgColumn_ffrhhp35<{
+		updatedCount: PgColumn_ffrhhp36<{
 			name: "updated_count";
 			tableName: "crm_sync_run";
 			dataType: "number";
@@ -10478,7 +11646,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		skippedCount: PgColumn_ffrhhp35<{
+		skippedCount: PgColumn_ffrhhp36<{
 			name: "skipped_count";
 			tableName: "crm_sync_run";
 			dataType: "number";
@@ -10495,7 +11663,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failedCount: PgColumn_ffrhhp35<{
+		failedCount: PgColumn_ffrhhp36<{
 			name: "failed_count";
 			tableName: "crm_sync_run";
 			dataType: "number";
@@ -10512,7 +11680,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		unlinkedCount: PgColumn_ffrhhp35<{
+		unlinkedCount: PgColumn_ffrhhp36<{
 			name: "unlinked_count";
 			tableName: "crm_sync_run";
 			dataType: "number";
@@ -10529,7 +11697,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		skipped: PgColumn_ffrhhp35<{
+		skipped: PgColumn_ffrhhp36<{
 			name: "skipped";
 			tableName: "crm_sync_run";
 			dataType: "json";
@@ -10546,7 +11714,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		skippedFields: PgColumn_ffrhhp35<{
+		skippedFields: PgColumn_ffrhhp36<{
 			name: "skipped_fields";
 			tableName: "crm_sync_run";
 			dataType: "json";
@@ -10563,7 +11731,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failures: PgColumn_ffrhhp35<{
+		failures: PgColumn_ffrhhp36<{
 			name: "failures";
 			tableName: "crm_sync_run";
 			dataType: "json";
@@ -10580,7 +11748,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failuresTruncated: PgColumn_ffrhhp35<{
+		failuresTruncated: PgColumn_ffrhhp36<{
 			name: "failures_truncated";
 			tableName: "crm_sync_run";
 			dataType: "boolean";
@@ -10597,7 +11765,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		errorCode: PgColumn_ffrhhp35<{
+		errorCode: PgColumn_ffrhhp36<{
 			name: "error_code";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10614,7 +11782,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		retryOfRunId: PgColumn_ffrhhp35<{
+		retryOfRunId: PgColumn_ffrhhp36<{
 			name: "retry_of_run_id";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10631,7 +11799,7 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		cursor: PgColumn_ffrhhp35<{
+		cursor: PgColumn_ffrhhp36<{
 			name: "cursor";
 			tableName: "crm_sync_run";
 			dataType: "string";
@@ -10672,11 +11840,11 @@ declare const crmSyncRuns: PgTableWithColumns_a5zn0g35<{
 * (`crm_external_ref_write_key`) and a connection's references in id order
 * (`crm_external_refs_connection_idx`, which also serves the cascade).
 */
-declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
+declare const crmExternalRefs: PgTableWithColumns_a5zn0g36<{
 	name: "crm_external_ref";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp35<{
+		id: PgColumn_ffrhhp36<{
 			name: "id";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10693,7 +11861,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp35<{
+		organizationId: PgColumn_ffrhhp36<{
 			name: "organization_id";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10710,7 +11878,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		connectionId: PgColumn_ffrhhp35<{
+		connectionId: PgColumn_ffrhhp36<{
 			name: "connection_id";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10727,7 +11895,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		provider: PgColumn_ffrhhp35<{
+		provider: PgColumn_ffrhhp36<{
 			name: "provider";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10744,7 +11912,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKind: PgColumn_ffrhhp35<{
+		objectKind: PgColumn_ffrhhp36<{
 			name: "object_kind";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10761,7 +11929,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		externalId: PgColumn_ffrhhp35<{
+		externalId: PgColumn_ffrhhp36<{
 			name: "external_id";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10778,7 +11946,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		localId: PgColumn_ffrhhp35<{
+		localId: PgColumn_ffrhhp36<{
 			name: "local_id";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10795,7 +11963,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp35<{
+		state: PgColumn_ffrhhp36<{
 			name: "state";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10812,7 +11980,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lastSeenVersion: PgColumn_ffrhhp35<{
+		lastSeenVersion: PgColumn_ffrhhp36<{
 			name: "last_seen_version";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10829,7 +11997,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lastSeenAt: PgColumn_ffrhhp35<{
+		lastSeenAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_external_ref";
 			dataType: "date";
@@ -10846,7 +12014,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		writeKey: PgColumn_ffrhhp35<{
+		writeKey: PgColumn_ffrhhp36<{
 			name: "write_key";
 			tableName: "crm_external_ref";
 			dataType: "string";
@@ -10863,7 +12031,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp35<{
+		createdAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_external_ref";
 			dataType: "date";
@@ -10880,7 +12048,7 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp35<{
+		updatedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_external_ref";
 			dataType: "date";
@@ -10907,11 +12075,11 @@ declare const crmExternalRefs: PgTableWithColumns_a5zn0g35<{
 * neither block nor reveal another's. A receipt is kept for the timestamp window plus a margin
 * and pruned by age (`crm_webhook_receipts_age_idx`); nothing from the payload is stored.
 */
-declare const crmWebhookReceipts: PgTableWithColumns_a5zn0g35<{
+declare const crmWebhookReceipts: PgTableWithColumns_a5zn0g36<{
 	name: "crm_webhook_receipt";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp35<{
+		organizationId: PgColumn_ffrhhp36<{
 			name: "organization_id";
 			tableName: "crm_webhook_receipt";
 			dataType: "string";
@@ -10928,7 +12096,7 @@ declare const crmWebhookReceipts: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		connectionId: PgColumn_ffrhhp35<{
+		connectionId: PgColumn_ffrhhp36<{
 			name: "connection_id";
 			tableName: "crm_webhook_receipt";
 			dataType: "string";
@@ -10945,7 +12113,7 @@ declare const crmWebhookReceipts: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		eventId: PgColumn_ffrhhp35<{
+		eventId: PgColumn_ffrhhp36<{
 			name: "event_id";
 			tableName: "crm_webhook_receipt";
 			dataType: "string";
@@ -10962,7 +12130,7 @@ declare const crmWebhookReceipts: PgTableWithColumns_a5zn0g35<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		receivedAt: PgColumn_ffrhhp35<{
+		receivedAt: PgColumn_ffrhhp36<{
 			name: string;
 			tableName: "crm_webhook_receipt";
 			dataType: "date";
@@ -10982,8 +12150,8 @@ declare const crmWebhookReceipts: PgTableWithColumns_a5zn0g35<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g36 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp36 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
 /** The length in bytes of an address hash: an HMAC-SHA256, which core computes. */
 declare const DEMO_RATE_ADDRESS_HASH_BYTES = 32;
 /**
@@ -11001,11 +12169,11 @@ declare const DEMO_RATE_ADDRESS_HASH_BYTES = 32;
 * - The retention purge: `WHERE window_start < $cutoff ORDER BY window_start LIMIT n`, on
 *   `demo_rate_counters_window_start_idx`.
 */
-declare const demoRateCounters: PgTableWithColumns_a5zn0g36<{
+declare const demoRateCounters: PgTableWithColumns_a5zn0g37<{
 	name: "demo_rate_counter";
 	schema: "core";
 	columns: {
-		addressHash: PgColumn_ffrhhp36<{
+		addressHash: PgColumn_ffrhhp37<{
 			name: "address_hash";
 			tableName: "demo_rate_counter";
 			dataType: "custom";
@@ -11024,7 +12192,7 @@ declare const demoRateCounters: PgTableWithColumns_a5zn0g36<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		windowStart: PgColumn_ffrhhp36<{
+		windowStart: PgColumn_ffrhhp37<{
 			name: "window_start";
 			tableName: "demo_rate_counter";
 			dataType: "date";
@@ -11041,7 +12209,7 @@ declare const demoRateCounters: PgTableWithColumns_a5zn0g36<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		hits: PgColumn_ffrhhp36<{
+		hits: PgColumn_ffrhhp37<{
 			name: "hits";
 			tableName: "demo_rate_counter";
 			dataType: "number";
@@ -11063,8 +12231,8 @@ declare const demoRateCounters: PgTableWithColumns_a5zn0g36<{
 }>;
 /** A demo rate counter row. */
 type DemoRateCounter = typeof demoRateCounters.$inferSelect;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g37 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp37 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
 /** The states of the notice that tells Closeline's team about a Demo Request. */
 declare const DEMO_NOTIFICATION_STATUSES: readonly ["pending", "sent", "failed"];
 /** The longest Visitor name or company name, in characters after trimming. Mirrors the contract. */
@@ -11099,11 +12267,11 @@ declare const DEMO_REQUEST_KEY_LENGTH: {
 * - The notice retry scan: `WHERE notification_status = 'pending' ORDER BY submitted_at LIMIT n`
 *   (and `'failed'` for a manual retry), on `demo_requests_notice_idx`.
 */
-declare const demoRequests: PgTableWithColumns_a5zn0g37<{
+declare const demoRequests: PgTableWithColumns_a5zn0g38<{
 	name: "demo_request";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp37<{
+		id: PgColumn_ffrhhp38<{
 			name: "id";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11120,7 +12288,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp37<{
+		name: PgColumn_ffrhhp38<{
 			name: "name";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11137,7 +12305,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		workEmail: PgColumn_ffrhhp37<{
+		workEmail: PgColumn_ffrhhp38<{
 			name: "work_email";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11154,7 +12322,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		companyName: PgColumn_ffrhhp37<{
+		companyName: PgColumn_ffrhhp38<{
 			name: "company_name";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11171,7 +12339,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		message: PgColumn_ffrhhp37<{
+		message: PgColumn_ffrhhp38<{
 			name: "message";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11188,7 +12356,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sourcePage: PgColumn_ffrhhp37<{
+		sourcePage: PgColumn_ffrhhp38<{
 			name: "source_page";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11205,7 +12373,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		idempotencyKey: PgColumn_ffrhhp37<{
+		idempotencyKey: PgColumn_ffrhhp38<{
 			name: "idempotency_key";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11222,7 +12390,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		notificationStatus: PgColumn_ffrhhp37<{
+		notificationStatus: PgColumn_ffrhhp38<{
 			name: "notification_status";
 			tableName: "demo_request";
 			dataType: "string";
@@ -11239,7 +12407,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		notificationAttempts: PgColumn_ffrhhp37<{
+		notificationAttempts: PgColumn_ffrhhp38<{
 			name: "notification_attempts";
 			tableName: "demo_request";
 			dataType: "number";
@@ -11256,7 +12424,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		notificationLastAttemptAt: PgColumn_ffrhhp37<{
+		notificationLastAttemptAt: PgColumn_ffrhhp38<{
 			name: "notification_last_attempt_at";
 			tableName: "demo_request";
 			dataType: "date";
@@ -11273,7 +12441,7 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		submittedAt: PgColumn_ffrhhp37<{
+		submittedAt: PgColumn_ffrhhp38<{
 			name: "submitted_at";
 			tableName: "demo_request";
 			dataType: "date";
@@ -11297,8 +12465,8 @@ declare const demoRequests: PgTableWithColumns_a5zn0g37<{
 type DemoRequest = typeof demoRequests.$inferSelect;
 /** Insert shape for a Demo Request. */
 type NewDemoRequest = typeof demoRequests.$inferInsert;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g38 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp38 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g39 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp39 } from "drizzle-orm/pg-core";
 /** The kinds of identity a Prospect is matched on. Mirrors the contract's `PROSPECT_IDENTITY_KINDS`. */
 declare const PROSPECT_IDENTITY_KINDS: readonly ["email", "phone", "linkedin"];
 /** The states of a Prospect. Mirrors the contract's `PROSPECT_STATUSES`. */
@@ -11381,11 +12549,11 @@ declare const IDENTITY_VALUE_PATTERNS: {
 * Lists served (keyset `(created_at, id)`, newest first): `prospect_companies_list_idx`. Lookup by
 * domain: `prospect_companies_domain_key`.
 */
-declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
+declare const prospectCompanies: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_companies";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp38<{
+		id: PgColumn_ffrhhp39<{
 			name: "id";
 			tableName: "prospect_companies";
 			dataType: "string";
@@ -11402,7 +12570,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_companies";
 			dataType: "string";
@@ -11419,7 +12587,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp38<{
+		name: PgColumn_ffrhhp39<{
 			name: "name";
 			tableName: "prospect_companies";
 			dataType: "string";
@@ -11436,7 +12604,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		domain: PgColumn_ffrhhp38<{
+		domain: PgColumn_ffrhhp39<{
 			name: "domain";
 			tableName: "prospect_companies";
 			dataType: "string";
@@ -11453,7 +12621,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		industry: PgColumn_ffrhhp38<{
+		industry: PgColumn_ffrhhp39<{
 			name: "industry";
 			tableName: "prospect_companies";
 			dataType: "string";
@@ -11470,7 +12638,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		employeeCount: PgColumn_ffrhhp38<{
+		employeeCount: PgColumn_ffrhhp39<{
 			name: "employee_count";
 			tableName: "prospect_companies";
 			dataType: "number";
@@ -11487,7 +12655,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		region: PgColumn_ffrhhp38<{
+		region: PgColumn_ffrhhp39<{
 			name: "region";
 			tableName: "prospect_companies";
 			dataType: "string";
@@ -11504,7 +12672,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		technologies: PgColumn_ffrhhp38<{
+		technologies: PgColumn_ffrhhp39<{
 			name: "technologies";
 			tableName: "prospect_companies";
 			dataType: "custom";
@@ -11523,7 +12691,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_companies";
 			dataType: "date";
@@ -11540,7 +12708,7 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_companies";
 			dataType: "date";
@@ -11572,11 +12740,11 @@ declare const prospectCompanies: PgTableWithColumns_a5zn0g38<{
 * `organization_id`): all (`prospects_list_idx`), by status, owner, Company and Source (one index
 * each, ending in the same keyset).
 */
-declare const prospects: PgTableWithColumns_a5zn0g38<{
+declare const prospects: PgTableWithColumns_a5zn0g39<{
 	name: "prospects";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp38<{
+		id: PgColumn_ffrhhp39<{
 			name: "id";
 			tableName: "prospects";
 			dataType: "string";
@@ -11593,7 +12761,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospects";
 			dataType: "string";
@@ -11610,7 +12778,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		companyId: PgColumn_ffrhhp38<{
+		companyId: PgColumn_ffrhhp39<{
 			name: "company_id";
 			tableName: "prospects";
 			dataType: "string";
@@ -11627,7 +12795,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		ownerMembershipId: PgColumn_ffrhhp38<{
+		ownerMembershipId: PgColumn_ffrhhp39<{
 			name: "owner_membership_id";
 			tableName: "prospects";
 			dataType: "string";
@@ -11644,7 +12812,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		status: PgColumn_ffrhhp38<{
+		status: PgColumn_ffrhhp39<{
 			name: "status";
 			tableName: "prospects";
 			dataType: "string";
@@ -11661,7 +12829,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		source: PgColumn_ffrhhp38<{
+		source: PgColumn_ffrhhp39<{
 			name: "source";
 			tableName: "prospects";
 			dataType: "string";
@@ -11678,7 +12846,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		tags: PgColumn_ffrhhp38<{
+		tags: PgColumn_ffrhhp39<{
 			name: "tags";
 			tableName: "prospects";
 			dataType: "custom";
@@ -11697,7 +12865,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		notes: PgColumn_ffrhhp38<{
+		notes: PgColumn_ffrhhp39<{
 			name: "notes";
 			tableName: "prospects";
 			dataType: "string";
@@ -11714,7 +12882,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospects";
 			dataType: "date";
@@ -11731,7 +12899,7 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospects";
 			dataType: "date";
@@ -11760,11 +12928,11 @@ declare const prospects: PgTableWithColumns_a5zn0g38<{
 * Lookups served: by value (the primary key `(organization_id, kind, value)`), and all identities
 * of one Prospect (`prospect_identities_prospect_idx`).
 */
-declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
+declare const prospectIdentities: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_identities";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_identities";
 			dataType: "string";
@@ -11781,7 +12949,7 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp38<{
+		kind: PgColumn_ffrhhp39<{
 			name: "kind";
 			tableName: "prospect_identities";
 			dataType: "string";
@@ -11798,7 +12966,7 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		value: PgColumn_ffrhhp38<{
+		value: PgColumn_ffrhhp39<{
 			name: "value";
 			tableName: "prospect_identities";
 			dataType: "string";
@@ -11815,7 +12983,7 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp38<{
+		prospectId: PgColumn_ffrhhp39<{
 			name: "prospect_id";
 			tableName: "prospect_identities";
 			dataType: "string";
@@ -11832,7 +13000,7 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		isPrimary: PgColumn_ffrhhp38<{
+		isPrimary: PgColumn_ffrhhp39<{
 			name: "is_primary";
 			tableName: "prospect_identities";
 			dataType: "boolean";
@@ -11849,7 +13017,7 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_identities";
 			dataType: "date";
@@ -11880,11 +13048,11 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g38<{
 * Lists served: a Prospect's current values (`prospect_fields_current_key`) and one field's
 * history, newest first (`prospect_fields_history_idx`). Erasing a Prospect deletes its entries (cascade).
 */
-declare const prospectFields: PgTableWithColumns_a5zn0g38<{
+declare const prospectFields: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_fields";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -11901,7 +13069,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		seq: PgColumn_ffrhhp38<{
+		seq: PgColumn_ffrhhp39<{
 			name: "seq";
 			tableName: "prospect_fields";
 			dataType: "number";
@@ -11918,7 +13086,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: "always";
 			generated: undefined;
 		}, {}, {}>;
-		fieldName: PgColumn_ffrhhp38<{
+		fieldName: PgColumn_ffrhhp39<{
 			name: "field_name";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -11935,7 +13103,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp38<{
+		state: PgColumn_ffrhhp39<{
 			name: "state";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -11952,7 +13120,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		value: PgColumn_ffrhhp38<{
+		value: PgColumn_ffrhhp39<{
 			name: "value";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -11969,7 +13137,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		source: PgColumn_ffrhhp38<{
+		source: PgColumn_ffrhhp39<{
 			name: "source";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -11986,7 +13154,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sourceRef: PgColumn_ffrhhp38<{
+		sourceRef: PgColumn_ffrhhp39<{
 			name: "source_ref";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -12003,7 +13171,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		setAt: PgColumn_ffrhhp38<{
+		setAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_fields";
 			dataType: "date";
@@ -12020,7 +13188,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		setByUserId: PgColumn_ffrhhp38<{
+		setByUserId: PgColumn_ffrhhp39<{
 			name: "set_by_user_id";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -12037,7 +13205,7 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp38<{
+		prospectId: PgColumn_ffrhhp39<{
 			name: "prospect_id";
 			tableName: "prospect_fields";
 			dataType: "string";
@@ -12063,11 +13231,11 @@ declare const prospectFields: PgTableWithColumns_a5zn0g38<{
 * value is kept as text: `employee_count` as 1 to 9 digits and `technologies` as a JSON array of
 * strings.
 */
-declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
+declare const prospectCompanyFields: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_company_fields";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12084,7 +13252,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		seq: PgColumn_ffrhhp38<{
+		seq: PgColumn_ffrhhp39<{
 			name: "seq";
 			tableName: "prospect_company_fields";
 			dataType: "number";
@@ -12101,7 +13269,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: "always";
 			generated: undefined;
 		}, {}, {}>;
-		fieldName: PgColumn_ffrhhp38<{
+		fieldName: PgColumn_ffrhhp39<{
 			name: "field_name";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12118,7 +13286,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp38<{
+		state: PgColumn_ffrhhp39<{
 			name: "state";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12135,7 +13303,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		value: PgColumn_ffrhhp38<{
+		value: PgColumn_ffrhhp39<{
 			name: "value";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12152,7 +13320,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		source: PgColumn_ffrhhp38<{
+		source: PgColumn_ffrhhp39<{
 			name: "source";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12169,7 +13337,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sourceRef: PgColumn_ffrhhp38<{
+		sourceRef: PgColumn_ffrhhp39<{
 			name: "source_ref";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12186,7 +13354,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		setAt: PgColumn_ffrhhp38<{
+		setAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_company_fields";
 			dataType: "date";
@@ -12203,7 +13371,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		setByUserId: PgColumn_ffrhhp38<{
+		setByUserId: PgColumn_ffrhhp39<{
 			name: "set_by_user_id";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12220,7 +13388,7 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		companyId: PgColumn_ffrhhp38<{
+		companyId: PgColumn_ffrhhp39<{
 			name: "company_id";
 			tableName: "prospect_company_fields";
 			dataType: "string";
@@ -12248,11 +13416,11 @@ declare const prospectCompanyFields: PgTableWithColumns_a5zn0g38<{
 *
 * Lists served (keyset `(created_at, id)`, newest first): `prospect_imports_list_idx`.
 */
-declare const prospectImports: PgTableWithColumns_a5zn0g38<{
+declare const prospectImports: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_imports";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp38<{
+		id: PgColumn_ffrhhp39<{
 			name: "id";
 			tableName: "prospect_imports";
 			dataType: "string";
@@ -12269,7 +13437,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_imports";
 			dataType: "string";
@@ -12286,7 +13454,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp38<{
+		state: PgColumn_ffrhhp39<{
 			name: "state";
 			tableName: "prospect_imports";
 			dataType: "string";
@@ -12303,7 +13471,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp38<{
+		failureReason: PgColumn_ffrhhp39<{
 			name: "failure_reason";
 			tableName: "prospect_imports";
 			dataType: "string";
@@ -12320,7 +13488,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sizeBytes: PgColumn_ffrhhp38<{
+		sizeBytes: PgColumn_ffrhhp39<{
 			name: "size_bytes";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12337,7 +13505,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp38<{
+		contentHash: PgColumn_ffrhhp39<{
 			name: "content_hash";
 			tableName: "prospect_imports";
 			dataType: "custom";
@@ -12356,7 +13524,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		objectKey: PgColumn_ffrhhp38<{
+		objectKey: PgColumn_ffrhhp39<{
 			name: "object_key";
 			tableName: "prospect_imports";
 			dataType: "string";
@@ -12373,7 +13541,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		processedRows: PgColumn_ffrhhp38<{
+		processedRows: PgColumn_ffrhhp39<{
 			name: "processed_rows";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12390,7 +13558,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rowCount: PgColumn_ffrhhp38<{
+		rowCount: PgColumn_ffrhhp39<{
 			name: "row_count";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12407,7 +13575,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdCount: PgColumn_ffrhhp38<{
+		createdCount: PgColumn_ffrhhp39<{
 			name: "created_count";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12424,7 +13592,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedCount: PgColumn_ffrhhp38<{
+		updatedCount: PgColumn_ffrhhp39<{
 			name: "updated_count";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12441,7 +13609,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		skippedCount: PgColumn_ffrhhp38<{
+		skippedCount: PgColumn_ffrhhp39<{
 			name: "skipped_count";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12458,7 +13626,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rejectedCount: PgColumn_ffrhhp38<{
+		rejectedCount: PgColumn_ffrhhp39<{
 			name: "rejected_count";
 			tableName: "prospect_imports";
 			dataType: "number";
@@ -12475,7 +13643,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedByUserId: PgColumn_ffrhhp38<{
+		uploadedByUserId: PgColumn_ffrhhp39<{
 			name: "uploaded_by_user_id";
 			tableName: "prospect_imports";
 			dataType: "string";
@@ -12492,7 +13660,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_imports";
 			dataType: "date";
@@ -12509,7 +13677,7 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp38<{
+		updatedAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_imports";
 			dataType: "date";
@@ -12539,11 +13707,11 @@ declare const prospectImports: PgTableWithColumns_a5zn0g38<{
 * Lists served (keyset `row_number`): a report (the primary key) and one result
 * (`prospect_import_rows_result_idx`).
 */
-declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
+declare const prospectImportRows: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_import_rows";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_import_rows";
 			dataType: "string";
@@ -12560,7 +13728,7 @@ declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		importId: PgColumn_ffrhhp38<{
+		importId: PgColumn_ffrhhp39<{
 			name: "import_id";
 			tableName: "prospect_import_rows";
 			dataType: "string";
@@ -12577,7 +13745,7 @@ declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rowNumber: PgColumn_ffrhhp38<{
+		rowNumber: PgColumn_ffrhhp39<{
 			name: "row_number";
 			tableName: "prospect_import_rows";
 			dataType: "number";
@@ -12594,7 +13762,7 @@ declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		result: PgColumn_ffrhhp38<{
+		result: PgColumn_ffrhhp39<{
 			name: "result";
 			tableName: "prospect_import_rows";
 			dataType: "string";
@@ -12611,7 +13779,7 @@ declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		reason: PgColumn_ffrhhp38<{
+		reason: PgColumn_ffrhhp39<{
 			name: "reason";
 			tableName: "prospect_import_rows";
 			dataType: "string";
@@ -12628,7 +13796,7 @@ declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp38<{
+		prospectId: PgColumn_ffrhhp39<{
 			name: "prospect_id";
 			tableName: "prospect_import_rows";
 			dataType: "string";
@@ -12658,11 +13826,11 @@ declare const prospectImportRows: PgTableWithColumns_a5zn0g38<{
 *
 * Lists served: a survivor's merges (`prospect_merges_survivor_idx`).
 */
-declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
+declare const prospectMerges: PgTableWithColumns_a5zn0g39<{
 	name: "prospect_merges";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp38<{
+		id: PgColumn_ffrhhp39<{
 			name: "id";
 			tableName: "prospect_merges";
 			dataType: "string";
@@ -12679,7 +13847,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp38<{
+		organizationId: PgColumn_ffrhhp39<{
 			name: "organization_id";
 			tableName: "prospect_merges";
 			dataType: "string";
@@ -12696,7 +13864,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		survivorProspectId: PgColumn_ffrhhp38<{
+		survivorProspectId: PgColumn_ffrhhp39<{
 			name: "survivor_prospect_id";
 			tableName: "prospect_merges";
 			dataType: "string";
@@ -12713,7 +13881,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		mergedProspectIds: PgColumn_ffrhhp38<{
+		mergedProspectIds: PgColumn_ffrhhp39<{
 			name: "merged_prospect_ids";
 			tableName: "prospect_merges";
 			dataType: "custom";
@@ -12732,7 +13900,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		fieldChoices: PgColumn_ffrhhp38<{
+		fieldChoices: PgColumn_ffrhhp39<{
 			name: "field_choices";
 			tableName: "prospect_merges";
 			dataType: "json";
@@ -12749,7 +13917,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp38<{
+		state: PgColumn_ffrhhp39<{
 			name: "state";
 			tableName: "prospect_merges";
 			dataType: "string";
@@ -12766,7 +13934,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		mergedByUserId: PgColumn_ffrhhp38<{
+		mergedByUserId: PgColumn_ffrhhp39<{
 			name: "merged_by_user_id";
 			tableName: "prospect_merges";
 			dataType: "string";
@@ -12783,7 +13951,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		snapshot: PgColumn_ffrhhp38<{
+		snapshot: PgColumn_ffrhhp39<{
 			name: "snapshot";
 			tableName: "prospect_merges";
 			dataType: "json";
@@ -12800,7 +13968,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp38<{
+		createdAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_merges";
 			dataType: "date";
@@ -12817,7 +13985,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		undoableUntil: PgColumn_ffrhhp38<{
+		undoableUntil: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_merges";
 			dataType: "date";
@@ -12834,7 +14002,7 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		undoneAt: PgColumn_ffrhhp38<{
+		undoneAt: PgColumn_ffrhhp39<{
 			name: string;
 			tableName: "prospect_merges";
 			dataType: "date";
@@ -12854,8 +14022,8 @@ declare const prospectMerges: PgTableWithColumns_a5zn0g38<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g39 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp39 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g40 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp40 } from "drizzle-orm/pg-core";
 /** The roles a membership can hold, most privileged first. Mirrors the contract's `ROLES`. */
 declare const MEMBERSHIP_ROLES: readonly ["owner", "admin", "manager", "rep"];
 /** The roles an invitation can offer: ownership passes by promotion, never by invitation. */
@@ -12893,11 +14061,11 @@ declare const IDEMPOTENCY_RESPONSE_MAX_BYTES = 16384;
 * users to join another Organization. An emptied Organization cannot be made `active` or
 * `suspended` again.
 */
-declare const organizations: PgTableWithColumns_a5zn0g39<{
+declare const organizations: PgTableWithColumns_a5zn0g40<{
 	name: "organizations";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "organizations";
 			dataType: "string";
@@ -12914,7 +14082,7 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp39<{
+		name: PgColumn_ffrhhp40<{
 			name: "name";
 			tableName: "organizations";
 			dataType: "string";
@@ -12931,7 +14099,7 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		region: PgColumn_ffrhhp39<{
+		region: PgColumn_ffrhhp40<{
 			name: "region";
 			tableName: "organizations";
 			dataType: "string";
@@ -12948,7 +14116,7 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		status: PgColumn_ffrhhp39<{
+		status: PgColumn_ffrhhp40<{
 			name: "status";
 			tableName: "organizations";
 			dataType: "string";
@@ -12965,7 +14133,7 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		ownerCount: PgColumn_ffrhhp39<{
+		ownerCount: PgColumn_ffrhhp40<{
 			name: "owner_count";
 			tableName: "organizations";
 			dataType: "number";
@@ -12982,7 +14150,7 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp39<{
+		createdAt: PgColumn_ffrhhp40<{
 			name: "created_at";
 			tableName: "organizations";
 			dataType: "date";
@@ -12999,7 +14167,7 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp39<{
+		updatedAt: PgColumn_ffrhhp40<{
 			name: "updated_at";
 			tableName: "organizations";
 			dataType: "date";
@@ -13046,11 +14214,11 @@ declare const organizations: PgTableWithColumns_a5zn0g39<{
 * sorts by it. The database's name rule is the looser bound (it trims spaces only and does not
 * reject control characters); core stores only the contract's trimmed output.
 */
-declare const memberships: PgTableWithColumns_a5zn0g39<{
+declare const memberships: PgTableWithColumns_a5zn0g40<{
 	name: "memberships";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp39<{
+		id: PgColumn_ffrhhp40<{
 			name: "id";
 			tableName: "memberships";
 			dataType: "string";
@@ -13067,7 +14235,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "memberships";
 			dataType: "string";
@@ -13084,7 +14252,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userId: PgColumn_ffrhhp39<{
+		userId: PgColumn_ffrhhp40<{
 			name: "user_id";
 			tableName: "memberships";
 			dataType: "string";
@@ -13101,7 +14269,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		role: PgColumn_ffrhhp39<{
+		role: PgColumn_ffrhhp40<{
 			name: "role";
 			tableName: "memberships";
 			dataType: "string";
@@ -13118,7 +14286,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		email: PgColumn_ffrhhp39<{
+		email: PgColumn_ffrhhp40<{
 			name: "email";
 			tableName: "memberships";
 			dataType: "string";
@@ -13135,7 +14303,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp39<{
+		name: PgColumn_ffrhhp40<{
 			name: "name";
 			tableName: "memberships";
 			dataType: "string";
@@ -13152,7 +14320,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp39<{
+		createdAt: PgColumn_ffrhhp40<{
 			name: "created_at";
 			tableName: "memberships";
 			dataType: "date";
@@ -13169,7 +14337,7 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp39<{
+		updatedAt: PgColumn_ffrhhp40<{
 			name: "updated_at";
 			tableName: "memberships";
 			dataType: "date";
@@ -13201,11 +14369,11 @@ declare const memberships: PgTableWithColumns_a5zn0g39<{
 * every cluster whatever its locale; "É" and "é" are different names. The service must fold the
 * same way (`name.replace(/[A-Z]/g, ...)`, not `toLowerCase()`) wherever it compares names.
 */
-declare const teams: PgTableWithColumns_a5zn0g39<{
+declare const teams: PgTableWithColumns_a5zn0g40<{
 	name: "teams";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp39<{
+		id: PgColumn_ffrhhp40<{
 			name: "id";
 			tableName: "teams";
 			dataType: "string";
@@ -13222,7 +14390,7 @@ declare const teams: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "teams";
 			dataType: "string";
@@ -13239,7 +14407,7 @@ declare const teams: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp39<{
+		name: PgColumn_ffrhhp40<{
 			name: "name";
 			tableName: "teams";
 			dataType: "string";
@@ -13256,7 +14424,7 @@ declare const teams: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nameKey: PgColumn_ffrhhp39<{
+		nameKey: PgColumn_ffrhhp40<{
 			name: "name_key";
 			tableName: "teams";
 			dataType: "string";
@@ -13275,7 +14443,7 @@ declare const teams: PgTableWithColumns_a5zn0g39<{
 				type: "always";
 			};
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp39<{
+		createdAt: PgColumn_ffrhhp40<{
 			name: "created_at";
 			tableName: "teams";
 			dataType: "date";
@@ -13292,7 +14460,7 @@ declare const teams: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp39<{
+		updatedAt: PgColumn_ffrhhp40<{
 			name: "updated_at";
 			tableName: "teams";
 			dataType: "date";
@@ -13324,11 +14492,11 @@ declare const teams: PgTableWithColumns_a5zn0g39<{
 *   $cursor ORDER BY team_id`, on `team_members_membership_idx` (which also serves the cascade
 *   when a membership is removed).
 */
-declare const teamMembers: PgTableWithColumns_a5zn0g39<{
+declare const teamMembers: PgTableWithColumns_a5zn0g40<{
 	name: "team_members";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "team_members";
 			dataType: "string";
@@ -13345,7 +14513,7 @@ declare const teamMembers: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		teamId: PgColumn_ffrhhp39<{
+		teamId: PgColumn_ffrhhp40<{
 			name: "team_id";
 			tableName: "team_members";
 			dataType: "string";
@@ -13362,7 +14530,7 @@ declare const teamMembers: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		membershipId: PgColumn_ffrhhp39<{
+		membershipId: PgColumn_ffrhhp40<{
 			name: "membership_id";
 			tableName: "team_members";
 			dataType: "string";
@@ -13379,7 +14547,7 @@ declare const teamMembers: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp39<{
+		createdAt: PgColumn_ffrhhp40<{
 			name: "created_at";
 			tableName: "team_members";
 			dataType: "date";
@@ -13428,11 +14596,11 @@ declare const teamMembers: PgTableWithColumns_a5zn0g39<{
 *   `LIMIT`: `WHERE organization_id = $1 AND state IN (...) AND created_at > $t`, on the same index.
 *   (`state` is in the index, so the count lists the three states; it is bounded by the cap.)
 */
-declare const invitations: PgTableWithColumns_a5zn0g39<{
+declare const invitations: PgTableWithColumns_a5zn0g40<{
 	name: "invitations";
 	schema: "core";
 	columns: {
-		id: PgColumn_ffrhhp39<{
+		id: PgColumn_ffrhhp40<{
 			name: "id";
 			tableName: "invitations";
 			dataType: "string";
@@ -13449,7 +14617,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "invitations";
 			dataType: "string";
@@ -13466,7 +14634,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		email: PgColumn_ffrhhp39<{
+		email: PgColumn_ffrhhp40<{
 			name: "email";
 			tableName: "invitations";
 			dataType: "string";
@@ -13483,7 +14651,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		role: PgColumn_ffrhhp39<{
+		role: PgColumn_ffrhhp40<{
 			name: "role";
 			tableName: "invitations";
 			dataType: "string";
@@ -13500,7 +14668,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		teamId: PgColumn_ffrhhp39<{
+		teamId: PgColumn_ffrhhp40<{
 			name: "team_id";
 			tableName: "invitations";
 			dataType: "string";
@@ -13517,7 +14685,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		invitedByUserId: PgColumn_ffrhhp39<{
+		invitedByUserId: PgColumn_ffrhhp40<{
 			name: "invited_by_user_id";
 			tableName: "invitations";
 			dataType: "string";
@@ -13534,7 +14702,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		tokenHash: PgColumn_ffrhhp39<{
+		tokenHash: PgColumn_ffrhhp40<{
 			name: "token_hash";
 			tableName: "invitations";
 			dataType: "string";
@@ -13551,7 +14719,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp39<{
+		state: PgColumn_ffrhhp40<{
 			name: "state";
 			tableName: "invitations";
 			dataType: "string";
@@ -13568,7 +14736,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		expiresAt: PgColumn_ffrhhp39<{
+		expiresAt: PgColumn_ffrhhp40<{
 			name: "expires_at";
 			tableName: "invitations";
 			dataType: "date";
@@ -13585,7 +14753,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		acceptedAt: PgColumn_ffrhhp39<{
+		acceptedAt: PgColumn_ffrhhp40<{
 			name: "accepted_at";
 			tableName: "invitations";
 			dataType: "date";
@@ -13602,7 +14770,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		revokedAt: PgColumn_ffrhhp39<{
+		revokedAt: PgColumn_ffrhhp40<{
 			name: "revoked_at";
 			tableName: "invitations";
 			dataType: "date";
@@ -13619,7 +14787,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp39<{
+		createdAt: PgColumn_ffrhhp40<{
 			name: "created_at";
 			tableName: "invitations";
 			dataType: "date";
@@ -13636,7 +14804,7 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp39<{
+		updatedAt: PgColumn_ffrhhp40<{
 			name: "updated_at";
 			tableName: "invitations";
 			dataType: "date";
@@ -13668,11 +14836,11 @@ declare const invitations: PgTableWithColumns_a5zn0g39<{
 * It has no index on `organization_id` alone: nothing reads it by Organization, and with one a plan
 * cached for the delete by key could scan every member of the Organization per row.
 */
-declare const membershipDirectory: PgTableWithColumns_a5zn0g39<{
+declare const membershipDirectory: PgTableWithColumns_a5zn0g40<{
 	name: "membership_directory";
 	schema: "core";
 	columns: {
-		userId: PgColumn_ffrhhp39<{
+		userId: PgColumn_ffrhhp40<{
 			name: "user_id";
 			tableName: "membership_directory";
 			dataType: "string";
@@ -13689,7 +14857,7 @@ declare const membershipDirectory: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "membership_directory";
 			dataType: "string";
@@ -13719,11 +14887,11 @@ declare const membershipDirectory: PgTableWithColumns_a5zn0g39<{
 * it, and a status change never touches it. It has no index on `organization_id` alone: nothing
 * reads it by Organization, and such an index is one a cached plan could pick for a delete by key.
 */
-declare const invitationDirectory: PgTableWithColumns_a5zn0g39<{
+declare const invitationDirectory: PgTableWithColumns_a5zn0g40<{
 	name: "invitation_directory";
 	schema: "core";
 	columns: {
-		tokenHash: PgColumn_ffrhhp39<{
+		tokenHash: PgColumn_ffrhhp40<{
 			name: "token_hash";
 			tableName: "invitation_directory";
 			dataType: "string";
@@ -13740,7 +14908,7 @@ declare const invitationDirectory: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "invitation_directory";
 			dataType: "string";
@@ -13757,7 +14925,7 @@ declare const invitationDirectory: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		invitationId: PgColumn_ffrhhp39<{
+		invitationId: PgColumn_ffrhhp40<{
 			name: "invitation_id";
 			tableName: "invitation_directory";
 			dataType: "string";
@@ -13774,7 +14942,7 @@ declare const invitationDirectory: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		expiresAt: PgColumn_ffrhhp39<{
+		expiresAt: PgColumn_ffrhhp40<{
 			name: "expires_at";
 			tableName: "invitation_directory";
 			dataType: "date";
@@ -13804,11 +14972,11 @@ declare const invitationDirectory: PgTableWithColumns_a5zn0g39<{
 * creates it, a change of `status` updates it, and deleting the Organization cascades). It is
 * written nowhere else and holds nothing a lookup can use without an exact key from another table.
 */
-declare const organizationState: PgTableWithColumns_a5zn0g39<{
+declare const organizationState: PgTableWithColumns_a5zn0g40<{
 	name: "organization_state";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "organization_state";
 			dataType: "string";
@@ -13825,7 +14993,7 @@ declare const organizationState: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		status: PgColumn_ffrhhp39<{
+		status: PgColumn_ffrhhp40<{
 			name: "status";
 			tableName: "organization_state";
 			dataType: "string";
@@ -13877,11 +15045,11 @@ declare const organizationState: PgTableWithColumns_a5zn0g39<{
 *   backlog is empty, because a row another session is completing is skipped and goes with the next
 *   batch. The `ctid` form assumes the table is not partitioned.
 */
-declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
+declare const idempotencyKeys: PgTableWithColumns_a5zn0g40<{
 	name: "idempotency_keys";
 	schema: "core";
 	columns: {
-		organizationId: PgColumn_ffrhhp39<{
+		organizationId: PgColumn_ffrhhp40<{
 			name: "organization_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -13898,7 +15066,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userId: PgColumn_ffrhhp39<{
+		userId: PgColumn_ffrhhp40<{
 			name: "user_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -13915,7 +15083,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		route: PgColumn_ffrhhp39<{
+		route: PgColumn_ffrhhp40<{
 			name: "route";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -13932,7 +15100,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		key: PgColumn_ffrhhp39<{
+		key: PgColumn_ffrhhp40<{
 			name: "key";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -13949,7 +15117,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestHash: PgColumn_ffrhhp39<{
+		requestHash: PgColumn_ffrhhp40<{
 			name: "request_hash";
 			tableName: "idempotency_keys";
 			dataType: "custom";
@@ -13968,7 +15136,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		status: PgColumn_ffrhhp39<{
+		status: PgColumn_ffrhhp40<{
 			name: "status";
 			tableName: "idempotency_keys";
 			dataType: "number";
@@ -13985,7 +15153,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		response: PgColumn_ffrhhp39<{
+		response: PgColumn_ffrhhp40<{
 			name: "response";
 			tableName: "idempotency_keys";
 			dataType: "json";
@@ -14004,7 +15172,7 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 		}, {}, {
 			$type: unknown;
 		}>;
-		createdAt: PgColumn_ffrhhp39<{
+		createdAt: PgColumn_ffrhhp40<{
 			name: "created_at";
 			tableName: "idempotency_keys";
 			dataType: "date";
@@ -14027,8 +15195,8 @@ declare const idempotencyKeys: PgTableWithColumns_a5zn0g39<{
 import { PgSchema as PgSchema_mtt0uw3 } from "drizzle-orm/pg-core";
 /** The `playbook` Postgres schema, owned by the playbook service (login role `closeline_playbook`). */
 declare const playbookSchema: PgSchema_mtt0uw3<"playbook">;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g40 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp40 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g41 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp41 } from "drizzle-orm/pg-core";
 /** The states a Call is in. Mirrors the contract's `CALL_STATES`. */
 declare const CALL_STATES: readonly ["uploaded", "transcribing", "awaiting_rep", "processing", "ready", "failed", "deleted"];
 /** Why a Call ended `failed`. Mirrors the contract's `CALL_FAILURE_REASONS`. */
@@ -14093,6 +15261,13 @@ declare function callReuploadRequeues(failureReason: string | null): boolean;
 */
 declare const CALL_PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_removed_seq is null or vectors_removed_seq < deletion_seq)";
 /**
+* Who authored the Moments a Call produces: `imported` for a Call uploaded as sales history,
+* `rep` for a Call a Rep made, `agent` for one an Agent made. Mirrors the contract's
+* `MOMENT_ORIGINS`. Moments live in the vector index, so the origin is stored on their Call and
+* stamped on each Moment when it is built.
+*/
+declare const CALL_ORIGINS: readonly ["imported", "rep", "agent"];
+/**
 * A Call of an Organization (ADR 0018): the record of an uploaded Transcript or Recording and the
 * Deal it belongs to. **Metadata only**: the file is in object storage under `object_key`, the
 * Transcript a Recording produced under `transcript_key`, and the turns and Moments in the vector
@@ -14122,11 +15297,11 @@ declare const CALL_PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_r
 * (`calls_list_idx`), one state (`calls_state_list_idx`, deleted included), one Deal
 * (`calls_deal_list_idx`).
 */
-declare const calls: PgTableWithColumns_a5zn0g40<{
+declare const calls: PgTableWithColumns_a5zn0g41<{
 	name: "calls";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp40<{
+		id: PgColumn_ffrhhp41<{
 			name: "id";
 			tableName: "calls";
 			dataType: "string";
@@ -14143,7 +15318,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp40<{
+		organizationId: PgColumn_ffrhhp41<{
 			name: "organization_id";
 			tableName: "calls";
 			dataType: "string";
@@ -14160,7 +15335,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealRecordId: PgColumn_ffrhhp40<{
+		dealRecordId: PgColumn_ffrhhp41<{
 			name: "deal_record_id";
 			tableName: "calls";
 			dataType: "string";
@@ -14177,7 +15352,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp40<{
+		kind: PgColumn_ffrhhp41<{
 			name: "kind";
 			tableName: "calls";
 			dataType: "string";
@@ -14194,7 +15369,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		fileName: PgColumn_ffrhhp40<{
+		fileName: PgColumn_ffrhhp41<{
 			name: "file_name";
 			tableName: "calls";
 			dataType: "string";
@@ -14211,7 +15386,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		mediaType: PgColumn_ffrhhp40<{
+		mediaType: PgColumn_ffrhhp41<{
 			name: "media_type";
 			tableName: "calls";
 			dataType: "string";
@@ -14228,7 +15403,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sizeBytes: PgColumn_ffrhhp40<{
+		sizeBytes: PgColumn_ffrhhp41<{
 			name: "size_bytes";
 			tableName: "calls";
 			dataType: "number";
@@ -14245,7 +15420,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp40<{
+		contentHash: PgColumn_ffrhhp41<{
 			name: "content_hash";
 			tableName: "calls";
 			dataType: "custom";
@@ -14264,7 +15439,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		durationSeconds: PgColumn_ffrhhp40<{
+		durationSeconds: PgColumn_ffrhhp41<{
 			name: "duration_seconds";
 			tableName: "calls";
 			dataType: "number";
@@ -14281,7 +15456,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp40<{
+		state: PgColumn_ffrhhp41<{
 			name: "state";
 			tableName: "calls";
 			dataType: "string";
@@ -14298,7 +15473,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp40<{
+		failureReason: PgColumn_ffrhhp41<{
 			name: "failure_reason";
 			tableName: "calls";
 			dataType: "string";
@@ -14315,7 +15490,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repBy: PgColumn_ffrhhp40<{
+		repBy: PgColumn_ffrhhp41<{
 			name: "rep_by";
 			tableName: "calls";
 			dataType: "string";
@@ -14332,7 +15507,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repLabel: PgColumn_ffrhhp40<{
+		repLabel: PgColumn_ffrhhp41<{
 			name: "rep_label";
 			tableName: "calls";
 			dataType: "string";
@@ -14349,7 +15524,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repChannel: PgColumn_ffrhhp40<{
+		repChannel: PgColumn_ffrhhp41<{
 			name: "rep_channel";
 			tableName: "calls";
 			dataType: "string";
@@ -14366,7 +15541,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		speakerLabels: PgColumn_ffrhhp40<{
+		speakerLabels: PgColumn_ffrhhp41<{
 			name: "speaker_labels";
 			tableName: "calls";
 			dataType: "custom";
@@ -14385,7 +15560,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		uploadedBy: PgColumn_ffrhhp40<{
+		uploadedBy: PgColumn_ffrhhp41<{
 			name: "uploaded_by";
 			tableName: "calls";
 			dataType: "string";
@@ -14402,7 +15577,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp40<{
+		objectKey: PgColumn_ffrhhp41<{
 			name: "object_key";
 			tableName: "calls";
 			dataType: "string";
@@ -14419,7 +15594,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		transcriptKey: PgColumn_ffrhhp40<{
+		transcriptKey: PgColumn_ffrhhp41<{
 			name: "transcript_key";
 			tableName: "calls";
 			dataType: "string";
@@ -14436,7 +15611,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp40<{
+		epoch: PgColumn_ffrhhp41<{
 			name: "epoch";
 			tableName: "calls";
 			dataType: "number";
@@ -14453,7 +15628,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repSeq: PgColumn_ffrhhp40<{
+		repSeq: PgColumn_ffrhhp41<{
 			name: "rep_seq";
 			tableName: "calls";
 			dataType: "number";
@@ -14470,7 +15645,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletionSeq: PgColumn_ffrhhp40<{
+		deletionSeq: PgColumn_ffrhhp41<{
 			name: "deletion_seq";
 			tableName: "calls";
 			dataType: "number";
@@ -14487,7 +15662,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsRemovedSeq: PgColumn_ffrhhp40<{
+		vectorsRemovedSeq: PgColumn_ffrhhp41<{
 			name: "vectors_removed_seq";
 			tableName: "calls";
 			dataType: "number";
@@ -14504,7 +15679,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		taggedOutcomeSeq: PgColumn_ffrhhp40<{
+		taggedOutcomeSeq: PgColumn_ffrhhp41<{
 			name: "tagged_outcome_seq";
 			tableName: "calls";
 			dataType: "number";
@@ -14521,7 +15696,24 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sentToVendorAt: PgColumn_ffrhhp40<{
+		origin: PgColumn_ffrhhp41<{
+			name: "origin";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "agent" | "imported" | "rep";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["imported", "rep", "agent"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sentToVendorAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14538,7 +15730,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vendorSendSeq: PgColumn_ffrhhp40<{
+		vendorSendSeq: PgColumn_ffrhhp41<{
 			name: "vendor_send_seq";
 			tableName: "calls";
 			dataType: "number";
@@ -14555,7 +15747,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vendorRemovedAt: PgColumn_ffrhhp40<{
+		vendorRemovedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14572,7 +15764,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp40<{
+		deletedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14589,7 +15781,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedBy: PgColumn_ffrhhp40<{
+		deletedBy: PgColumn_ffrhhp41<{
 			name: "deleted_by";
 			tableName: "calls";
 			dataType: "string";
@@ -14606,7 +15798,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp40<{
+		purgeDueAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14623,7 +15815,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeStartedAt: PgColumn_ffrhhp40<{
+		purgeStartedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14640,7 +15832,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeLeaseUntil: PgColumn_ffrhhp40<{
+		purgeLeaseUntil: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14657,7 +15849,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeAttempts: PgColumn_ffrhhp40<{
+		purgeAttempts: PgColumn_ffrhhp41<{
 			name: "purge_attempts";
 			tableName: "calls";
 			dataType: "number";
@@ -14674,7 +15866,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		restoreBarredAt: PgColumn_ffrhhp40<{
+		restoreBarredAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14691,7 +15883,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddedMoments: PgColumn_ffrhhp40<{
+		embeddedMoments: PgColumn_ffrhhp41<{
 			name: "embedded_moments";
 			tableName: "calls";
 			dataType: "number";
@@ -14708,7 +15900,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		skippedMoments: PgColumn_ffrhhp40<{
+		skippedMoments: PgColumn_ffrhhp41<{
 			name: "skipped_moments";
 			tableName: "calls";
 			dataType: "number";
@@ -14725,7 +15917,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp40<{
+		createdAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14742,7 +15934,7 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp40<{
+		updatedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -14773,11 +15965,11 @@ declare const calls: PgTableWithColumns_a5zn0g40<{
 * lease lapsed, `attempts` is bounded by the table). One active job per Call
 * (`call_jobs_active_call_key`).
 */
-declare const callJobs: PgTableWithColumns_a5zn0g40<{
+declare const callJobs: PgTableWithColumns_a5zn0g41<{
 	name: "call_jobs";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp40<{
+		id: PgColumn_ffrhhp41<{
 			name: "id";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14794,7 +15986,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp40<{
+		organizationId: PgColumn_ffrhhp41<{
 			name: "organization_id";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14811,7 +16003,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp40<{
+		callId: PgColumn_ffrhhp41<{
 			name: "call_id";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14828,7 +16020,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp40<{
+		kind: PgColumn_ffrhhp41<{
 			name: "kind";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14845,7 +16037,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp40<{
+		epoch: PgColumn_ffrhhp41<{
 			name: "epoch";
 			tableName: "call_jobs";
 			dataType: "number";
@@ -14862,7 +16054,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repSeq: PgColumn_ffrhhp40<{
+		repSeq: PgColumn_ffrhhp41<{
 			name: "rep_seq";
 			tableName: "call_jobs";
 			dataType: "number";
@@ -14879,7 +16071,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp40<{
+		state: PgColumn_ffrhhp41<{
 			name: "state";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14896,7 +16088,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp40<{
+		attempts: PgColumn_ffrhhp41<{
 			name: "attempts";
 			tableName: "call_jobs";
 			dataType: "number";
@@ -14913,7 +16105,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp40<{
+		nextAttemptAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "call_jobs";
 			dataType: "date";
@@ -14930,7 +16122,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp40<{
+		claimToken: PgColumn_ffrhhp41<{
 			name: "claim_token";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14947,7 +16139,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp40<{
+		failureReason: PgColumn_ffrhhp41<{
 			name: "failure_reason";
 			tableName: "call_jobs";
 			dataType: "string";
@@ -14964,7 +16156,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp40<{
+		finishedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "call_jobs";
 			dataType: "date";
@@ -14981,7 +16173,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp40<{
+		createdAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "call_jobs";
 			dataType: "date";
@@ -14998,7 +16190,7 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp40<{
+		updatedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "call_jobs";
 			dataType: "date";
@@ -15027,11 +16219,11 @@ declare const callJobs: PgTableWithColumns_a5zn0g40<{
 * Call. **The only index on `vendor_id`** is unique, partial (set ids only) and led by the
 * Organization, so no query reaches an id without one: one vendor copy belongs to one send. Rows go with the Call (the purge deletes it; the key cascades).
 */
-declare const callVendorSends: PgTableWithColumns_a5zn0g40<{
+declare const callVendorSends: PgTableWithColumns_a5zn0g41<{
 	name: "call_vendor_sends";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp40<{
+		organizationId: PgColumn_ffrhhp41<{
 			name: "organization_id";
 			tableName: "call_vendor_sends";
 			dataType: "string";
@@ -15048,7 +16240,7 @@ declare const callVendorSends: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp40<{
+		callId: PgColumn_ffrhhp41<{
 			name: "call_id";
 			tableName: "call_vendor_sends";
 			dataType: "string";
@@ -15065,7 +16257,7 @@ declare const callVendorSends: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		seq: PgColumn_ffrhhp40<{
+		seq: PgColumn_ffrhhp41<{
 			name: "seq";
 			tableName: "call_vendor_sends";
 			dataType: "number";
@@ -15082,7 +16274,7 @@ declare const callVendorSends: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vendorId: PgColumn_ffrhhp40<{
+		vendorId: PgColumn_ffrhhp41<{
 			name: "vendor_id";
 			tableName: "call_vendor_sends";
 			dataType: "string";
@@ -15099,7 +16291,7 @@ declare const callVendorSends: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp40<{
+		createdAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "call_vendor_sends";
 			dataType: "date";
@@ -15116,154 +16308,9 @@ declare const callVendorSends: PgTableWithColumns_a5zn0g40<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordedAt: PgColumn_ffrhhp40<{
+		recordedAt: PgColumn_ffrhhp41<{
 			name: string;
 			tableName: "call_vendor_sends";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-	};
-	dialect: "pg";
-}>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g41 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp41 } from "drizzle-orm/pg-core";
-/**
-* The messages a playbook queue consumer has handled or is handling: the table behind the kit's
-* `ProcessedStore` (`claim`, `renew`, `complete`, `release`, `purge`), shaped as the kit README
-* sketches it with one difference: `organization_id` is the wire id as text (`org_` and 32 hex
-* digits), not a uuid, because every tenant table here carries the wire id and the one canonical
-* policy compares it as text; the store passes the id through, with no conversion.
-*
-* It is a tenant table. A message for an Organization is recorded under that Organization, in its
-* scope. A global message (no Organization) is recorded under the all-zero id
-* `org_00000000000000000000000000000000`, and the consumer of global messages runs under that
-* scope with the same helper; that id is not any real Organization's.
-*
-* Because of row-level security a purge sees only the scope it runs in: run
-* `CONSUMED_PURGE` once per Organization (and once under the all-zero scope), splitting the limit.
-* Indexes: the key serves `claim`, `renew`, `complete` and `release`; the two partial indexes
-* serve the purge of done records and of lapsed claims.
-*/
-declare const consumedMessage: PgTableWithColumns_a5zn0g41<{
-	name: "consumed_message";
-	schema: "playbook";
-	columns: {
-		consumer: PgColumn_ffrhhp41<{
-			name: "consumer";
-			tableName: "consumed_message";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp41<{
-			name: "organization_id";
-			tableName: "consumed_message";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		messageId: PgColumn_ffrhhp41<{
-			name: "message_id";
-			tableName: "consumed_message";
-			dataType: "string";
-			columnType: "PgText";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: [string, ...string[]];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		state: PgColumn_ffrhhp41<{
-			name: "state";
-			tableName: "consumed_message";
-			dataType: "string";
-			columnType: "PgText";
-			data: "claimed" | "done";
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: ["claimed", "done"];
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp41<{
-			name: "claim_token";
-			tableName: "consumed_message";
-			dataType: "string";
-			columnType: "PgUUID";
-			data: string;
-			driverParam: string;
-			notNull: true;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		leaseExpiresAt: PgColumn_ffrhhp41<{
-			name: string;
-			tableName: "consumed_message";
-			dataType: "date";
-			columnType: "PgTimestamp";
-			data: Date;
-			driverParam: string;
-			notNull: false;
-			hasDefault: false;
-			isPrimaryKey: false;
-			isAutoincrement: false;
-			hasRuntimeDefault: false;
-			enumValues: undefined;
-			baseColumn: never;
-			identity: undefined;
-			generated: undefined;
-		}, {}, {}>;
-		completedAt: PgColumn_ffrhhp41<{
-			name: string;
-			tableName: "consumed_message";
 			dataType: "date";
 			columnType: "PgTimestamp";
 			data: Date;
@@ -15283,6 +16330,151 @@ declare const consumedMessage: PgTableWithColumns_a5zn0g41<{
 }>;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g42 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp42 } from "drizzle-orm/pg-core";
+/**
+* The messages a playbook queue consumer has handled or is handling: the table behind the kit's
+* `ProcessedStore` (`claim`, `renew`, `complete`, `release`, `purge`), shaped as the kit README
+* sketches it with one difference: `organization_id` is the wire id as text (`org_` and 32 hex
+* digits), not a uuid, because every tenant table here carries the wire id and the one canonical
+* policy compares it as text; the store passes the id through, with no conversion.
+*
+* It is a tenant table. A message for an Organization is recorded under that Organization, in its
+* scope. A global message (no Organization) is recorded under the all-zero id
+* `org_00000000000000000000000000000000`, and the consumer of global messages runs under that
+* scope with the same helper; that id is not any real Organization's.
+*
+* Because of row-level security a purge sees only the scope it runs in: run
+* `CONSUMED_PURGE` once per Organization (and once under the all-zero scope), splitting the limit.
+* Indexes: the key serves `claim`, `renew`, `complete` and `release`; the two partial indexes
+* serve the purge of done records and of lapsed claims.
+*/
+declare const consumedMessage: PgTableWithColumns_a5zn0g42<{
+	name: "consumed_message";
+	schema: "playbook";
+	columns: {
+		consumer: PgColumn_ffrhhp42<{
+			name: "consumer";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp42<{
+			name: "organization_id";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		messageId: PgColumn_ffrhhp42<{
+			name: "message_id";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp42<{
+			name: "state";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgText";
+			data: "claimed" | "done";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["claimed", "done"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		claimToken: PgColumn_ffrhhp42<{
+			name: "claim_token";
+			tableName: "consumed_message";
+			dataType: "string";
+			columnType: "PgUUID";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		leaseExpiresAt: PgColumn_ffrhhp42<{
+			name: string;
+			tableName: "consumed_message";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		completedAt: PgColumn_ffrhhp42<{
+			name: string;
+			tableName: "consumed_message";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g43 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp43 } from "drizzle-orm/pg-core";
 /** The most Moments one add to the day's count may state; a larger count is cut to it. */
 declare const EMBED_USAGE_MAX_ADD = 1e6;
 /** The most Moments a day's count holds: the table's bound, which an add stops at rather than fail. */
@@ -15294,11 +16486,11 @@ declare const EMBED_USAGE_MAX_MOMENTS = 1e9;
 * returns the day's total) and removes old days with `EMBED_USAGE_PURGE`. It holds a count and a
 * date and no content.
 */
-declare const playbookEmbedUsage: PgTableWithColumns_a5zn0g42<{
+declare const playbookEmbedUsage: PgTableWithColumns_a5zn0g43<{
 	name: "embed_usage";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp42<{
+		organizationId: PgColumn_ffrhhp43<{
 			name: "organization_id";
 			tableName: "embed_usage";
 			dataType: "string";
@@ -15315,7 +16507,7 @@ declare const playbookEmbedUsage: PgTableWithColumns_a5zn0g42<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		day: PgColumn_ffrhhp42<{
+		day: PgColumn_ffrhhp43<{
 			name: "day";
 			tableName: "embed_usage";
 			dataType: "string";
@@ -15332,7 +16524,7 @@ declare const playbookEmbedUsage: PgTableWithColumns_a5zn0g42<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		moments: PgColumn_ffrhhp42<{
+		moments: PgColumn_ffrhhp43<{
 			name: "moments";
 			tableName: "embed_usage";
 			dataType: "number";
@@ -15352,8 +16544,8 @@ declare const playbookEmbedUsage: PgTableWithColumns_a5zn0g42<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g43 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp43 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g44 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp44 } from "drizzle-orm/pg-core";
 /** The user id of an internal call, which has no user: all zeros, in the `usr_` shape the key needs. */
 declare const INTERNAL_CALL_USER_ID = "usr_00000000000000000000000000000000";
 /**
@@ -15366,11 +16558,11 @@ declare const INTERNAL_CALL_USER_ID = "usr_00000000000000000000000000000000";
 * never rewritten. The purge is per Organization and bounded (`IDEMPOTENCY_PURGE`), on
 * `idempotency_keys_purge_idx`.
 */
-declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
+declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g44<{
 	name: "idempotency_keys";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp43<{
+		organizationId: PgColumn_ffrhhp44<{
 			name: "organization_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -15387,7 +16579,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userId: PgColumn_ffrhhp43<{
+		userId: PgColumn_ffrhhp44<{
 			name: "user_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -15404,7 +16596,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		route: PgColumn_ffrhhp43<{
+		route: PgColumn_ffrhhp44<{
 			name: "route";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -15421,7 +16613,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		key: PgColumn_ffrhhp43<{
+		key: PgColumn_ffrhhp44<{
 			name: "key";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -15438,7 +16630,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestHash: PgColumn_ffrhhp43<{
+		requestHash: PgColumn_ffrhhp44<{
 			name: "request_hash";
 			tableName: "idempotency_keys";
 			dataType: "custom";
@@ -15457,7 +16649,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		status: PgColumn_ffrhhp43<{
+		status: PgColumn_ffrhhp44<{
 			name: "status";
 			tableName: "idempotency_keys";
 			dataType: "number";
@@ -15474,7 +16666,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		response: PgColumn_ffrhhp43<{
+		response: PgColumn_ffrhhp44<{
 			name: "response";
 			tableName: "idempotency_keys";
 			dataType: "json";
@@ -15493,7 +16685,7 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 		}, {}, {
 			$type: unknown;
 		}>;
-		createdAt: PgColumn_ffrhhp43<{
+		createdAt: PgColumn_ffrhhp44<{
 			name: "created_at";
 			tableName: "idempotency_keys";
 			dataType: "date";
@@ -15513,8 +16705,8 @@ declare const playbookIdempotencyKeys: PgTableWithColumns_a5zn0g43<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g44 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp44 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g45 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp45 } from "drizzle-orm/pg-core";
 /** The longest sweep cursor in bytes: an object key is at most 1024 bytes, and the cursor is one. */
 declare const ORPHAN_SWEEP_CURSOR_MAX_BYTES = 1024;
 /** The shortest claim deadline, in milliseconds, `orphan_sweep_claim` stores; a smaller value is raised to it. */
@@ -15542,11 +16734,11 @@ declare const ORPHAN_SWEEP_MAX_CLAIM_MS = 36e5;
 * Organization, null when none does. Both are written only by `playbook.orphan_sweep_claim` and
 * `playbook.orphan_sweep_page_done`.
 */
-declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g44<{
+declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g45<{
 	name: "orphan_sweeps";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp44<{
+		organizationId: PgColumn_ffrhhp45<{
 			name: "organization_id";
 			tableName: "orphan_sweeps";
 			dataType: "string";
@@ -15563,7 +16755,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g44<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sweptThrough: PgColumn_ffrhhp44<{
+		sweptThrough: PgColumn_ffrhhp45<{
 			name: "swept_through";
 			tableName: "orphan_sweeps";
 			dataType: "date";
@@ -15580,7 +16772,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g44<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		erasedAttemptAt: PgColumn_ffrhhp44<{
+		erasedAttemptAt: PgColumn_ffrhhp45<{
 			name: "erased_attempt_at";
 			tableName: "orphan_sweeps";
 			dataType: "date";
@@ -15597,7 +16789,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g44<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sweepCursor: PgColumn_ffrhhp44<{
+		sweepCursor: PgColumn_ffrhhp45<{
 			name: "sweep_cursor";
 			tableName: "orphan_sweeps";
 			dataType: "string";
@@ -15614,7 +16806,7 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g44<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sweepClaimUntil: PgColumn_ffrhhp44<{
+		sweepClaimUntil: PgColumn_ffrhhp45<{
 			name: "sweep_claim_until";
 			tableName: "orphan_sweeps";
 			dataType: "date";
@@ -15634,8 +16826,8 @@ declare const playbookOrphanSweeps: PgTableWithColumns_a5zn0g44<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g45 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp45 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g46 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp46 } from "drizzle-orm/pg-core";
 /** The Outcome of a Deal. Mirrors the contract's `OUTCOMES`. */
 declare const DEAL_OUTCOMES: readonly ["won", "lost", "open"];
 /** The states of a Deal import. Mirrors the contract's `DEAL_IMPORT_STATES`. */
@@ -15688,11 +16880,11 @@ declare const DEAL_IMPORT_APPLY_BATCH = 500;
 * (`deals_outcome_list_idx`), by whether it appeared in an import (`deals_import_list_idx`);
 * lookup by the customer's id: `deals_deal_id_key`.
 */
-declare const deals: PgTableWithColumns_a5zn0g45<{
+declare const deals: PgTableWithColumns_a5zn0g46<{
 	name: "deals";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp45<{
+		id: PgColumn_ffrhhp46<{
 			name: "id";
 			tableName: "deals";
 			dataType: "string";
@@ -15709,7 +16901,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp45<{
+		organizationId: PgColumn_ffrhhp46<{
 			name: "organization_id";
 			tableName: "deals";
 			dataType: "string";
@@ -15726,7 +16918,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealId: PgColumn_ffrhhp45<{
+		dealId: PgColumn_ffrhhp46<{
 			name: "deal_id";
 			tableName: "deals";
 			dataType: "string";
@@ -15743,7 +16935,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp45<{
+		name: PgColumn_ffrhhp46<{
 			name: "name";
 			tableName: "deals";
 			dataType: "string";
@@ -15760,7 +16952,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		outcome: PgColumn_ffrhhp45<{
+		outcome: PgColumn_ffrhhp46<{
 			name: "outcome";
 			tableName: "deals";
 			dataType: "string";
@@ -15777,7 +16969,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		outcomeSeq: PgColumn_ffrhhp45<{
+		outcomeSeq: PgColumn_ffrhhp46<{
 			name: "outcome_seq";
 			tableName: "deals";
 			dataType: "number";
@@ -15794,7 +16986,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		retagThrough: PgColumn_ffrhhp45<{
+		retagThrough: PgColumn_ffrhhp46<{
 			name: "retag_through";
 			tableName: "deals";
 			dataType: "number";
@@ -15811,7 +17003,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		closedAt: PgColumn_ffrhhp45<{
+		closedAt: PgColumn_ffrhhp46<{
 			name: "closed_at";
 			tableName: "deals";
 			dataType: "string";
@@ -15828,7 +17020,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		amount: PgColumn_ffrhhp45<{
+		amount: PgColumn_ffrhhp46<{
 			name: "amount";
 			tableName: "deals";
 			dataType: "string";
@@ -15845,7 +17037,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		currency: PgColumn_ffrhhp45<{
+		currency: PgColumn_ffrhhp46<{
 			name: "currency";
 			tableName: "deals";
 			dataType: "string";
@@ -15862,7 +17054,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		appearedInImport: PgColumn_ffrhhp45<{
+		appearedInImport: PgColumn_ffrhhp46<{
 			name: "appeared_in_import";
 			tableName: "deals";
 			dataType: "boolean";
@@ -15879,7 +17071,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp45<{
+		createdAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deals";
 			dataType: "date";
@@ -15896,7 +17088,7 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp45<{
+		updatedAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deals";
 			dataType: "date";
@@ -15928,11 +17120,11 @@ declare const deals: PgTableWithColumns_a5zn0g45<{
 * import has `erased_at`, is `failed` and is never claimed again; its report rows and then the
 * import row itself are removed in bounded batches (`DEAL_IMPORT_PURGE_BATCH`).
 */
-declare const dealImports: PgTableWithColumns_a5zn0g45<{
+declare const dealImports: PgTableWithColumns_a5zn0g46<{
 	name: "deal_imports";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp45<{
+		id: PgColumn_ffrhhp46<{
 			name: "id";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -15949,7 +17141,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp45<{
+		organizationId: PgColumn_ffrhhp46<{
 			name: "organization_id";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -15966,7 +17158,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp45<{
+		state: PgColumn_ffrhhp46<{
 			name: "state";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -15983,7 +17175,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp45<{
+		failureReason: PgColumn_ffrhhp46<{
 			name: "failure_reason";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -16000,7 +17192,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp45<{
+		uploadedBy: PgColumn_ffrhhp46<{
 			name: "uploaded_by";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -16017,7 +17209,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp45<{
+		objectKey: PgColumn_ffrhhp46<{
 			name: "object_key";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -16034,7 +17226,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sizeBytes: PgColumn_ffrhhp45<{
+		sizeBytes: PgColumn_ffrhhp46<{
 			name: "size_bytes";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -16051,7 +17243,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp45<{
+		attempts: PgColumn_ffrhhp46<{
 			name: "attempts";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -16068,7 +17260,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp45<{
+		nextAttemptAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -16085,7 +17277,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp45<{
+		claimToken: PgColumn_ffrhhp46<{
 			name: "claim_token";
 			tableName: "deal_imports";
 			dataType: "string";
@@ -16102,7 +17294,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rowCount: PgColumn_ffrhhp45<{
+		rowCount: PgColumn_ffrhhp46<{
 			name: "row_count";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -16119,7 +17311,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		appliedCount: PgColumn_ffrhhp45<{
+		appliedCount: PgColumn_ffrhhp46<{
 			name: "applied_count";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -16136,7 +17328,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rejectedCount: PgColumn_ffrhhp45<{
+		rejectedCount: PgColumn_ffrhhp46<{
 			name: "rejected_count";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -16153,7 +17345,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		reportThrough: PgColumn_ffrhhp45<{
+		reportThrough: PgColumn_ffrhhp46<{
 			name: "report_through";
 			tableName: "deal_imports";
 			dataType: "number";
@@ -16170,7 +17362,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectRemovedAt: PgColumn_ffrhhp45<{
+		objectRemovedAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -16187,7 +17379,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		erasedAt: PgColumn_ffrhhp45<{
+		erasedAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -16204,7 +17396,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp45<{
+		finishedAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -16221,7 +17413,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp45<{
+		createdAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -16238,7 +17430,7 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp45<{
+		updatedAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "deal_imports";
 			dataType: "date";
@@ -16268,11 +17460,11 @@ declare const dealImports: PgTableWithColumns_a5zn0g45<{
 * (`deal_import_rows_pkey`, `deal_import_rows_result_idx` for one result). The foreign key to the
 * import is not cascading: rows go in bounded batches before the import row.
 */
-declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
+declare const dealImportRows: PgTableWithColumns_a5zn0g46<{
 	name: "deal_import_rows";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp45<{
+		organizationId: PgColumn_ffrhhp46<{
 			name: "organization_id";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -16289,7 +17481,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		importId: PgColumn_ffrhhp45<{
+		importId: PgColumn_ffrhhp46<{
 			name: "import_id";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -16306,7 +17498,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rowNumber: PgColumn_ffrhhp45<{
+		rowNumber: PgColumn_ffrhhp46<{
 			name: "row_number";
 			tableName: "deal_import_rows";
 			dataType: "number";
@@ -16323,7 +17515,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealId: PgColumn_ffrhhp45<{
+		dealId: PgColumn_ffrhhp46<{
 			name: "deal_id";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -16340,7 +17532,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		result: PgColumn_ffrhhp45<{
+		result: PgColumn_ffrhhp46<{
 			name: "result";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -16357,7 +17549,7 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		reason: PgColumn_ffrhhp45<{
+		reason: PgColumn_ffrhhp46<{
 			name: "reason";
 			tableName: "deal_import_rows";
 			dataType: "string";
@@ -16383,11 +17575,11 @@ declare const dealImportRows: PgTableWithColumns_a5zn0g45<{
 * of the wording shown. A newer version replaces it (`RIGHTS_CONFIRM`); the wording itself is not
 * here. Whether the stored version is the current one is the service's number to compare.
 */
-declare const rightsConfirmations: PgTableWithColumns_a5zn0g45<{
+declare const rightsConfirmations: PgTableWithColumns_a5zn0g46<{
 	name: "rights_confirmations";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp45<{
+		organizationId: PgColumn_ffrhhp46<{
 			name: "organization_id";
 			tableName: "rights_confirmations";
 			dataType: "string";
@@ -16404,7 +17596,7 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		confirmedBy: PgColumn_ffrhhp45<{
+		confirmedBy: PgColumn_ffrhhp46<{
 			name: "confirmed_by";
 			tableName: "rights_confirmations";
 			dataType: "string";
@@ -16421,7 +17613,7 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		confirmedAt: PgColumn_ffrhhp45<{
+		confirmedAt: PgColumn_ffrhhp46<{
 			name: string;
 			tableName: "rights_confirmations";
 			dataType: "date";
@@ -16438,7 +17630,7 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g45<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		wordingVersion: PgColumn_ffrhhp45<{
+		wordingVersion: PgColumn_ffrhhp46<{
 			name: "wording_version";
 			tableName: "rights_confirmations";
 			dataType: "number";
@@ -16458,8 +17650,229 @@ declare const rightsConfirmations: PgTableWithColumns_a5zn0g45<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g46 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp46 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g47 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp47 } from "drizzle-orm/pg-core";
+/** What a Suggestion proposes to add. Mirrors the contract's `SUGGESTION_KINDS`. */
+declare const SUGGESTION_KINDS: readonly ["objection_answer", "discovery_question", "closing_move"];
+/** Where a Suggestion is. Mirrors the contract's `SUGGESTION_STATUSES`. */
+declare const SUGGESTION_STATUSES: readonly ["pending", "accepted", "rejected"];
+/** The longest Suggestion text. Mirrors the contract's `MAX_SUGGESTION_TEXT_LENGTH`. */
+declare const MAX_SUGGESTION_TEXT_LENGTH = 1e3;
+/** The most Moments one Suggestion cites. Mirrors the contract's `MAX_SUGGESTION_MOMENTS`. */
+declare const MAX_SUGGESTION_MOMENTS = 10;
+/** The byte length of a Suggestion's fingerprint: a SHA-256 digest. */
+declare const SUGGESTION_FINGERPRINT_BYTES = 32;
+/**
+* A proposed Playbook addition derived from a won Deal (spec M15). It influences no Agent and is
+* not searched until an Admin accepts it (`status = 'accepted'`); a rejected one is kept so it is
+* not proposed again: `fingerprint` (a digest of the kind and normalised text) is unique per
+* Organization (`suggestions_fingerprint_key`), so a second proposal of the same text is refused
+* whatever its state. Provenance is the won Deal (`deal_record_id`, an opaque id) and the Moments
+* it cites (`moments`, at most 10 references as the contract's Citation references: Call id, Deal
+* id and Moment number). The text comes from the Deal's Calls, so it is untrusted data. A decision
+* is the time and the Membership that made it, both set exactly when the Suggestion is not pending.
+*
+* Lists (keyset `(created_at, id)`, newest first): all (`suggestions_list_idx`), one status
+* (`suggestions_status_list_idx`).
+*/
+declare const suggestions: PgTableWithColumns_a5zn0g47<{
+	name: "suggestions";
+	schema: "playbook";
+	columns: {
+		id: PgColumn_ffrhhp47<{
+			name: "id";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp47<{
+			name: "organization_id";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		kind: PgColumn_ffrhhp47<{
+			name: "kind";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: "closing_move" | "discovery_question" | "objection_answer";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["objection_answer", "discovery_question", "closing_move"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		status: PgColumn_ffrhhp47<{
+			name: "status";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: "accepted" | "pending" | "rejected";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["pending", "accepted", "rejected"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		text: PgColumn_ffrhhp47<{
+			name: "text";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		fingerprint: PgColumn_ffrhhp47<{
+			name: "fingerprint";
+			tableName: "suggestions";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: Uint8Array<ArrayBufferLike>;
+			driverParam: Uint8Array<ArrayBufferLike>;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		dealRecordId: PgColumn_ffrhhp47<{
+			name: "deal_record_id";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		moments: PgColumn_ffrhhp47<{
+			name: "moments";
+			tableName: "suggestions";
+			dataType: "json";
+			columnType: "PgJsonb";
+			data: unknown;
+			driverParam: unknown;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp47<{
+			name: string;
+			tableName: "suggestions";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		decidedAt: PgColumn_ffrhhp47<{
+			name: string;
+			tableName: "suggestions";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		decidedByMembershipId: PgColumn_ffrhhp47<{
+			name: "decided_by_membership_id";
+			tableName: "suggestions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g48 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp48 } from "drizzle-orm/pg-core";
 /**
 * The states a document is in (ADR 0016). `uploaded` is stored and waiting for ingestion,
 * `processing` is being ingested, `ready` is searchable, `failed` ended with a reason, and
@@ -16524,11 +17937,11 @@ declare const PENDING_CLEANUP_PREDICATE = "state = 'deleted' and (vectors_remove
 * - Due for purge, and the deleted documents oldest-due first: `documents_purge_idx`.
 * - Quota counts: `organization_usage`, one row, kept by triggers.
 */
-declare const documents: PgTableWithColumns_a5zn0g46<{
+declare const documents: PgTableWithColumns_a5zn0g48<{
 	name: "documents";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp46<{
+		id: PgColumn_ffrhhp48<{
 			name: "id";
 			tableName: "documents";
 			dataType: "string";
@@ -16545,7 +17958,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp46<{
+		organizationId: PgColumn_ffrhhp48<{
 			name: "organization_id";
 			tableName: "documents";
 			dataType: "string";
@@ -16562,7 +17975,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		name: PgColumn_ffrhhp46<{
+		name: PgColumn_ffrhhp48<{
 			name: "name";
 			tableName: "documents";
 			dataType: "string";
@@ -16579,7 +17992,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp46<{
+		state: PgColumn_ffrhhp48<{
 			name: "state";
 			tableName: "documents";
 			dataType: "string";
@@ -16596,7 +18009,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		contentHash: PgColumn_ffrhhp46<{
+		contentHash: PgColumn_ffrhhp48<{
 			name: "content_hash";
 			tableName: "documents";
 			dataType: "custom";
@@ -16615,7 +18028,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		sizeBytes: PgColumn_ffrhhp46<{
+		sizeBytes: PgColumn_ffrhhp48<{
 			name: "size_bytes";
 			tableName: "documents";
 			dataType: "number";
@@ -16632,7 +18045,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		declaredType: PgColumn_ffrhhp46<{
+		declaredType: PgColumn_ffrhhp48<{
 			name: "declared_type";
 			tableName: "documents";
 			dataType: "string";
@@ -16649,7 +18062,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		detectedType: PgColumn_ffrhhp46<{
+		detectedType: PgColumn_ffrhhp48<{
 			name: "detected_type";
 			tableName: "documents";
 			dataType: "string";
@@ -16666,7 +18079,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		uploadedBy: PgColumn_ffrhhp46<{
+		uploadedBy: PgColumn_ffrhhp48<{
 			name: "uploaded_by";
 			tableName: "documents";
 			dataType: "string";
@@ -16683,7 +18096,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		objectKey: PgColumn_ffrhhp46<{
+		objectKey: PgColumn_ffrhhp48<{
 			name: "object_key";
 			tableName: "documents";
 			dataType: "string";
@@ -16700,7 +18113,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp46<{
+		failureReason: PgColumn_ffrhhp48<{
 			name: "failure_reason";
 			tableName: "documents";
 			dataType: "string";
@@ -16717,7 +18130,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp46<{
+		pageCount: PgColumn_ffrhhp48<{
 			name: "page_count";
 			tableName: "documents";
 			dataType: "number";
@@ -16734,7 +18147,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp46<{
+		epoch: PgColumn_ffrhhp48<{
 			name: "epoch";
 			tableName: "documents";
 			dataType: "number";
@@ -16751,7 +18164,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletionSeq: PgColumn_ffrhhp46<{
+		deletionSeq: PgColumn_ffrhhp48<{
 			name: "deletion_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -16768,7 +18181,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsRemovedSeq: PgColumn_ffrhhp46<{
+		vectorsRemovedSeq: PgColumn_ffrhhp48<{
 			name: "vectors_removed_seq";
 			tableName: "documents";
 			dataType: "number";
@@ -16785,7 +18198,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp46<{
+		deletedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16802,7 +18215,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedBy: PgColumn_ffrhhp46<{
+		deletedBy: PgColumn_ffrhhp48<{
 			name: "deleted_by";
 			tableName: "documents";
 			dataType: "string";
@@ -16819,7 +18232,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp46<{
+		purgeDueAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16836,7 +18249,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeStartedAt: PgColumn_ffrhhp46<{
+		purgeStartedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16853,7 +18266,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeLeaseUntil: PgColumn_ffrhhp46<{
+		purgeLeaseUntil: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16870,7 +18283,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeAttempts: PgColumn_ffrhhp46<{
+		purgeAttempts: PgColumn_ffrhhp48<{
 			name: "purge_attempts";
 			tableName: "documents";
 			dataType: "number";
@@ -16887,7 +18300,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		restoreBarredAt: PgColumn_ffrhhp46<{
+		restoreBarredAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16904,7 +18317,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp46<{
+		createdAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16921,7 +18334,7 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp46<{
+		updatedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "documents";
 			dataType: "date";
@@ -16947,11 +18360,11 @@ declare const documents: PgTableWithColumns_a5zn0g46<{
 * own transaction, so it cannot drift from the table; the service role can only read it. A row
 * stays, at zero, once an Organization has had a document.
 */
-declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
+declare const organizationUsage: PgTableWithColumns_a5zn0g48<{
 	name: "organization_usage";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp46<{
+		organizationId: PgColumn_ffrhhp48<{
 			name: "organization_id";
 			tableName: "organization_usage";
 			dataType: "string";
@@ -16968,7 +18381,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentCount: PgColumn_ffrhhp46<{
+		documentCount: PgColumn_ffrhhp48<{
 			name: "document_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -16985,7 +18398,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		byteCount: PgColumn_ffrhhp46<{
+		byteCount: PgColumn_ffrhhp48<{
 			name: "byte_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -17002,7 +18415,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealCount: PgColumn_ffrhhp46<{
+		dealCount: PgColumn_ffrhhp48<{
 			name: "deal_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -17019,7 +18432,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callCount: PgColumn_ffrhhp46<{
+		callCount: PgColumn_ffrhhp48<{
 			name: "call_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -17036,7 +18449,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordingByteCount: PgColumn_ffrhhp46<{
+		recordingByteCount: PgColumn_ffrhhp48<{
 			name: "recording_byte_count";
 			tableName: "organization_usage";
 			dataType: "number";
@@ -17053,7 +18466,7 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp46<{
+		updatedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "organization_usage";
 			dataType: "date";
@@ -17082,11 +18495,11 @@ declare const organizationUsage: PgTableWithColumns_a5zn0g46<{
 * spent job and the give-up statement fails it. One active job per document
 * (`ingestion_jobs_active_document_key`).
 */
-declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
+declare const ingestionJobs: PgTableWithColumns_a5zn0g48<{
 	name: "ingestion_jobs";
 	schema: "playbook";
 	columns: {
-		id: PgColumn_ffrhhp46<{
+		id: PgColumn_ffrhhp48<{
 			name: "id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17103,7 +18516,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp46<{
+		organizationId: PgColumn_ffrhhp48<{
 			name: "organization_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17120,7 +18533,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentId: PgColumn_ffrhhp46<{
+		documentId: PgColumn_ffrhhp48<{
 			name: "document_id";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17137,7 +18550,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		epoch: PgColumn_ffrhhp46<{
+		epoch: PgColumn_ffrhhp48<{
 			name: "epoch";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -17154,7 +18567,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp46<{
+		state: PgColumn_ffrhhp48<{
 			name: "state";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17171,7 +18584,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		step: PgColumn_ffrhhp46<{
+		step: PgColumn_ffrhhp48<{
 			name: "step";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17188,7 +18601,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		attempts: PgColumn_ffrhhp46<{
+		attempts: PgColumn_ffrhhp48<{
 			name: "attempts";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -17205,7 +18618,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextAttemptAt: PgColumn_ffrhhp46<{
+		nextAttemptAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -17222,7 +18635,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		claimToken: PgColumn_ffrhhp46<{
+		claimToken: PgColumn_ffrhhp48<{
 			name: "claim_token";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17239,7 +18652,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		artifactKey: PgColumn_ffrhhp46<{
+		artifactKey: PgColumn_ffrhhp48<{
 			name: "artifact_key";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17256,7 +18669,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pageCount: PgColumn_ffrhhp46<{
+		pageCount: PgColumn_ffrhhp48<{
 			name: "page_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -17273,7 +18686,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunkCount: PgColumn_ffrhhp46<{
+		chunkCount: PgColumn_ffrhhp48<{
 			name: "chunk_count";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -17290,7 +18703,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		chunksDone: PgColumn_ffrhhp46<{
+		chunksDone: PgColumn_ffrhhp48<{
 			name: "chunks_done";
 			tableName: "ingestion_jobs";
 			dataType: "number";
@@ -17307,7 +18720,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp46<{
+		failureReason: PgColumn_ffrhhp48<{
 			name: "failure_reason";
 			tableName: "ingestion_jobs";
 			dataType: "string";
@@ -17324,7 +18737,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		finishedAt: PgColumn_ffrhhp46<{
+		finishedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -17341,7 +18754,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp46<{
+		createdAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -17358,7 +18771,7 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp46<{
+		updatedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "ingestion_jobs";
 			dataType: "date";
@@ -17384,11 +18797,11 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g46<{
 * service role cannot delete the row: changing the model is a deliberate re-index, done by an
 * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
 */
-declare const indexSettings: PgTableWithColumns_a5zn0g46<{
+declare const indexSettings: PgTableWithColumns_a5zn0g48<{
 	name: "index_settings";
 	schema: "playbook";
 	columns: {
-		organizationId: PgColumn_ffrhhp46<{
+		organizationId: PgColumn_ffrhhp48<{
 			name: "organization_id";
 			tableName: "index_settings";
 			dataType: "string";
@@ -17405,7 +18818,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingModel: PgColumn_ffrhhp46<{
+		embeddingModel: PgColumn_ffrhhp48<{
 			name: "embedding_model";
 			tableName: "index_settings";
 			dataType: "string";
@@ -17422,7 +18835,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		embeddingDimension: PgColumn_ffrhhp46<{
+		embeddingDimension: PgColumn_ffrhhp48<{
 			name: "embedding_dimension";
 			tableName: "index_settings";
 			dataType: "number";
@@ -17439,7 +18852,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		vectorsWrittenAt: PgColumn_ffrhhp46<{
+		vectorsWrittenAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -17456,7 +18869,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp46<{
+		createdAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -17473,7 +18886,7 @@ declare const indexSettings: PgTableWithColumns_a5zn0g46<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp46<{
+		updatedAt: PgColumn_ffrhhp48<{
 			name: string;
 			tableName: "index_settings";
 			dataType: "date";
@@ -17493,8 +18906,8 @@ declare const indexSettings: PgTableWithColumns_a5zn0g46<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g47 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp47 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g49 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp49 } from "drizzle-orm/pg-core";
 /**
 * The kinds of due work `playbook.organizations_with_work` finds: documents due for purge, ingestion
 * jobs due or with a lapsed lease, deleted documents whose vector cleanup is not recorded, consumed
@@ -17518,11 +18931,11 @@ declare const WORK_KINDS: readonly ["purge_due", "jobs_due", "cleanup_pending", 
 * privilege on it; the function and the triggers are the only way in. The all-zero global scope
 * appears only for `consumed_purge`.
 */
-declare const playbookWorkHints: PgTableWithColumns_a5zn0g47<{
+declare const playbookWorkHints: PgTableWithColumns_a5zn0g49<{
 	name: "work_hints";
 	schema: "playbook";
 	columns: {
-		kind: PgColumn_ffrhhp47<{
+		kind: PgColumn_ffrhhp49<{
 			name: "kind";
 			tableName: "work_hints";
 			dataType: "string";
@@ -17539,7 +18952,7 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g47<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp47<{
+		organizationId: PgColumn_ffrhhp49<{
 			name: "organization_id";
 			tableName: "work_hints";
 			dataType: "string";
@@ -17556,7 +18969,7 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g47<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dueAt: PgColumn_ffrhhp47<{
+		dueAt: PgColumn_ffrhhp49<{
 			name: "due_at";
 			tableName: "work_hints";
 			dataType: "date";
@@ -17579,8 +18992,8 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g47<{
 import { PgSchema as PgSchema_mtt0uw4 } from "drizzle-orm/pg-core";
 /** The `voice` Postgres schema, owned by the voice service (login role `closeline_voice`). */
 declare const voiceSchema: PgSchema_mtt0uw4<"voice">;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g48 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp48 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g50 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp50 } from "drizzle-orm/pg-core";
 /**
 * The outcome of one public `POST` of the voice service that has an effect worth not repeating
 * (`addLine` buys a number), per Organization, user, route and client key: playbook's
@@ -17592,11 +19005,11 @@ import { PgColumn as PgColumn_ffrhhp48 } from "drizzle-orm/pg-core";
 * contract's idempotency conflict. The purge is per Organization and bounded, on
 * `idempotency_keys_purge_idx` (`organization_id`, `created_at`).
 */
-declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
+declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g50<{
 	name: "idempotency_keys";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp48<{
+		organizationId: PgColumn_ffrhhp50<{
 			name: "organization_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -17613,7 +19026,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userId: PgColumn_ffrhhp48<{
+		userId: PgColumn_ffrhhp50<{
 			name: "user_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -17630,7 +19043,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		route: PgColumn_ffrhhp48<{
+		route: PgColumn_ffrhhp50<{
 			name: "route";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -17647,7 +19060,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		key: PgColumn_ffrhhp48<{
+		key: PgColumn_ffrhhp50<{
 			name: "key";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -17664,7 +19077,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestHash: PgColumn_ffrhhp48<{
+		requestHash: PgColumn_ffrhhp50<{
 			name: "request_hash";
 			tableName: "idempotency_keys";
 			dataType: "custom";
@@ -17683,7 +19096,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		status: PgColumn_ffrhhp48<{
+		status: PgColumn_ffrhhp50<{
 			name: "status";
 			tableName: "idempotency_keys";
 			dataType: "number";
@@ -17700,7 +19113,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		response: PgColumn_ffrhhp48<{
+		response: PgColumn_ffrhhp50<{
 			name: "response";
 			tableName: "idempotency_keys";
 			dataType: "json";
@@ -17719,7 +19132,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 		}, {}, {
 			$type: unknown;
 		}>;
-		createdAt: PgColumn_ffrhhp48<{
+		createdAt: PgColumn_ffrhhp50<{
 			name: "created_at";
 			tableName: "idempotency_keys";
 			dataType: "date";
@@ -17739,8 +19152,8 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g48<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g49 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp49 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g51 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp51 } from "drizzle-orm/pg-core";
 /** The states of a Line. Mirrors the contract's `LINE_STATES`. */
 declare const LINE_STATES: readonly ["porting", "active", "released"];
 /** Who inbound Calls on a Line ring. Mirrors the `kind` of the contract's `lineAssignmentSchema`. */
@@ -17790,11 +19203,11 @@ declare const MAX_VOICE_IDEMPOTENCY_KEY_LENGTH = 255;
 * (`lines_list_idx`), one state (`lines_state_list_idx`); the Lines of a Team or a Rep
 * (`lines_team_idx`, `lines_rep_idx`).
 */
-declare const voiceLines: PgTableWithColumns_a5zn0g49<{
+declare const voiceLines: PgTableWithColumns_a5zn0g51<{
 	name: "lines";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp49<{
+		id: PgColumn_ffrhhp51<{
 			name: "id";
 			tableName: "lines";
 			dataType: "string";
@@ -17811,7 +19224,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp49<{
+		organizationId: PgColumn_ffrhhp51<{
 			name: "organization_id";
 			tableName: "lines";
 			dataType: "string";
@@ -17828,7 +19241,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		number: PgColumn_ffrhhp49<{
+		number: PgColumn_ffrhhp51<{
 			name: "number";
 			tableName: "lines";
 			dataType: "string";
@@ -17845,7 +19258,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		country: PgColumn_ffrhhp49<{
+		country: PgColumn_ffrhhp51<{
 			name: "country";
 			tableName: "lines";
 			dataType: "string";
@@ -17862,7 +19275,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		label: PgColumn_ffrhhp49<{
+		label: PgColumn_ffrhhp51<{
 			name: "label";
 			tableName: "lines";
 			dataType: "string";
@@ -17879,7 +19292,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp49<{
+		state: PgColumn_ffrhhp51<{
 			name: "state";
 			tableName: "lines";
 			dataType: "string";
@@ -17896,7 +19309,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		assignmentKind: PgColumn_ffrhhp49<{
+		assignmentKind: PgColumn_ffrhhp51<{
 			name: "assignment_kind";
 			tableName: "lines";
 			dataType: "string";
@@ -17913,7 +19326,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		assignmentTeamId: PgColumn_ffrhhp49<{
+		assignmentTeamId: PgColumn_ffrhhp51<{
 			name: "assignment_team_id";
 			tableName: "lines";
 			dataType: "string";
@@ -17930,7 +19343,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		assignmentMembershipId: PgColumn_ffrhhp49<{
+		assignmentMembershipId: PgColumn_ffrhhp51<{
 			name: "assignment_membership_id";
 			tableName: "lines";
 			dataType: "string";
@@ -17947,7 +19360,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerSid: PgColumn_ffrhhp49<{
+		providerSid: PgColumn_ffrhhp51<{
 			name: "provider_sid";
 			tableName: "lines";
 			dataType: "string";
@@ -17964,7 +19377,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp49<{
+		createdAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "lines";
 			dataType: "date";
@@ -17981,7 +19394,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		releasedAt: PgColumn_ffrhhp49<{
+		releasedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "lines";
 			dataType: "date";
@@ -18011,11 +19424,11 @@ declare const voiceLines: PgTableWithColumns_a5zn0g49<{
 * trigger `lines_sync_directory` on `lines` keeps it, and no service role holds any privilege on
 * it.
 */
-declare const voiceLineDirectory: PgTableWithColumns_a5zn0g49<{
+declare const voiceLineDirectory: PgTableWithColumns_a5zn0g51<{
 	name: "line_directory";
 	schema: "voice";
 	columns: {
-		number: PgColumn_ffrhhp49<{
+		number: PgColumn_ffrhhp51<{
 			name: "number";
 			tableName: "line_directory";
 			dataType: "string";
@@ -18032,7 +19445,7 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp49<{
+		organizationId: PgColumn_ffrhhp51<{
 			name: "organization_id";
 			tableName: "line_directory";
 			dataType: "string";
@@ -18049,7 +19462,7 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lineId: PgColumn_ffrhhp49<{
+		lineId: PgColumn_ffrhhp51<{
 			name: "line_id";
 			tableName: "line_directory";
 			dataType: "string";
@@ -18066,7 +19479,7 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp49<{
+		state: PgColumn_ffrhhp51<{
 			name: "state";
 			tableName: "line_directory";
 			dataType: "string";
@@ -18104,11 +19517,11 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g49<{
 * (`calls_line_list_idx`, also the foreign key's index). A direction or time-range filter is
 * applied to the rows one of those reads.
 */
-declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
+declare const voiceCalls: PgTableWithColumns_a5zn0g51<{
 	name: "calls";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp49<{
+		id: PgColumn_ffrhhp51<{
 			name: "id";
 			tableName: "calls";
 			dataType: "string";
@@ -18125,7 +19538,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp49<{
+		organizationId: PgColumn_ffrhhp51<{
 			name: "organization_id";
 			tableName: "calls";
 			dataType: "string";
@@ -18142,7 +19555,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		direction: PgColumn_ffrhhp49<{
+		direction: PgColumn_ffrhhp51<{
 			name: "direction";
 			tableName: "calls";
 			dataType: "string";
@@ -18159,7 +19572,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp49<{
+		state: PgColumn_ffrhhp51<{
 			name: "state";
 			tableName: "calls";
 			dataType: "string";
@@ -18176,7 +19589,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lineId: PgColumn_ffrhhp49<{
+		lineId: PgColumn_ffrhhp51<{
 			name: "line_id";
 			tableName: "calls";
 			dataType: "string";
@@ -18193,7 +19606,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repMembershipId: PgColumn_ffrhhp49<{
+		repMembershipId: PgColumn_ffrhhp51<{
 			name: "rep_membership_id";
 			tableName: "calls";
 			dataType: "string";
@@ -18210,7 +19623,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp49<{
+		prospectId: PgColumn_ffrhhp51<{
 			name: "prospect_id";
 			tableName: "calls";
 			dataType: "string";
@@ -18227,7 +19640,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectNumber: PgColumn_ffrhhp49<{
+		prospectNumber: PgColumn_ffrhhp51<{
 			name: "prospect_number";
 			tableName: "calls";
 			dataType: "string";
@@ -18244,7 +19657,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerCallSid: PgColumn_ffrhhp49<{
+		providerCallSid: PgColumn_ffrhhp51<{
 			name: "provider_call_sid";
 			tableName: "calls";
 			dataType: "string";
@@ -18261,7 +19674,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		idempotencyKey: PgColumn_ffrhhp49<{
+		idempotencyKey: PgColumn_ffrhhp51<{
 			name: "idempotency_key";
 			tableName: "calls";
 			dataType: "string";
@@ -18278,7 +19691,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestFingerprint: PgColumn_ffrhhp49<{
+		requestFingerprint: PgColumn_ffrhhp51<{
 			name: "request_fingerprint";
 			tableName: "calls";
 			dataType: "string";
@@ -18295,7 +19708,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosureWordingVersion: PgColumn_ffrhhp49<{
+		disclosureWordingVersion: PgColumn_ffrhhp51<{
 			name: "disclosure_wording_version";
 			tableName: "calls";
 			dataType: "number";
@@ -18312,7 +19725,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosurePlayedAt: PgColumn_ffrhhp49<{
+		disclosurePlayedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -18329,7 +19742,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		aiAssisted: PgColumn_ffrhhp49<{
+		aiAssisted: PgColumn_ffrhhp51<{
 			name: "ai_assisted";
 			tableName: "calls";
 			dataType: "boolean";
@@ -18346,7 +19759,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp49<{
+		createdAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -18363,7 +19776,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		answeredAt: PgColumn_ffrhhp49<{
+		answeredAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -18380,7 +19793,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		endedAt: PgColumn_ffrhhp49<{
+		endedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -18397,7 +19810,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		durationSeconds: PgColumn_ffrhhp49<{
+		durationSeconds: PgColumn_ffrhhp51<{
 			name: "duration_seconds";
 			tableName: "calls";
 			dataType: "number";
@@ -18414,7 +19827,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		endedBy: PgColumn_ffrhhp49<{
+		endedBy: PgColumn_ffrhhp51<{
 			name: "ended_by";
 			tableName: "calls";
 			dataType: "string";
@@ -18431,7 +19844,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp49<{
+		failureReason: PgColumn_ffrhhp51<{
 			name: "failure_reason";
 			tableName: "calls";
 			dataType: "string";
@@ -18448,7 +19861,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealId: PgColumn_ffrhhp49<{
+		dealId: PgColumn_ffrhhp51<{
 			name: "deal_id";
 			tableName: "calls";
 			dataType: "string";
@@ -18465,7 +19878,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		note: PgColumn_ffrhhp49<{
+		note: PgColumn_ffrhhp51<{
 			name: "note";
 			tableName: "calls";
 			dataType: "string";
@@ -18482,7 +19895,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		transcriptState: PgColumn_ffrhhp49<{
+		transcriptState: PgColumn_ffrhhp51<{
 			name: "transcript_state";
 			tableName: "calls";
 			dataType: "string";
@@ -18499,7 +19912,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp49<{
+		updatedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -18533,11 +19946,11 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g49<{
 * Lists served: one Call's log in order, `WHERE organization_id = $1 AND call_id = $2 ORDER BY
 * seq` (`call_events_call_idx`).
 */
-declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
+declare const voiceCallEvents: PgTableWithColumns_a5zn0g51<{
 	name: "call_events";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp49<{
+		id: PgColumn_ffrhhp51<{
 			name: "id";
 			tableName: "call_events";
 			dataType: "string";
@@ -18554,7 +19967,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp49<{
+		organizationId: PgColumn_ffrhhp51<{
 			name: "organization_id";
 			tableName: "call_events";
 			dataType: "string";
@@ -18571,7 +19984,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		seq: PgColumn_ffrhhp49<{
+		seq: PgColumn_ffrhhp51<{
 			name: "seq";
 			tableName: "call_events";
 			dataType: "number";
@@ -18588,7 +20001,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: "always";
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp49<{
+		callId: PgColumn_ffrhhp51<{
 			name: "call_id";
 			tableName: "call_events";
 			dataType: "string";
@@ -18605,7 +20018,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp49<{
+		kind: PgColumn_ffrhhp51<{
 			name: "kind";
 			tableName: "call_events";
 			dataType: "string";
@@ -18622,7 +20035,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		fromState: PgColumn_ffrhhp49<{
+		fromState: PgColumn_ffrhhp51<{
 			name: "from_state";
 			tableName: "call_events";
 			dataType: "string";
@@ -18639,7 +20052,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		toState: PgColumn_ffrhhp49<{
+		toState: PgColumn_ffrhhp51<{
 			name: "to_state";
 			tableName: "call_events";
 			dataType: "string";
@@ -18656,7 +20069,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerEventId: PgColumn_ffrhhp49<{
+		providerEventId: PgColumn_ffrhhp51<{
 			name: "provider_event_id";
 			tableName: "call_events";
 			dataType: "string";
@@ -18673,7 +20086,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		occurredAt: PgColumn_ffrhhp49<{
+		occurredAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "call_events";
 			dataType: "date";
@@ -18690,7 +20103,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordedAt: PgColumn_ffrhhp49<{
+		recordedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "call_events";
 			dataType: "date";
@@ -18721,11 +20134,11 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g49<{
 * Lookups served: by Call (`recordings_call_key`); by storage key (`recordings_storage_key_key`);
 * deleted Recordings due for purge, oldest first (`recordings_purge_idx`).
 */
-declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
+declare const voiceRecordings: PgTableWithColumns_a5zn0g51<{
 	name: "recordings";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp49<{
+		id: PgColumn_ffrhhp51<{
 			name: "id";
 			tableName: "recordings";
 			dataType: "string";
@@ -18742,7 +20155,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp49<{
+		organizationId: PgColumn_ffrhhp51<{
 			name: "organization_id";
 			tableName: "recordings";
 			dataType: "string";
@@ -18759,7 +20172,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp49<{
+		callId: PgColumn_ffrhhp51<{
 			name: "call_id";
 			tableName: "recordings";
 			dataType: "string";
@@ -18776,7 +20189,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		storageKey: PgColumn_ffrhhp49<{
+		storageKey: PgColumn_ffrhhp51<{
 			name: "storage_key";
 			tableName: "recordings";
 			dataType: "string";
@@ -18793,7 +20206,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sizeBytes: PgColumn_ffrhhp49<{
+		sizeBytes: PgColumn_ffrhhp51<{
 			name: "size_bytes";
 			tableName: "recordings";
 			dataType: "number";
@@ -18810,7 +20223,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channels: PgColumn_ffrhhp49<{
+		channels: PgColumn_ffrhhp51<{
 			name: "channels";
 			tableName: "recordings";
 			dataType: "number";
@@ -18827,7 +20240,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp49<{
+		state: PgColumn_ffrhhp51<{
 			name: "state";
 			tableName: "recordings";
 			dataType: "string";
@@ -18844,7 +20257,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp49<{
+		createdAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -18861,7 +20274,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		storedAt: PgColumn_ffrhhp49<{
+		storedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -18878,7 +20291,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp49<{
+		deletedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -18895,7 +20308,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp49<{
+		purgeDueAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -18912,7 +20325,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp49<{
+		updatedAt: PgColumn_ffrhhp51<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -18932,4 +20345,4 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g49<{
 	};
 	dialect: "pg";
 }>;
-export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, AGENT_KINDS, AGENT_SETTING_CHANNELS, API_KEY_KINDS, API_KEY_ROLE_CEILINGS, API_KEY_SCOPES, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CONTROL_LEVELS, CREDENTIAL_TYPES, CRM_CONNECTION_STATES, CRM_DIRECTIONS, CRM_FIELD_KEYS, CRM_MAPPING_KINDS, CRM_OBJECT_KINDS, CRM_PROVIDERS, CRM_REF_STATES, CRM_RUN_ERROR_CODES, CRM_RUN_STATES, CRM_RUN_TRIGGERS, CRM_SCOPE_LEVELS, CRM_SKIP_REASON_COUNT, CRM_STAGE_OUTCOMES, CRM_WEBHOOK_WINDOW_SECONDS, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEFAULT_CHANNEL, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DemoRateCounter, DemoRequest, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, EXPORT_ACTIVE_STATES, EXPORT_FAILURE_REASONS, EXPORT_FORMATS, EXPORT_KINDS, EXPORT_PART_FAILURE_REASONS, EXPORT_PART_STATES, EXPORT_SERVICES, EXPORT_STATES, Environment, EnvironmentSettingsRow, Event, FIELD_HISTORY_STATES, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LOGGED_DENIAL_CODES, MAX_AGENT_INSTRUCTION_LENGTH, MAX_API_KEY_NAME_LENGTH, MAX_AUDIT_METADATA_BYTES, MAX_CALLER_LENGTH, MAX_CALL_DURATION_SECONDS, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_CRM_CURSOR_LENGTH, MAX_CRM_EXTERNAL_ID_LENGTH, MAX_CRM_KEY_ID_LENGTH, MAX_CRM_LABEL_LENGTH, MAX_CRM_LOCAL_ID_LENGTH, MAX_CRM_RUN_COUNT, MAX_CRM_RUN_FAILURES, MAX_CRM_SEALED_TOKEN_BYTES, MAX_CRM_WRITE_KEY_LENGTH, MAX_ESCALATION_RULES, MAX_EVIDENCE_REF_LENGTH, MAX_EXPORT_PART_BYTES, MAX_EXPORT_PART_FILES, MAX_EXPORT_PREFIX_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FORM_TOKEN_LENGTH, MAX_LINE_LABEL_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_COMPANY_TECHNOLOGIES, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH, MAX_PROSPECT_COMPANY_TEXT_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SOURCE_REF_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MIN_FORM_TOKEN_LENGTH, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_AGENT_KIND, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KIND_PATTERN, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, agentInstructionPointers, agentInstructionVersions, agentSettings, apiKeyUsage, apiKeys, attemptCounters, auditEvents, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consentFormDirectory, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, coreApiKeys, coreSchema, credentials, crmConnections, crmExternalRefs, crmMappings, crmSyncRuns, crmWebhookReceipts, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, environmentSettings, environments, events, exportJobs, exportParts, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookEmbedUsage, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, refreshTokens, repChangeAllowed, rightsConfirmations, sessions, signingKeys, smsCodeCounts, suppressionEntries, teamMembers, teams, userFactors, users, verificationTokens, voiceCallEvents, voiceCalls, voiceIdempotencyKeys, voiceLineDirectory, voiceLines, voiceRecordings, voiceSchema, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, AGENT_KINDS, AGENT_SETTING_CHANNELS, API_KEY_KINDS, API_KEY_ROLE_CEILINGS, API_KEY_SCOPES, ASSESSMENT_JUDGE_SOURCES, ASSESSMENT_SUBJECT_KINDS, ASSESSMENT_VERDICTS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_ORIGINS, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CONTROL_LEVELS, CONVERSATION_OUTCOME_LABELS, CREDENTIAL_TYPES, CRM_CONNECTION_STATES, CRM_DIRECTIONS, CRM_FIELD_KEYS, CRM_MAPPING_KINDS, CRM_OBJECT_KINDS, CRM_PROVIDERS, CRM_REF_STATES, CRM_RUN_ERROR_CODES, CRM_RUN_STATES, CRM_RUN_TRIGGERS, CRM_SCOPE_LEVELS, CRM_SKIP_REASON_COUNT, CRM_STAGE_OUTCOMES, CRM_WEBHOOK_WINDOW_SECONDS, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEFAULT_CHANNEL, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DemoRateCounter, DemoRequest, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, EXPORT_ACTIVE_STATES, EXPORT_FAILURE_REASONS, EXPORT_FORMATS, EXPORT_KINDS, EXPORT_PART_FAILURE_REASONS, EXPORT_PART_STATES, EXPORT_SERVICES, EXPORT_STATES, Environment, EnvironmentSettingsRow, Event, FIELD_HISTORY_STATES, FINDING_CATEGORIES, FINDING_FEEDBACKS, FINDING_SEVERITIES, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LOGGED_DENIAL_CODES, MAX_AGENT_INSTRUCTION_LENGTH, MAX_API_KEY_NAME_LENGTH, MAX_ASSESSED_NUMBER, MAX_AUDIT_METADATA_BYTES, MAX_CALLER_LENGTH, MAX_CALL_DURATION_SECONDS, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_CRM_CURSOR_LENGTH, MAX_CRM_EXTERNAL_ID_LENGTH, MAX_CRM_KEY_ID_LENGTH, MAX_CRM_LABEL_LENGTH, MAX_CRM_LOCAL_ID_LENGTH, MAX_CRM_RUN_COUNT, MAX_CRM_RUN_FAILURES, MAX_CRM_SEALED_TOKEN_BYTES, MAX_CRM_WRITE_KEY_LENGTH, MAX_ESCALATION_RULES, MAX_EVIDENCE_REF_LENGTH, MAX_EXPORT_PART_BYTES, MAX_EXPORT_PART_FILES, MAX_EXPORT_PREFIX_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FINDING_EXPLANATION_LENGTH, MAX_FINDING_SPAN_OFFSET, MAX_FORM_TOKEN_LENGTH, MAX_LINE_LABEL_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_COMPANY_TECHNOLOGIES, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH, MAX_PROSPECT_COMPANY_TEXT_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_ROLLUP_COUNT, MAX_ROLLUP_GROUP_KEY_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SOURCE_DEALS, MAX_SOURCE_KEY_LENGTH, MAX_SOURCE_REF_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUGGESTION_MOMENTS, MAX_SUGGESTION_TEXT_LENGTH, MAX_SUMMARY_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_TOUCH_SOURCES, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MIN_FORM_TOKEN_LENGTH, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_AGENT_KIND, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, ROLLUP_GROUP_KINDS, ROLLUP_METRICS, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KINDS, SOURCE_KIND_PATTERN, SOURCE_PERFORMANCE_FLAGS, SUGGESTION_FINGERPRINT_BYTES, SUGGESTION_KINDS, SUGGESTION_STATUSES, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, TOUCH_AGENT_KINDS, TOUCH_CHANNELS, TOUCH_KINDS, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, agentInstructionPointers, agentInstructionVersions, agentSettings, apiKeyUsage, apiKeys, assessmentFindings, assessments, attemptCounters, auditEvents, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consentFormDirectory, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, conversationSummaries, coreApiKeys, coreSchema, credentials, crmConnections, crmExternalRefs, crmMappings, crmSyncRuns, crmWebhookReceipts, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, environmentSettings, environments, events, exportJobs, exportParts, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookEmbedUsage, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, refreshTokens, repChangeAllowed, rightsConfirmations, rollupDaily, sessions, signingKeys, smsCodeCounts, sourcePerformance, suggestions, suppressionEntries, teamMembers, teams, touches, userFactors, users, verificationTokens, voiceCallEvents, voiceCalls, voiceIdempotencyKeys, voiceLineDirectory, voiceLines, voiceRecordings, voiceSchema, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
