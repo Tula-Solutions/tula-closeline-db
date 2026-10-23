@@ -652,7 +652,8 @@ its step, attempt count, counts and the object key of its parsed intermediate.
 | `index_settings` | the embedding model and dimension of an Organization (ADR 0010) |
 | `consumed_message` | the kit's `ProcessedStore` table |
 | `idempotency_keys` | the outcome of one upload or internal call per Organization, user, route and client key; core's pattern without the foreign key |
-| `orphan_sweeps` | the time the service swept an Organization's stored objects for orphans through (`swept_through`) and the creation time of the latest upload attempt whose key erasure deleted (`erased_attempt_at`); read-only to the role, written only by `ORPHAN_SWEEP_DONE` (`playbook.orphan_sweep_done`) and `ORGANIZATION_REMOVE_REST` |
+| `orphan_sweeps` | the time the service swept an Organization's stored objects for orphans through (`swept_through`), the creation time of the latest upload attempt whose key erasure deleted (`erased_attempt_at`), and (migration `0032`) the cursor of a sweep cut short (`sweep_cursor`, 1 to 1024 bytes) and the deadline of the claim on it (`sweep_claim_until`); read-only to the role, written only by `ORPHAN_SWEEP_CLAIM` (`playbook.orphan_sweep_claim`), `ORPHAN_SWEEP_PAGE_DONE` (`playbook.orphan_sweep_page_done`, which calls `playbook.orphan_sweep_done`) and `ORGANIZATION_REMOVE_REST` |
+| `embed_usage` | how many Moments the service embedded per Organization and UTC day (`day`, `moments`, 0 to 1,000,000,000), added by `EMBED_USAGE_ADD` and purged by `EMBED_USAGE_PURGE`; counts only, no content; removed with the Organization by `ORGANIZATION_REMOVE_REST` (migration `0032`) |
 | `deals`, `deal_imports`, `deal_import_rows`, `rights_confirmations` | sales history, part one (see below, migration `0015`) |
 | `work_hints` | **not a tenant table**: which Organizations may have work of which kind from when; the registry `organizations_with_work` reads (no service role has any privilege on it) |
 
@@ -889,7 +890,26 @@ attempt of the Organization, so call it under a short `lock_timeout` and retry; 
 and either moves the hint to 25 hours after the oldest attempt newer than the sweep (`more` true) or
 removes it (`more` false), so a newer attempt, or one racing the sweep, keeps its hint. When it removes
 the hint and the Organization has no idempotency key and no document left, it removes the
-`orphan_sweeps` row as well; a later attempt starts again from nothing. A repeat is idempotent. **After
+`orphan_sweeps` row as well; a later attempt starts again from nothing. A repeat is idempotent.
+**Large Organizations (migration `0032`, hub issue 109).** A listing too long for one visit is swept in
+pages across visits. The service runs `ORPHAN_SWEEP_CLAIM` first (`$2` the claim length in milliseconds,
+1 second to 1 hour): it returns `claimed` true with `swept_through` and the saved `sweep_cursor` (the last
+object key listed, null at the start of a sweep), or `claimed` false while another instance holds an
+unexpired claim, and `claim_token`, the exact deadline it set (text, microseconds); of concurrent claims exactly one wins and none waits (`for update skip locked`), and a
+crashed holder is replaced once its deadline passes. It then lists from the cursor and finishes with
+`ORPHAN_SWEEP_PAGE_DONE`, passing the token as `$4`. It is fenced: unless `$4` equals the stored deadline and
+the deadline is still in the future it changes nothing and returns `held` false with nulls, so a holder
+whose claim expired and was taken over can neither release the new claim nor overwrite its cursor. Held,
+with a cursor (`$3`) the listing was cut short, so the cursor is saved,
+`swept_through` and the hint are left alone and `more` is true; with `$3` null the listing completed, the
+cursor is cleared and it does what `ORPHAN_SWEEP_DONE` does. Take `$2` when the sweep starts, once, and
+pass the same value on the visits that continue it. `ORPHAN_SWEEP_STATE` reads the three columns. The
+functions take only the `orphan_sweeps` row (then, on completion, the hint), so the lock order below holds.
+**Embed counts.** `EMBED_USAGE_ADD` adds a job's Moment count to the Organization's row for the database's
+current UTC day in one atomic upsert and returns the day's total, so concurrent jobs all count;
+`EMBED_USAGE_PURGE` removes the oldest days beyond the days to keep (never today) in a bounded batch.
+`CALL_MOMENTS_RECORD` stores a Call's embedded and skipped Moment counts.
+**After
 erasure** (`remove_organization_rest`) no idempotency key remains except the remove-all call's own
 (the kept route's), so nothing of an upload attempt's request or response is kept, and
 `ORGANIZATION_REMOVAL_STATUS` does not look at what follows. What remains, only until a sweep covers
@@ -1552,6 +1572,47 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)
     ```
 
+    `ORPHAN_SWEEP_CLAIM`:
+
+    ```sql
+    select claimed, swept_through, sweep_cursor, claim_token::text as claim_token from playbook.orphan_sweep_claim($1::text, $2::int)
+    ```
+
+    `ORPHAN_SWEEP_PAGE_DONE`:
+
+    ```sql
+    select held, swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)
+    ```
+
+    `ORPHAN_SWEEP_STATE`:
+
+    ```sql
+    select swept_through, sweep_cursor, sweep_claim_until from playbook.orphan_sweeps where organization_id = $1
+    ```
+
+    `EMBED_USAGE_ADD`:
+
+    ```sql
+    insert into playbook.embed_usage as u (organization_id, day, moments)
+    values ($1, (clock_timestamp() at time zone 'utc')::date, least(greatest(coalesce($2::int, 0), 0), 1000000))
+    on conflict (organization_id, day) do update set moments = least(u.moments + excluded.moments, 1000000000)
+    returning day::text as day, moments
+    ```
+
+    `EMBED_USAGE_PURGE`:
+
+    ```sql
+    with old as (
+      select day from playbook.embed_usage
+      where organization_id = $1
+        and day < (clock_timestamp() at time zone 'utc')::date - greatest(coalesce($2::int, 1), 1)
+      order by day
+      limit least(greatest(coalesce($3::int, 1), 1), 500)
+      for update skip locked)
+    delete from playbook.embed_usage e using old
+    where e.organization_id = $1 and e.day = old.day
+    ```
+
     `DEAL_GET`:
 
     ```sql
@@ -2097,6 +2158,16 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     where c.organization_id = $1 and c.state = $6::text and c.deal_record_id = $5::text and (c.created_at, c.id) < ($2::timestamptz, $3::text)
     order by c.created_at desc, c.id desc
     limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `CALL_MOMENTS_RECORD`:
+
+    ```sql
+    update playbook.calls
+    set embedded_moments = least(greatest(coalesce($3::int, 0), 0), 1000000),
+        skipped_moments = least(greatest(coalesce($4::int, 0), 0), 1000000)
+    where organization_id = $1 and id = $2 and state in ('processing', 'ready')
+    returning id, embedded_moments, skipped_moments
     ```
 
     `CALL_SOFT_DELETE`:
@@ -2886,7 +2957,7 @@ in the search index, never in Postgres. Every value mirrors the contract at `v0.
 
 | Table | Holds |
 | --- | --- |
-| `calls` | the Call: `call_…` id, its Deal (composite foreign key, no cascade), kind (`transcript`, `recording`), state, failure reason, object keys, content hash (unique per Organization), the Rep choice (`rep_by`, `rep_label`, `rep_channel`), the speaker labels, and the counters `epoch`, `rep_seq`, `deletion_seq`, `vectors_removed_seq`, `tagged_outcome_seq` |
+| `calls` | the Call: `call_…` id, its Deal (composite foreign key, no cascade), kind (`transcript`, `recording`), state, failure reason, object keys, content hash (unique per Organization), the Rep choice (`rep_by`, `rep_label`, `rep_channel`), the speaker labels, and the counters `epoch`, `rep_seq`, `deletion_seq`, `vectors_removed_seq`, `tagged_outcome_seq`; and (migration `0032`) `embedded_moments` and `skipped_moments`, both null until `CALL_MOMENTS_RECORD` sets them (each 0 to 1,000,000) |
 | `call_jobs` | one row per background job of a Call: kind `transcribe`, `process` or `rebuild`, state, attempts, claim token and lease |
 
 `call_jobs` is a **sibling of `ingestion_jobs`, not an extension of it.** An ingestion job is keyed to a

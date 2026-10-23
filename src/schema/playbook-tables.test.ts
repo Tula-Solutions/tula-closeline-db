@@ -26,6 +26,7 @@ const discoveryMigration = read('0012_playbook_work_discovery.sql')
 const orphanMigration = read('0014_playbook_pending_cleanup_orphans.sql')
 const salesMigration = read('0015_playbook_sales_history.sql')
 const callsMigration = read('0016_playbook_calls.sql') + read('0018_call_vendor_sends.sql')
+const sweepEmbedMigration = read('0032_playbook_sweep_cursor_embed_usage.sql')
 
 const NAMES = [
   'call_jobs',
@@ -36,6 +37,7 @@ const NAMES = [
   'deal_imports',
   'deals',
   'documents',
+  'embed_usage',
   'idempotency_keys',
   'index_settings',
   'ingestion_jobs',
@@ -45,7 +47,7 @@ const NAMES = [
 ]
 
 describe('the playbook schema', () => {
-  test('has the fourteen tenant tables and the work registry, and nothing else', () => {
+  test('has the fifteen tenant tables and the work registry, and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
   })
 
@@ -66,11 +68,36 @@ describe('the playbook schema', () => {
       idempotencyMigration +
       orphanMigration +
       salesMigration +
-      callsMigration
+      callsMigration +
+      sweepEmbedMigration
     for (const statement of tenantRlsStatements('playbook', name)) {
       expect(sql).toContain(statement)
     }
     expect(NON_TENANT_TABLES).not.toContain(`playbook.${name}`)
+  })
+
+  test('the sweep claim and page-done functions are definers granted to the playbook role only', () => {
+    for (const name of ['orphan_sweep_claim', 'orphan_sweep_page_done']) {
+      const start = sweepEmbedMigration.indexOf(`CREATE FUNCTION "playbook"."${name}"`)
+      expect(start).toBeGreaterThan(-1)
+      const body = sweepEmbedMigration.slice(start, sweepEmbedMigration.indexOf('$$;', start))
+      expect(body).toContain('SECURITY DEFINER')
+      expect(body).toContain('SET search_path = pg_catalog, pg_temp')
+      expect(body).toContain('playbook.orphan_sweep_scope')
+      expect(sweepEmbedMigration).toContain(`"playbook"."${name}"`)
+    }
+    expect(sweepEmbedMigration).toMatch(
+      /REVOKE ALL ON FUNCTION[^;]*orphan_sweep_claim[^;]*FROM PUBLIC;/
+    )
+    expect(sweepEmbedMigration).toMatch(
+      /GRANT EXECUTE ON FUNCTION[^;]*orphan_sweep_page_done[^;]*TO closeline_playbook;/
+    )
+  })
+
+  test('erasure removes the embed counts too', () => {
+    expect(sweepEmbedMigration).toContain(
+      'DELETE FROM "playbook"."embed_usage" e WHERE e."organization_id" = p_organization_id;'
+    )
   })
 
   test('the document states are exactly the five of ADR 0016, in the check constraint too', () => {

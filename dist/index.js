@@ -35,6 +35,7 @@ import {
   CALL_SPEAKER_LABEL_MAX_LENGTH2,
   CALL_SPEAKER_LABEL_MAX_BYTES2,
   CALL_MAX_SEQ2,
+  CALL_MAX_MOMENTS2,
   CALL_PURGE_MAX_ATTEMPTS2,
   CALL_JOB_MAX_ATTEMPTS2,
   CALL_MAX_VENDOR_SENDS2,
@@ -45,9 +46,14 @@ import {
   repChangeAllowed2,
   callReuploadRequeues2,
   CALL_PENDING_CLEANUP_PREDICATE2,
+  EMBED_USAGE_MAX_ADD2,
+  EMBED_USAGE_MAX_MOMENTS2,
+  ORPHAN_SWEEP_CURSOR_MAX_BYTES2,
+  ORPHAN_SWEEP_MIN_CLAIM_MS2,
+  ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-sg064147.js";
+} from "./shared/chunk-xm7gg0f8.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -1259,7 +1265,13 @@ where d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3:
     select 1 from playbook.calls c
     where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)
 returning d.id, d.retag_through, d.outcome_seq`;
+var CALL_MOMENTS_RECORD = `update playbook.calls
+set embedded_moments = least(greatest(coalesce($3::int, 0), 0), 1000000),
+    skipped_moments = least(greatest(coalesce($4::int, 0), 0), 1000000)
+where organization_id = $1 and id = $2 and state in ('processing', 'ready')
+returning id, embedded_moments, skipped_moments`;
 var CALL_STATEMENTS = {
+  CALL_MOMENTS_RECORD,
   CALL_USAGE,
   CALL_INSERT,
   CALL_GET,
@@ -1740,6 +1752,22 @@ where organization_id = $1 and id = $2 and state = 'deleted' and purge_attempts 
 returning id, purge_attempts`;
 var ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after from playbook.organizations_with_work($1::text, $2::text, ${BATCH("$3")})`;
 var ORPHAN_SWEEP_DONE = `select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)`;
+var ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor, claim_token::text as claim_token from playbook.orphan_sweep_claim($1::text, $2::int)`;
+var ORPHAN_SWEEP_PAGE_DONE = `select held, swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text, $4::timestamptz)`;
+var ORPHAN_SWEEP_STATE = `select swept_through, sweep_cursor, sweep_claim_until from playbook.orphan_sweeps where organization_id = $1`;
+var EMBED_USAGE_ADD = `insert into playbook.embed_usage as u (organization_id, day, moments)
+values ($1, (clock_timestamp() at time zone 'utc')::date, least(greatest(coalesce($2::int, 0), 0), 1000000))
+on conflict (organization_id, day) do update set moments = least(u.moments + excluded.moments, 1000000000)
+returning day::text as day, moments`;
+var EMBED_USAGE_PURGE = `with old as (
+  select day from playbook.embed_usage
+  where organization_id = $1
+    and day < (clock_timestamp() at time zone 'utc')::date - greatest(coalesce($2::int, 1), 1)
+  order by day
+  limit ${BATCH("$3")}
+  for update skip locked)
+delete from playbook.embed_usage e using old
+where e.organization_id = $1 and e.day = old.day`;
 function discoveredOrganizations(rows) {
   const organizations = rows.flatMap((row) => row.organization_id === null ? [] : [row.organization_id]);
   return { organizations, resumeAfter: rows[0]?.resume_after ?? null };
@@ -2065,6 +2093,11 @@ var PLAYBOOK_STATEMENTS = {
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_RESET,
   ORPHAN_SWEEP_DONE,
+  ORPHAN_SWEEP_CLAIM,
+  ORPHAN_SWEEP_PAGE_DONE,
+  ORPHAN_SWEEP_STATE,
+  EMBED_USAGE_ADD,
+  EMBED_USAGE_PURGE,
   DEAL_GET,
   DEAL_BY_DEAL_ID,
   DEAL_LIST,
@@ -2143,6 +2176,7 @@ export {
   CALL_LIST_BY_STATE,
   CALL_LIST_PENDING_CLEANUP,
   CALL_LIST_SPENT_PURGES,
+  CALL_MAX_MOMENTS2 as CALL_MAX_MOMENTS,
   CALL_MAX_RECORDING_BYTES2 as CALL_MAX_RECORDING_BYTES,
   CALL_MAX_RECORDING_SECONDS2 as CALL_MAX_RECORDING_SECONDS,
   CALL_MAX_SEQ2 as CALL_MAX_SEQ,
@@ -2150,6 +2184,7 @@ export {
   CALL_MAX_TRANSCRIPT_BYTES2 as CALL_MAX_TRANSCRIPT_BYTES,
   CALL_MAX_VENDOR_SENDS2 as CALL_MAX_VENDOR_SENDS,
   CALL_MEDIA_TYPES2 as CALL_MEDIA_TYPES,
+  CALL_MOMENTS_RECORD,
   CALL_PENDING_CLEANUP_PREDICATE2 as CALL_PENDING_CLEANUP_PREDICATE,
   CALL_PURGE_CLAIM,
   CALL_PURGE_COMPLETE,
@@ -2256,6 +2291,10 @@ export {
   DOCUMENT_SEARCH_STATE,
   DOCUMENT_SOFT_DELETE,
   DemoRequestRefusedError,
+  EMBED_USAGE_ADD,
+  EMBED_USAGE_MAX_ADD2 as EMBED_USAGE_MAX_ADD,
+  EMBED_USAGE_MAX_MOMENTS2 as EMBED_USAGE_MAX_MOMENTS,
+  EMBED_USAGE_PURGE,
   ENVIRONMENT_POLICY_EXPRESSION,
   ENVIRONMENT_SCOPED_TABLES,
   ENVIRONMENT_SETTING,
@@ -2289,7 +2328,13 @@ export {
   ORGANIZATION_REMOVE_REST,
   ORGANIZATION_SETTING,
   ORPHAN_SWEEP_AGE_MS,
+  ORPHAN_SWEEP_CLAIM,
+  ORPHAN_SWEEP_CURSOR_MAX_BYTES2 as ORPHAN_SWEEP_CURSOR_MAX_BYTES,
   ORPHAN_SWEEP_DONE,
+  ORPHAN_SWEEP_MAX_CLAIM_MS2 as ORPHAN_SWEEP_MAX_CLAIM_MS,
+  ORPHAN_SWEEP_MIN_CLAIM_MS2 as ORPHAN_SWEEP_MIN_CLAIM_MS,
+  ORPHAN_SWEEP_PAGE_DONE,
+  ORPHAN_SWEEP_STATE,
   OWNER_ROLE,
   PACKAGE,
   PENDING_CLEANUP_PREDICATE2 as PENDING_CLEANUP_PREDICATE,

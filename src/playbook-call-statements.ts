@@ -1026,8 +1026,21 @@ where d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3:
     where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)
 returning d.id, d.retag_through, d.outcome_seq`
 
+/**
+ * Record how many Moments a Call's embedding job embedded and skipped (hub issue 109): `$1`
+ * Organization, `$2` Call id, `$3` embedded, `$4` skipped (each null or negative counts 0, above
+ * 1,000,000 counts 1,000,000). Only a Call that is `processing` or `ready` is updated; a repeat
+ * overwrites. Returns `id`, `embedded_moments` and `skipped_moments`, or no row for any other Call.
+ */
+export const CALL_MOMENTS_RECORD = `update playbook.calls
+set embedded_moments = least(greatest(coalesce($3::int, 0), 0), 1000000),
+    skipped_moments = least(greatest(coalesce($4::int, 0), 0), 1000000)
+where organization_id = $1 and id = $2 and state in ('processing', 'ready')
+returning id, embedded_moments, skipped_moments`
+
 /** Every Call statement above by name, for the README check and the integration tests. */
 export const CALL_STATEMENTS = {
+  CALL_MOMENTS_RECORD,
   CALL_USAGE,
   CALL_INSERT,
   CALL_GET,
