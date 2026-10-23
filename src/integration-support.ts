@@ -268,3 +268,64 @@ export async function inAuthEnvironment<T>(
     client.release()
   }
 }
+
+/**
+ * Fix the planner's view of a table for a plan test: turn the table's autovacuum off, pin
+ * `n_distinct` for the named columns, and analyze. Autovacuum re-analyzes a table a minute or
+ * more after its first rows, and a sample that holds one value of a column (a state's default, a
+ * single Deal) gives n_distinct 1 and a most-common frequency of 1, which makes an equality on
+ * that column look free under a generic plan and flips which index wins. Pinning the count a
+ * production table has keeps the plan the test asserts independent of when that sample is taken.
+ *
+ * @param owner - A pool connected as the owner role.
+ * @param table - A table in a service schema, as `schema.table`.
+ * @param columns - Column name to the `n_distinct` to pin (a positive count).
+ * @returns A function that undoes the pins; each step runs on its own, so one failure does not
+ * skip the rest, and the first failure is thrown after all of them ran.
+ */
+export async function pinColumnStats(
+  owner: Pool,
+  table: string,
+  columns: Record<string, number>
+): Promise<() => Promise<void>> {
+  const entries = Object.entries(columns)
+  if (
+    !/^[a-z_]+\.[a-z_]+$/.test(table) ||
+    entries.some(([c, n]) => !/^[a-z_]+$/.test(c) || !Number.isFinite(n) || n < 1)
+  ) {
+    throw new Error(`pinColumnStats: unexpected identifier in ${table}`)
+  }
+  const restore = async (): Promise<void> => {
+    const steps = [
+      `alter table ${table} reset (autovacuum_enabled)`,
+      ...entries.map(
+        ([column]) => `alter table ${table} alter column ${column} reset (n_distinct)`
+      ),
+      `analyze ${table}`,
+    ]
+    const failures: unknown[] = []
+    for (const step of steps) {
+      try {
+        await owner.query(step)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      throw failures[0]
+    }
+  }
+  try {
+    await owner.query(`alter table ${table} set (autovacuum_enabled = false)`)
+    for (const [column, nDistinct] of entries) {
+      await owner.query(
+        `alter table ${table} alter column ${column} set (n_distinct = ${Math.trunc(nDistinct)})`
+      )
+    }
+    await owner.query(`analyze ${table}`)
+  } catch (error) {
+    await restore().catch(() => undefined)
+    throw error
+  }
+  return restore
+}

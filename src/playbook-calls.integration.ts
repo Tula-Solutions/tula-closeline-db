@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
-import { dropStaleTestObjects, integrationEnv, migrateUp, rejectionOf } from './integration-support'
+import {
+  dropStaleTestObjects,
+  integrationEnv,
+  migrateUp,
+  pinColumnStats,
+  rejectionOf,
+} from './integration-support'
 import {
   CALL_CLEANUP_BEGIN,
   CALL_CLEANUP_DONE,
@@ -1240,139 +1246,158 @@ describe('sales history, part two: Calls', () => {
       ).toContain('calls_transcript_has_rep')
     })
 
-    interface PlanNode {
-      'Node Type': string
-      'Relation Name'?: string
-      'Index Name'?: string
-      'Scan Direction'?: string
-      Filter?: string
-      Plans?: PlanNode[]
-    }
-    const walk = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(walk)]
-    async function planOf(org: string, text: string, types: string, args: string) {
-      return inOrg(org, async (c) => {
-        await c.query('set local plan_cache_mode = force_generic_plan')
-        await c.query('set local enable_seqscan = off')
-        await c.query(`prepare plan_probe(${types}) as ${text}`)
-        try {
-          const r = await c.query(`explain (format json, costs off) execute plan_probe(${args})`)
-          return r.rows[0]['QUERY PLAN'][0].Plan as PlanNode
-        } finally {
-          await c.query('deallocate plan_probe')
-        }
+    describe('the plans use the Call list indexes under a generic plan', () => {
+      // Which index serves a list depends on how selective the planner expects `state = $5` and
+      // `deal_record_id = $5` to be. `calls` is shared by every test in the run and autovacuum
+      // re-analyzes it a minute or more after the first rows; a sample with one Deal (or one state)
+      // gives n_distinct 1 and a most-common frequency of 1, the equality looks free and
+      // calls_list_idx with a filter beats calls_deal_list_idx. So the plans are asserted for the
+      // statistics the table has in production, with its own autovacuum off.
+      let unpin: () => Promise<void>
+      beforeAll(async () => {
+        unpin = await pinColumnStats(owner, 'playbook.calls', { state: 7, deal_record_id: 1000 })
       })
-    }
+      afterAll(async () => {
+        await unpin?.()
+      })
 
-    // F4. CALL_LIST_BY_DEAL_STATE and the split of CALL_LIST_BY_DEAL fail on fcea62e (the one
-    // statement could not use calls_deal_list_idx under a generic plan).
-    test.each([
-      [
-        'CALL_LIST',
-        CALL_LIST,
-        'calls_list_idx',
-        'text, timestamptz, text, int',
-        `'infinity', '', 50`,
-        'Backward',
-      ],
-      [
-        'CALL_LIST_BY_STATE',
-        CALL_LIST_BY_STATE,
-        'calls_state_list_idx',
-        'text, timestamptz, text, int, text',
-        `'infinity', '', 50, 'ready'`,
-        'Backward',
-      ],
-      [
-        'CALL_LIST_BY_DEAL',
-        CALL_LIST_BY_DEAL,
-        'calls_deal_list_idx',
-        'text, timestamptz, text, int, text',
-        `'infinity', '', 50, 'deal_x'`,
-        'Backward',
-      ],
-      [
-        'CALL_LIST_BY_DEAL_STATE',
-        CALL_LIST_BY_DEAL_STATE,
-        'calls_deal_state_list_idx',
-        'text, timestamptz, text, int, text, text',
-        `'infinity', '', 50, 'deal_x', 'deleted'`,
-        'Backward',
-      ],
-      [
-        'CALL_LIST_PENDING_CLEANUP',
-        CALL_LIST_PENDING_CLEANUP,
-        'calls_cleanup_idx',
-        'text, timestamptz, text, int',
-        `'-infinity', '', 50`,
-        'Forward',
-      ],
-      [
-        'CALL_LIST_SPENT_PURGES',
-        CALL_LIST_SPENT_PURGES,
-        'calls_spent_purge_idx',
-        'text, text, int',
-        `'', 50`,
-        'Forward',
-      ],
-      [
-        'DEAL_RETAG_BATCH',
-        DEAL_RETAG_BATCH,
-        'calls_retag_idx',
-        'text, text, text, int',
-        `'deal_x', '', 50`,
-        'Forward',
-      ],
-    ] as const)(
-      'F4: %s uses its index under a generic plan, in order, with no Sort',
-      async (_n, text, index, types, args, direction) => {
-        const org = newOrg()
-        const plan = await planOf(org, text, types, `'${org}', ${args}`)
-        const nodes = walk(plan)
-        const dump = JSON.stringify(plan, null, 1)
-        const scans = nodes.filter((n) => n['Relation Name'] === 'calls')
-        expect([scans.map((n) => n['Index Name']), dump]).toEqual([[index], dump])
-        expect([scans[0]?.['Scan Direction'], dump]).toEqual([direction, dump])
-        // F12: the Deal is an index condition, never a filter over the Organization's Calls.
-        expect([String(scans[0]?.Filter ?? '').includes('deal_record_id'), dump]).toEqual([
-          false,
-          dump,
-        ])
-        expect([nodes.some((n) => n['Node Type'] === 'Sort'), dump]).toEqual([false, dump])
+      interface PlanNode {
+        'Node Type': string
+        'Relation Name'?: string
+        'Index Name'?: string
+        'Scan Direction'?: string
+        Filter?: string
+        Plans?: PlanNode[]
       }
-    )
+      const walk = (node: PlanNode): PlanNode[] => [node, ...(node.Plans ?? []).flatMap(walk)]
+      async function planOf(org: string, text: string, types: string, args: string) {
+        return inOrg(org, async (c) => {
+          await c.query('set local plan_cache_mode = force_generic_plan')
+          await c.query('set local enable_seqscan = off')
+          await c.query(`prepare plan_probe(${types}) as ${text}`)
+          try {
+            const r = await c.query(`explain (format json, costs off) execute plan_probe(${args})`)
+            return r.rows[0]['QUERY PLAN'][0].Plan as PlanNode
+          } finally {
+            await c.query('deallocate plan_probe')
+          }
+        })
+      }
 
-    test.each([
-      ['CALL_PURGE_CLAIM', CALL_PURGE_CLAIM, 'calls_purge_idx', 'text, int, int', `10, 60000`],
-      [
-        'DEAL_LIST_PENDING_RETAG',
-        DEAL_LIST_PENDING_RETAG,
-        'deals_retag_idx',
-        'text, text, int',
-        `'', 50`,
-      ],
-    ] as const)(
-      'F4: %s reads through its partial index under a generic plan',
-      async (_n, text, index, types, args) => {
-        const org = newOrg()
-        const plan = await planOf(org, text, types, `'${org}', ${args}`)
-        const dump = JSON.stringify(plan, null, 1)
-        expect([walk(plan).some((n) => n['Index Name'] === index), dump]).toEqual([true, dump])
-        expect([walk(plan).some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([false, dump])
-        if (_n === 'CALL_PURGE_CLAIM') {
-          // 0018: the sends of each claimed Call are read through the primary key.
-          const sends = walk(plan).filter((n) => n['Relation Name'] === 'call_vendor_sends')
-          expect([
-            sends.length > 0 && sends.every((n) => n['Index Name'] === 'call_vendor_sends_pkey'),
-            dump,
-          ]).toEqual([true, dump])
-          const probes = walk(plan).filter((n) => n['Relation Name'] === 'call_jobs')
-          expect([probes.length > 0 && probes.every((n) => n['Index Name']), dump]).toEqual([
-            true,
+      // F4. CALL_LIST_BY_DEAL_STATE and the split of CALL_LIST_BY_DEAL fail on fcea62e (the one
+      // statement could not use calls_deal_list_idx under a generic plan).
+      test.each([
+        [
+          'CALL_LIST',
+          CALL_LIST,
+          'calls_list_idx',
+          'text, timestamptz, text, int',
+          `'infinity', '', 50`,
+          'Backward',
+        ],
+        [
+          'CALL_LIST_BY_STATE',
+          CALL_LIST_BY_STATE,
+          'calls_state_list_idx',
+          'text, timestamptz, text, int, text',
+          `'infinity', '', 50, 'ready'`,
+          'Backward',
+        ],
+        [
+          'CALL_LIST_BY_DEAL',
+          CALL_LIST_BY_DEAL,
+          'calls_deal_list_idx',
+          'text, timestamptz, text, int, text',
+          `'infinity', '', 50, 'deal_x'`,
+          'Backward',
+        ],
+        [
+          'CALL_LIST_BY_DEAL_STATE',
+          CALL_LIST_BY_DEAL_STATE,
+          'calls_deal_state_list_idx',
+          'text, timestamptz, text, int, text, text',
+          `'infinity', '', 50, 'deal_x', 'deleted'`,
+          'Backward',
+        ],
+        [
+          'CALL_LIST_PENDING_CLEANUP',
+          CALL_LIST_PENDING_CLEANUP,
+          'calls_cleanup_idx',
+          'text, timestamptz, text, int',
+          `'-infinity', '', 50`,
+          'Forward',
+        ],
+        [
+          'CALL_LIST_SPENT_PURGES',
+          CALL_LIST_SPENT_PURGES,
+          'calls_spent_purge_idx',
+          'text, text, int',
+          `'', 50`,
+          'Forward',
+        ],
+        [
+          'DEAL_RETAG_BATCH',
+          DEAL_RETAG_BATCH,
+          'calls_retag_idx',
+          'text, text, text, int',
+          `'deal_x', '', 50`,
+          'Forward',
+        ],
+      ] as const)(
+        'F4: %s uses its index under a generic plan, in order, with no Sort',
+        async (_n, text, index, types, args, direction) => {
+          const org = newOrg()
+          const plan = await planOf(org, text, types, `'${org}', ${args}`)
+          const nodes = walk(plan)
+          const dump = JSON.stringify(plan, null, 1)
+          const scans = nodes.filter((n) => n['Relation Name'] === 'calls')
+          expect([scans.map((n) => n['Index Name']), dump]).toEqual([[index], dump])
+          expect([scans[0]?.['Scan Direction'], dump]).toEqual([direction, dump])
+          // F12: the Deal is an index condition, never a filter over the Organization's Calls.
+          expect([String(scans[0]?.Filter ?? '').includes('deal_record_id'), dump]).toEqual([
+            false,
             dump,
           ])
+          expect([nodes.some((n) => n['Node Type'] === 'Sort'), dump]).toEqual([false, dump])
         }
-      }
-    )
+      )
+
+      test.each([
+        ['CALL_PURGE_CLAIM', CALL_PURGE_CLAIM, 'calls_purge_idx', 'text, int, int', `10, 60000`],
+        [
+          'DEAL_LIST_PENDING_RETAG',
+          DEAL_LIST_PENDING_RETAG,
+          'deals_retag_idx',
+          'text, text, int',
+          `'', 50`,
+        ],
+      ] as const)(
+        'F4: %s reads through its partial index under a generic plan',
+        async (_n, text, index, types, args) => {
+          const org = newOrg()
+          const plan = await planOf(org, text, types, `'${org}', ${args}`)
+          const dump = JSON.stringify(plan, null, 1)
+          expect([walk(plan).some((n) => n['Index Name'] === index), dump]).toEqual([true, dump])
+          expect([walk(plan).some((n) => n['Node Type'] === 'Seq Scan'), dump]).toEqual([
+            false,
+            dump,
+          ])
+          if (_n === 'CALL_PURGE_CLAIM') {
+            // 0018: the sends of each claimed Call are read through the primary key.
+            const sends = walk(plan).filter((n) => n['Relation Name'] === 'call_vendor_sends')
+            expect([
+              sends.length > 0 && sends.every((n) => n['Index Name'] === 'call_vendor_sends_pkey'),
+              dump,
+            ]).toEqual([true, dump])
+            const probes = walk(plan).filter((n) => n['Relation Name'] === 'call_jobs')
+            expect([probes.length > 0 && probes.every((n) => n['Index Name']), dump]).toEqual([
+              true,
+              dump,
+            ])
+          }
+        }
+      )
+    })
   })
 
   describe('review round 2', () => {

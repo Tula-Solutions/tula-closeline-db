@@ -162,6 +162,13 @@
       "when": 1792719958322,
       "tag": "0022_core_demo_rate_counter",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792721567884,
+      "tag": "0023_core_prospects",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,7 @@ import {
   dropStaleTestObjects,
   integrationEnv,
   migrateUp,
+  pinColumnStats,
   rejectionOf,
 } from './integration-support'
 import { assertTenantIsolation } from './isolation'
@@ -2152,6 +2153,22 @@ describe('the playbook schema', () => {
     })
 
     describe('the plans use the list indexes under a generic plan', () => {
+      // The branch for a state filter is served by documents_state_list_idx only while the planner
+      // expects `state = $5` to keep a fraction of the rows. `documents` is shared by every test in
+      // the run and autovacuum re-analyzes it a minute or more after the first rows (on a slow
+      // runner, part-way through this file). A sample that holds one state only (`uploaded` is the
+      // default) gives n_distinct 1 and a most-common frequency of 1, the filter then looks free
+      // and documents_list_idx with `Filter: (state = $5)` wins. So the plans are asserted for the
+      // statistics the table has in production, five states, with this table's own autovacuum off
+      // so no sample taken later changes them.
+      let unpin: () => Promise<void>
+      beforeAll(async () => {
+        unpin = await pinColumnStats(owner, 'playbook.documents', { state: 5 })
+      })
+      afterAll(async () => {
+        await unpin?.()
+      })
+
       interface PlanNode {
         'Node Type': string
         'Relation Name'?: string
@@ -3260,8 +3277,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        // 0000 to 0022: the nine before the playbook (0000 to 0008) plus 0009 to 0022.
-        expect(applied.rows[0].n).toBe(23)
+        // 0000 to 0023: the nine before the playbook (0000 to 0008) plus 0009 to 0023.
+        expect(applied.rows[0].n).toBe(24)
         await runMigrations(url.toString())
       } finally {
         await pool.end()

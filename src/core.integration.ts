@@ -1909,6 +1909,9 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       claim_demo_notices: [true, false, true],
       has_expired: [false, false, true],
+      limit_field_history: [false, true, false],
+      prospect_merged_ids_valid: [false, false, true],
+      prospect_tags_valid: [false, false, true],
       hit_demo_rate_limit: [true, false, true],
       invitation_for_token: [true, false, true],
       organization_of_user: [true, false, true],
@@ -1987,6 +1990,8 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         organization_of_user: 's',
         invitation_for_token: 's',
         has_expired: 'i',
+        prospect_merged_ids_valid: 'i',
+        prospect_tags_valid: 'i',
       }
       for (const fn of await catalog()) {
         expect([fn.name, fn.volatility]).toEqual([fn.name, expected[fn.name] ?? 'v'])
@@ -2152,7 +2157,10 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   describe('writes that skip a per-row trigger, and the ones that conflict', () => {
     test.each([
       ['memberships', 'truncate core.memberships cascade'],
-      ['memberships and team_members', 'truncate core.memberships, core.team_members'],
+      [
+        'memberships and team_members',
+        'truncate core.memberships, core.team_members, core.prospects, core.prospect_identities, core.prospect_fields, core.prospect_merges',
+      ],
       ['invitations', 'truncate core.invitations'],
       ['organizations', 'truncate core.organizations cascade'],
       ['membership_directory', 'truncate core.membership_directory'],
