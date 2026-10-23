@@ -258,15 +258,88 @@ async function closePool(pool, clients, timeoutMs) {
     clearTimeout(timer);
   }
 }
-// src/core-lookups.ts
+// src/core-demo-requests.ts
 import { sql } from "drizzle-orm";
+var DEMO_REQUEST_ID = /^dreq_[0-9a-f]{32}$/;
+var DEMO_NOTICE_CLAIM_MAX = 100;
+var DEMO_PURGE_BATCH_MAX = 1000;
+
+class DemoRequestRefusedError extends Error {
+  code;
+  constraint;
+  constructor(thrown) {
+    super("submitDemoRequest: the database refused the Demo Request");
+    this.name = "DemoRequestRefusedError";
+    const source = thrown?.cause ?? thrown;
+    const fields = typeof source === "object" && source !== null ? source : {};
+    this.code = typeof fields.code === "string" ? fields.code : undefined;
+    this.constraint = typeof fields.constraint === "string" ? fields.constraint : undefined;
+  }
+}
+function assertLimit(name, value) {
+  if (!Number.isInteger(value) || value < 1 || value > 2147483647) {
+    throw new Error(`${name}: limit must be a positive integer`);
+  }
+}
+async function submitDemoRequest(db, input) {
+  if (!DEMO_REQUEST_ID.test(input.id)) {
+    throw new Error("submitDemoRequest: invalid id");
+  }
+  let rows;
+  try {
+    ({ rows } = await db.execute(sql`select demo_request_id, replayed, same_fields from core.submit_demo_request(
+      ${input.id}, ${input.name}, ${input.workEmail}, ${input.companyName}, ${input.message},
+      ${input.sourcePage}, ${input.idempotencyKey})`));
+  } catch (error) {
+    throw new DemoRequestRefusedError(error);
+  }
+  const row = rows[0];
+  if (!row) {
+    throw new Error("submitDemoRequest: the database returned no row");
+  }
+  return { id: row.demo_request_id, replayed: row.replayed, sameFields: row.same_fields };
+}
+async function claimDemoNotices(db, limit, backoffSeconds) {
+  assertLimit("claimDemoNotices", limit);
+  if (!Number.isInteger(backoffSeconds) || backoffSeconds < 0 || backoffSeconds > 2147483647) {
+    throw new Error("claimDemoNotices: backoff must be a non-negative integer");
+  }
+  const { rows } = await db.execute(sql`select * from core.claim_demo_notices(${limit}, ${backoffSeconds})`);
+  return rows.map((row) => ({
+    id: row.demo_request_id,
+    name: row.name,
+    workEmail: row.work_email,
+    companyName: row.company_name,
+    message: row.message,
+    sourcePage: row.source_page,
+    submittedAt: new Date(row.submitted_at),
+    attempts: row.attempts
+  })).sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+async function settleDemoNotice(db, id, status) {
+  if (!DEMO_REQUEST_ID.test(id)) {
+    throw new Error("settleDemoNotice: invalid id");
+  }
+  if (status !== "sent" && status !== "failed") {
+    throw new Error("settleDemoNotice: status must be sent or failed");
+  }
+  const { rows } = await db.execute(sql`select core.settle_demo_notice(${id}, ${status}) as settled`);
+  return rows[0]?.settled === true;
+}
+async function purgeDemoRequests(db, limit) {
+  assertLimit("purgeDemoRequests", limit);
+  const { rows } = await db.execute(sql`select core.purge_demo_requests(${limit}) as purged`);
+  return Number(rows[0]?.purged ?? 0);
+}
+// src/core-lookups.ts
+import { sql as sql2 } from "drizzle-orm";
 var USER_ID = /^usr_[0-9a-f]{32}$/;
 var TOKEN_HASH = /^[0-9a-f]{64}$/;
 async function organizationOfUser(db, userId) {
   if (!USER_ID.test(userId)) {
     throw new Error("organizationOfUser: invalid user id");
   }
-  const { rows } = await db.execute(sql`select organization_id, status from core.organization_of_user(${userId})`);
+  const { rows } = await db.execute(sql2`select organization_id, status from core.organization_of_user(${userId})`);
   if (rows.length > 1) {
     throw new Error("organizationOfUser: more than one Organization for a user");
   }
@@ -277,12 +350,12 @@ async function invitationForToken(db, tokenHash) {
   if (!TOKEN_HASH.test(tokenHash)) {
     throw new Error("invitationForToken: invalid token hash");
   }
-  const { rows } = await db.execute(sql`select organization_id, invitation_id from core.invitation_for_token(${tokenHash})`);
+  const { rows } = await db.execute(sql2`select organization_id, invitation_id from core.invitation_for_token(${tokenHash})`);
   const row = rows[0];
   return row ? { organizationId: row.organization_id, invitationId: row.invitation_id } : null;
 }
 // src/environment.ts
-import { sql as sql2 } from "drizzle-orm";
+import { sql as sql3 } from "drizzle-orm";
 var ENVIRONMENT_SETTING = TENANT_SETTING;
 var ENVIRONMENT_POLICY_EXPRESSION = `(environment_id = (NULLIF(current_setting('${ENVIRONMENT_SETTING}'::text, true), ''::text))::uuid)`;
 var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -291,18 +364,18 @@ async function withEnvironment(db, environmentId, fn) {
     throw new Error("withEnvironment: environmentId must be a UUID");
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql2`select set_config(${ENVIRONMENT_SETTING}, ${environmentId}, true)`);
+    await tx.execute(sql3`select set_config(${ENVIRONMENT_SETTING}, ${environmentId}, true)`);
     return fn(tx);
   });
 }
 // src/isolation.ts
-import { sql as sql4 } from "drizzle-orm";
+import { sql as sql5 } from "drizzle-orm";
 
 // src/roles.ts
 var OWNER_ROLE = "closeline_owner";
 
 // src/tenant.ts
-import { sql as sql3 } from "drizzle-orm";
+import { sql as sql4 } from "drizzle-orm";
 var ORGANIZATION_SETTING = "app.organization_id";
 var ORGANIZATION_ID = /^org_[0-9a-f]{32}$/;
 var IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -311,7 +384,7 @@ async function withOrganization(db, organizationId, fn) {
     throw new Error("withOrganization: invalid organization id");
   }
   return db.transaction(async (tx) => {
-    await tx.execute(sql3`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
+    await tx.execute(sql4`select set_config(${ORGANIZATION_SETTING}, ${organizationId}, true)`);
     return fn(tx);
   });
 }
@@ -391,7 +464,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
   environmentScoped: ENVIRONMENT_SCOPED_TABLES,
   controlPlane: CONTROL_PLANE_TABLES
 }) {
-  const result = await db.execute(sql4`
+  const result = await db.execute(sql5`
     select n.nspname as schema,
            c.relname as "table",
            c.relkind as kind,
@@ -450,7 +523,7 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       gaps.push({ schema: row.schema, table: row.table, reason });
     }
   }
-  const roles = await db.execute(sql4`
+  const roles = await db.execute(sql5`
     select rolname as role from pg_roles
      where rolname like 'closeline\\_%' and (rolsuper or rolbypassrls)
      order by rolname`);
@@ -461,13 +534,13 @@ async function findTenantIsolationGaps(db, allowlist = NON_TENANT_TABLES, extens
       reason: "is a superuser or has BYPASSRLS, so it ignores every row-level security policy"
     });
   }
-  const memberships = await db.execute(sql4`
+  const memberships = await db.execute(sql5`
     select m.rolname as role, g.rolname as granted
       from pg_auth_members am
       join pg_roles m on m.oid = am.member
       join pg_roles g on g.oid = am.roleid
      where m.rolname like 'closeline\\_%' and m.rolname <> ${OWNER_ROLE}
-       and g.rolname not in (${sql4.join(ALLOWED_PREDEFINED_ROLES.map((role) => sql4`${role}`), sql4`, `)})
+       and g.rolname not in (${sql5.join(ALLOWED_PREDEFINED_ROLES.map((role) => sql5`${role}`), sql5`, `)})
      order by m.rolname, g.rolname`);
   for (const { role, granted } of memberships.rows) {
     gaps.push({
@@ -2104,6 +2177,8 @@ export {
   DEAL_SET_OUTCOME,
   DEAL_USAGE,
   DEFAULT_POOL_OPTIONS,
+  DEMO_NOTICE_CLAIM_MAX,
+  DEMO_PURGE_BATCH_MAX,
   DOCUMENT_BY_HASH,
   DOCUMENT_CLEANUP_BEGIN,
   DOCUMENT_CLEANUP_DONE,
@@ -2126,6 +2201,7 @@ export {
   DOCUMENT_ROW_FIELDS,
   DOCUMENT_SEARCH_STATE,
   DOCUMENT_SOFT_DELETE,
+  DemoRequestRefusedError,
   ENVIRONMENT_POLICY_EXPRESSION,
   ENVIRONMENT_SCOPED_TABLES,
   ENVIRONMENT_SETTING,
@@ -2177,6 +2253,7 @@ export {
   WORK_KINDS2 as WORK_KINDS,
   assertTenantIsolation,
   callReuploadRequeues2 as callReuploadRequeues,
+  claimDemoNotices,
   claimedCallJobs,
   claimedJobs,
   createDb,
@@ -2184,8 +2261,11 @@ export {
   findTenantIsolationGaps,
   invitationForToken,
   organizationOfUser,
+  purgeDemoRequests,
   repChangeAllowed2 as repChangeAllowed,
   reportConnectionError,
+  settleDemoNotice,
+  submitDemoRequest,
   tenantRlsStatements,
   withEnvironment,
   withOrganization

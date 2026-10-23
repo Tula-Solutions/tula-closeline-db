@@ -11962,6 +11962,115 @@ interface DbHandle {
 * @throws If the connection string is empty or an option is out of bounds.
 */
 declare function createDb(connectionString: string, options?: DbOptions): DbHandle;
+/** The most notices one claim returns; the database caps a larger limit to this. */
+declare const DEMO_NOTICE_CLAIM_MAX = 100;
+/** The most Demo Requests one purge deletes; the database caps a larger limit to this. */
+declare const DEMO_PURGE_BATCH_MAX = 1e3;
+/** What a Visitor submitted, as `core.submit_demo_request` takes it; the service has validated it. */
+interface DemoRequestInput {
+	/** The new id: `dreq_` and 32 lowercase hex characters. */
+	id: string;
+	/** The Visitor's name. */
+	name: string;
+	/** The work email, already lower-cased. */
+	workEmail: string;
+	/** The Visitor's company name. */
+	companyName: string;
+	/** An optional message. */
+	message: string | null;
+	/** The page the form was on, starting with `/`. */
+	sourcePage: string;
+	/** The Visitor's idempotency key, 16 to 128 characters. */
+	idempotencyKey: string;
+}
+/** The answer of `core.submit_demo_request`. */
+interface DemoRequestSubmission {
+	/** The id of the stored Demo Request: the submitted one, or the first one with this key. */
+	id: string;
+	/** True when the idempotency key had been used before, so nothing new was stored. */
+	replayed: boolean;
+	/** False when the key was reused with different fields; always true for a first submission. */
+	sameFields: boolean;
+}
+/** A Demo Request whose notice a worker has claimed, as `core.claim_demo_notices` returns it. */
+interface ClaimedDemoNotice {
+	/** The Demo Request id. */
+	id: string;
+	/** The Visitor's name. */
+	name: string;
+	/** The work email. */
+	workEmail: string;
+	/** The company name. */
+	companyName: string;
+	/** The message, if any. */
+	message: string | null;
+	/** The page the form was on. */
+	sourcePage: string;
+	/** When it was submitted. */
+	submittedAt: Date;
+	/** The attempt this claim made, counting it (1 on the first). */
+	attempts: number;
+}
+/** The state a notice settles in. */
+type SettledDemoNoticeStatus = Exclude<(typeof DEMO_NOTIFICATION_STATUSES)[number], "pending">;
+/**
+* The database refused a Demo Request. It keeps only the SQLSTATE `code` and the `constraint`
+* name: the driver's own error holds the submitted name, email and message in its text, so it is
+* deliberately not kept as a `cause`.
+*/
+declare class DemoRequestRefusedError extends Error {
+	/** The Postgres SQLSTATE, such as `23514` for a failed check, when the driver gave one. */
+	readonly code: string | undefined;
+	/** The constraint that refused the row, when the driver named one. */
+	readonly constraint: string | undefined;
+	/** Build the error from whatever the driver threw, copying only the code and constraint. */
+	constructor(thrown: unknown);
+}
+/**
+* Store a Demo Request, or find the one already stored under the same idempotency key. It calls
+* `core.submit_demo_request`, the only way `closeline_core` writes `core.demo_request`. Run it on
+* the pooled handle: the table has no Organization.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param input - The validated submission.
+* @returns The stored id, whether the key was a replay, and whether the fields matched the stored ones.
+* @throws If `input.id` is malformed (before any query runs); {@link DemoRequestRefusedError} (code and
+* constraint only, never the submitted values) if the database refuses a field.
+*/
+declare function submitDemoRequest(db: Pick<Database, "execute">, input: DemoRequestInput): Promise<DemoRequestSubmission>;
+/**
+* Claim a batch of pending notices to send: oldest first, none tried in the last `backoffSeconds`,
+* each counted as an attempt. Delivery is at least once: a worker that dies after a claim is retried
+* once the backoff passes, so the caller caps attempts itself (settle `failed` past its limit). Two concurrent claims never return the same row. It calls
+* `core.claim_demo_notices`.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param limit - The most to claim, at least 1; the database caps it at {@link DEMO_NOTICE_CLAIM_MAX}.
+* @param backoffSeconds - A row last tried less than this many seconds ago is skipped (0 or more).
+* @returns The claimed notices, oldest first (to the millisecond; ties by id).
+* @throws If a number is not a whole number in range (before any query runs).
+*/
+declare function claimDemoNotices(db: Pick<Database, "execute">, limit: number, backoffSeconds: number): Promise<ClaimedDemoNotice[]>;
+/**
+* Settle a pending notice as `sent` or `failed`. It calls `core.settle_demo_notice`.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param id - The Demo Request id.
+* @param status - `sent` or `failed`.
+* @returns True when the notice was pending and is now settled; false when unknown or already settled.
+* @throws If `id` or `status` is malformed (before any query runs).
+*/
+declare function settleDemoNotice(db: Pick<Database, "execute">, id: string, status: SettledDemoNoticeStatus): Promise<boolean>;
+/**
+* Delete Demo Requests submitted more than twelve months ago, oldest first, in one bounded batch.
+* Repeat until it returns less than `limit`. It calls `core.purge_demo_requests`.
+*
+* @param db - A database handle connected as `closeline_core`.
+* @param limit - The most to delete, at least 1; the database caps it at {@link DEMO_PURGE_BATCH_MAX}.
+* @returns How many were deleted.
+* @throws If `limit` is not a positive whole number (before any query runs).
+*/
+declare function purgeDemoRequests(db: Pick<Database, "execute">, limit: number): Promise<number>;
 /** The state an Organization is in, as `core.organizations.status` stores it. */
 type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 /** The Organization a user belongs to, as `core.organization_of_user` answers. */
@@ -13657,4 +13766,4 @@ declare function withOrganization<T>(db: Database, organizationId: string, fn: (
 declare function tenantRlsStatements(schemaName: string, tableName: string): string[];
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SEARCH_STATE2 as CALL_SEARCH_STATE, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_ID_PATTERN, CALL_VENDOR_ID_RECORD2 as CALL_VENDOR_ID_RECORD, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CallJobClaimRow, ClaimedCallJob, ClaimedIngestionJob, DB_TYPES, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_LIST_ERASED, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SEARCH_STATE, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, MAX_DOCUMENT_SEARCH_STATE_IDS, MAX_QUEUED_DEAL_IMPORTS, MAX_SEARCH_STATE_IDS, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimedCallJobs, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, repChangeAllowed, reportConnectionError, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, AUTH_STATEMENTS, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SEARCH_STATE2 as CALL_SEARCH_STATE, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_ID_PATTERN, CALL_VENDOR_ID_RECORD2 as CALL_VENDOR_ID_RECORD, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CallJobClaimRow, ClaimedCallJob, ClaimedDemoNotice, ClaimedIngestionJob, DB_TYPES, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_LIST_ERASED, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DEMO_NOTICE_CLAIM_MAX, DEMO_PURGE_BATCH_MAX, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SEARCH_STATE, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DemoRequestInput, DemoRequestRefusedError, DemoRequestSubmission, DocumentRow, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, MAX_DOCUMENT_SEARCH_STATE_IDS, MAX_QUEUED_DEAL_IMPORTS, MAX_SEARCH_STATE_IDS, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_DONE, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, Schema, SettledDemoNoticeStatus, TENANT_SCHEMAS, TenantIsolationGap, Transaction, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimDemoNotices, claimedCallJobs, claimedJobs, createDb, discoveredOrganizations, findTenantIsolationGaps, invitationForToken, organizationOfUser, purgeDemoRequests, repChangeAllowed, reportConnectionError, settleDemoNotice, submitDemoRequest, tenantRlsStatements, withEnvironment, withOrganization };

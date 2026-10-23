@@ -18,6 +18,21 @@ export {
 } from './auth-statements'
 export type { Database, DbHandle, DbOptions, Schema, Transaction } from './client'
 export { createDb, DEFAULT_POOL_OPTIONS, reportConnectionError } from './client'
+export type {
+  ClaimedDemoNotice,
+  DemoRequestInput,
+  DemoRequestSubmission,
+  SettledDemoNoticeStatus,
+} from './core-demo-requests'
+export {
+  claimDemoNotices,
+  DEMO_NOTICE_CLAIM_MAX,
+  DEMO_PURGE_BATCH_MAX,
+  DemoRequestRefusedError,
+  purgeDemoRequests,
+  settleDemoNotice,
+  submitDemoRequest,
+} from './core-demo-requests'
 export type { InvitationForToken, OrganizationOfUser, OrganizationStatus } from './core-lookups'
 export { invitationForToken, organizationOfUser } from './core-lookups'
 export { ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SETTING, withEnvironment } from './environment'
