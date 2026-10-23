@@ -1119,6 +1119,70 @@ export const ORGANIZATIONS_WITH_WORK = `select organization_id, resume_after fro
  */
 export const ORPHAN_SWEEP_DONE = `select swept_through, more from playbook.orphan_sweep_done($1::text, $2::timestamptz)`
 
+/**
+ * Claim an Organization's orphan sweep (hub issue 109): `$1` Organization, `$2` how long the claim
+ * lasts in milliseconds (raised to 1 second, cut to 1 hour). Run it in that Organization's scope.
+ * Returns one row: `claimed` true with `swept_through` (the time the last completed sweep recorded;
+ * `-infinity` if none) and `sweep_cursor` (the last object key listed by a sweep that was cut short,
+ * null when none), or `claimed` false with nulls while another instance holds a claim whose
+ * deadline has not passed. The row is taken `for update skip locked`, so a claimant never waits and
+ * of any number of concurrent claims one wins. Finish with {@link ORPHAN_SWEEP_PAGE_DONE}, which
+ * releases the claim; a crashed holder is replaced once its deadline passes. It is
+ * `playbook.orphan_sweep_claim`, `SECURITY DEFINER`.
+ */
+export const ORPHAN_SWEEP_CLAIM = `select claimed, swept_through, sweep_cursor from playbook.orphan_sweep_claim($1::text, $2::int)`
+
+/**
+ * Finish one visit of an Organization's orphan sweep (hub issue 109): `$1` Organization, `$2` the
+ * time the sweep started (as for {@link ORPHAN_SWEEP_DONE}), `$3` the last object key listed when
+ * the listing was cut short, null when it completed. Run it in that Organization's scope. Cut short
+ * (`$3` set, 1 to 1024 bytes): the cursor is saved, `swept_through` and the work hint are left
+ * alone, the claim is released and `more` is true. Completed (`$3` null): the cursor is cleared, the
+ * claim released and {@link ORPHAN_SWEEP_DONE} runs for `$2`, so `swept_through` advances and `more`
+ * says whether the hint stays. Returns `swept_through`, `more` and `sweep_cursor` (what is now
+ * saved: `$3`, or null). It is `playbook.orphan_sweep_page_done`, `SECURITY DEFINER`.
+ * The service's duties: pass the **first** visit's start as `$2` on every visit of one sweep (keep it
+ * with the cursor, and begin again from nothing if the sweep is older than the 25 hour window);
+ * finish before the claim's deadline, because this call does not check that the caller still holds
+ * the claim (a late call after another instance reclaimed would release that claim).
+ */
+export const ORPHAN_SWEEP_PAGE_DONE = `select swept_through, more, sweep_cursor from playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text)`
+
+/**
+ * Read an Organization's orphan sweep state: `$1` Organization. One row, `swept_through`,
+ * `sweep_cursor` (null when none is saved) and `sweep_claim_until` (null when unclaimed), or none if
+ * the Organization has no `orphan_sweeps` row.
+ */
+export const ORPHAN_SWEEP_STATE = `select swept_through, sweep_cursor, sweep_claim_until from playbook.orphan_sweeps where organization_id = $1`
+
+/**
+ * Add a job's Moment count to today's embed counter (hub issue 109): `$1` Organization, `$2` the
+ * number of Moments (null or negative counts 0, above 1,000,000 counts 1,000,000). The day is the
+ * database's current UTC date, so every instance agrees. One atomic upsert, so concurrent adds all
+ * count; the day's total stops at 1,000,000,000. Returns one row: `day` (`YYYY-MM-DD`) and the
+ * day's `moments` total after this add.
+ */
+export const EMBED_USAGE_ADD = `insert into playbook.embed_usage as u (organization_id, day, moments)
+values ($1, (clock_timestamp() at time zone 'utc')::date, least(greatest(coalesce($2::int, 0), 0), 1000000))
+on conflict (organization_id, day) do update set moments = least(u.moments + excluded.moments, 1000000000)
+returning day::text as day, moments`
+
+/**
+ * Purge an Organization's old embed counts (hub issue 109): `$1` Organization, `$2` how many whole
+ * days to keep besides today (floored at 1; today is never purged), `$3` the most days to remove
+ * (1 to {@link PLAYBOOK_MAX_BATCH}). The oldest go first and a locked row is skipped. The row count
+ * is the number removed; fewer than `$3` means none are left.
+ */
+export const EMBED_USAGE_PURGE = `with old as (
+  select day from playbook.embed_usage
+  where organization_id = $1
+    and day < (clock_timestamp() at time zone 'utc')::date - greatest(coalesce($2::int, 1), 1)
+  order by day
+  limit ${BATCH('$3')}
+  for update skip locked)
+delete from playbook.embed_usage e using old
+where e.organization_id = $1 and e.day = old.day`
+
 /** One row of {@link ORGANIZATIONS_WITH_WORK}: an Organization with work, or the marker row (null id). */
 export interface WorkDiscoveryRow {
   organization_id: string | null
@@ -1713,6 +1777,11 @@ export const PLAYBOOK_STATEMENTS = {
   DOCUMENT_LIST_SPENT_PURGES,
   DOCUMENT_PURGE_RESET,
   ORPHAN_SWEEP_DONE,
+  ORPHAN_SWEEP_CLAIM,
+  ORPHAN_SWEEP_PAGE_DONE,
+  ORPHAN_SWEEP_STATE,
+  EMBED_USAGE_ADD,
+  EMBED_USAGE_PURGE,
   DEAL_GET,
   DEAL_BY_DEAL_ID,
   DEAL_LIST,

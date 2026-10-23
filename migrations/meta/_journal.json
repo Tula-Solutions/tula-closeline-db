@@ -225,6 +225,13 @@
       "when": 1792735639160,
       "tag": "0031_core_crm",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792736758752,
+      "tag": "0032_playbook_sweep_cursor_embed_usage",
+      "breakpoints": true
     }
   ]
 }

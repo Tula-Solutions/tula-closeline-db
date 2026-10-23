@@ -1944,7 +1944,12 @@ describe('work discovery, erasure and spent purges', () => {
                    from playbook.orphan_sweeps s`)
         )
       ).rows[0]
-      expect(Object.keys(row.j).sort()).toEqual(['erased_attempt_at', 'swept_through'])
+      expect(Object.keys(row.j).sort()).toEqual([
+        'erased_attempt_at',
+        'sweep_claim_until',
+        'sweep_cursor',
+        'swept_through',
+      ])
       const erased = (row.erased_attempt_at as Date).getTime()
       expect(Date.now() - erased).toBeGreaterThan(24.4 * 3_600_000)
       expect(Date.now() - erased).toBeLessThan(24.6 * 3_600_000)

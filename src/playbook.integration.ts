@@ -362,6 +362,7 @@ describe('the playbook schema', () => {
         'consumed_message',
         'index_settings',
         'organization_usage',
+        'embed_usage',
         'orphan_sweeps',
         'idempotency_keys',
       ]) {
@@ -2676,6 +2677,7 @@ describe('the playbook schema', () => {
       'index_settings',
       'idempotency_keys',
       'organization_usage',
+      'embed_usage',
       'orphan_sweeps',
     ]
     /** Every row of every playbook table of one Organization, as text, read as the owner in its scope. */
@@ -3264,6 +3266,7 @@ describe('the playbook schema', () => {
             'deal_imports',
             'deals',
             'documents',
+            'embed_usage',
             'idempotency_keys',
             'index_settings',
             'ingestion_jobs',
@@ -3277,8 +3280,8 @@ describe('the playbook schema', () => {
         const applied = await pool.query(
           `select count(*)::int as n from drizzle.__drizzle_migrations`
         )
-        // 0000 to 0031: the nine before the playbook (0000 to 0008) plus 0009 to 0031.
-        expect(applied.rows[0].n).toBe(32)
+        // 0000 to 0032: the nine before the playbook (0000 to 0008) plus 0009 to 0032.
+        expect(applied.rows[0].n).toBe(33)
         await runMigrations(url.toString())
       } finally {
         await pool.end()

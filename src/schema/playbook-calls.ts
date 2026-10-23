@@ -80,6 +80,8 @@ export const CALL_SPEAKER_LABEL_MAX_LENGTH = 64
 export const CALL_SPEAKER_LABEL_MAX_BYTES = 256
 /** The largest Rep or Outcome sequence. Mirrors the contract's `MAX_SEQ`. */
 export const CALL_MAX_SEQ = 2_147_483_647
+/** The most Moments one Call's counts may state, embedded or skipped; the table's bound. */
+export const CALL_MAX_MOMENTS = 1_000_000
 /** The most times a Call purge may be claimed: the table's bound, as for documents. */
 export const CALL_PURGE_MAX_ATTEMPTS = 20
 /** The most times a Call job may be claimed: the table's bound, as for ingestion jobs. */
@@ -216,6 +218,10 @@ export const calls = playbookSchema.table(
     purgeLeaseUntil: ts('purge_lease_until'),
     purgeAttempts: integer('purge_attempts').notNull().default(0),
     restoreBarredAt: ts('restore_barred_at'),
+    // How many Moments the Call job embedded and how many it skipped (over the daily budget or
+    // duplicates); both null until the job has recorded them, so older rows stay valid.
+    embeddedMoments: integer('embedded_moments'),
+    skippedMoments: integer('skipped_moments'),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
@@ -277,6 +283,12 @@ export const calls = playbookSchema.table(
     check(
       'calls_ready_label_listed',
       sql`${t.state} <> 'ready' or ${t.repBy} is distinct from 'speaker' or ${t.repLabel} = any(${t.speakerLabels})`
+    ),
+    check(
+      'calls_moment_counts',
+      sql`(${t.embeddedMoments} is null) = (${t.skippedMoments} is null)
+        and (${t.embeddedMoments} is null or (${t.embeddedMoments} between 0 and ${sql.raw(String(CALL_MAX_MOMENTS))}
+          and ${t.skippedMoments} between 0 and ${sql.raw(String(CALL_MAX_MOMENTS))}))`
     ),
     check('calls_speaker_labels_valid', sql`playbook.speaker_labels_ok(${t.speakerLabels})`),
     check(

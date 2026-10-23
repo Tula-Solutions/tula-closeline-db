@@ -81,6 +81,7 @@ const TAKES_A_TIME = [
   'DOCUMENT_LIST_FILTERED',
   'DOCUMENT_LIST_PENDING_CLEANUP',
   'ORPHAN_SWEEP_DONE',
+  'ORPHAN_SWEEP_PAGE_DONE',
   'DEAL_LIST',
   'DEAL_LIST_BY_OUTCOME',
   'DEAL_LIST_BY_IMPORT_FLAG',
@@ -132,6 +133,21 @@ describe('the documented playbook statements', () => {
       }
       if (name === 'ORPHAN_SWEEP_DONE') {
         expect(text).toContain('playbook.orphan_sweep_done($1::text, $2::timestamptz)')
+        continue
+      }
+      if (name === 'ORPHAN_SWEEP_CLAIM') {
+        expect(text).toContain('playbook.orphan_sweep_claim($1::text, $2::int)')
+        continue
+      }
+      if (name === 'ORPHAN_SWEEP_PAGE_DONE') {
+        expect(text).toContain(
+          'playbook.orphan_sweep_page_done($1::text, $2::timestamptz, $3::text)'
+        )
+        continue
+      }
+      if (name === 'EMBED_USAGE_ADD') {
+        expect(text).toContain('values ($1, (clock_timestamp()')
+        expect(text).toContain('on conflict (organization_id, day)')
         continue
       }
       if (name === 'ORGANIZATION_REMOVE_REST') {
