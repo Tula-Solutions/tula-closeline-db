@@ -149,7 +149,7 @@ describe('service roles are confined to their own schema', () => {
   })
 })
 
-describe('closeline_core_search, the role that owns the Prospect search functions', () => {
+describe('closeline_core_search, the role that owns the Prospect and member search functions', () => {
   let owner: Pool
   const pools = new Map<string, Pool>()
   const pool = (schema: string): Pool => {
@@ -160,6 +160,7 @@ describe('closeline_core_search, the role that owns the Prospect search function
     return found
   }
   const SEARCH_FUNCTIONS = [
+    'search_membership_ids(text,text,integer)',
     'search_prospect_ids(text,text,integer)',
     'search_prospect_company_ids(text,text,integer)',
   ]
@@ -212,7 +213,7 @@ describe('closeline_core_search, the role that owns the Prospect search function
     expect(message).toContain('permission denied to set role "closeline_core_search"')
   })
 
-  test('it holds only USAGE on core and column SELECT on the three tables the search reads', async () => {
+  test('it holds only USAGE on core and column SELECT on the four tables the searches read', async () => {
     const schemas = await owner.query(
       `select n.nspname,
               has_schema_privilege('closeline_core_search', n.oid, 'USAGE') as usage,
@@ -237,8 +238,13 @@ describe('closeline_core_search, the role that owns the Prospect search function
         .filter((r) => r.some_columns)
         .map((r) => r.name)
         .sort()
-    ).toEqual(['core.prospect_companies', 'core.prospect_fields', 'core.prospects'])
-    // It can execute the two search functions it owns, and nothing but what PUBLIC may execute.
+    ).toEqual([
+      'core.memberships',
+      'core.prospect_companies',
+      'core.prospect_fields',
+      'core.prospects',
+    ])
+    // It can execute the three search functions it owns, and nothing but what PUBLIC may execute.
     const functions = await owner.query(
       `select p.oid::regprocedure::text as name from pg_proc p
         where has_function_privilege('closeline_core_search', p.oid, 'EXECUTE')
@@ -254,6 +260,7 @@ describe('closeline_core_search, the role that owns the Prospect search function
         where p.proowner = 'closeline_core_search'::regrole order by 1`
     )
     expect(owned.rows.map((r) => r.name)).toEqual([
+      'core.search_membership_ids(text,text,integer)',
       'core.search_prospect_company_ids(text,text,integer)',
       'core.search_prospect_ids(text,text,integer)',
     ])

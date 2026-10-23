@@ -260,6 +260,13 @@
       "when": 1792744875260,
       "tag": "0036_voice_idempotency_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792750466078,
+      "tag": "0037_core_member_name_trigram",
+      "breakpoints": true
     }
   ]
 }
