@@ -179,7 +179,7 @@ declare const AUTH_STATEMENTS: {
 };
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 declare namespace exports_schema {
-	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DemoRateCounter, DemoRequest, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FIELD_HISTORY_STATES, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LOGGED_DENIAL_CODES, MAX_CALLER_LENGTH, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_EVIDENCE_REF_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FORM_TOKEN_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_SEARCH_STATE_IDS, MAX_SOURCE_REF_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MIN_FORM_TOKEN_LENGTH, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KIND_PATTERN, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, coreSchema, credentials, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, refreshTokens, repChangeAllowed, rightsConfirmations, sessions, signingKeys, smsCodeCounts, suppressionEntries, teamMembers, teams, userFactors, users, verificationTokens, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+	export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, API_KEY_KINDS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CREDENTIAL_TYPES, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DemoRateCounter, DemoRequest, ENVIRONMENT_KINDS, EVENT_RETENTION_FLOOR, Environment, EnvironmentSettingsRow, Event, FIELD_HISTORY_STATES, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LOGGED_DENIAL_CODES, MAX_CALLER_LENGTH, MAX_CALL_DURATION_SECONDS, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_EVIDENCE_REF_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FORM_TOKEN_LENGTH, MAX_LINE_LABEL_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SOURCE_REF_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MIN_FORM_TOKEN_LENGTH, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, RIGHTS_MAX_WORDING_VERSION, RefreshToken, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNING_KEY_STATUSES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KIND_PATTERN, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, apiKeys, attemptCounters, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, coreSchema, credentials, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, environmentSettings, environments, events, flowAttempts, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, membershipDirectory, memberships, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, passkeyChallenges, passkeys, passwordHistory, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, refreshTokens, repChangeAllowed, rightsConfirmations, sessions, signingKeys, smsCodeCounts, suppressionEntries, teamMembers, teams, userFactors, users, verificationTokens, voiceCallEvents, voiceCalls, voiceLines, voiceRecordings, voiceSchema, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
 }
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp } from "drizzle-orm/pg-core";
@@ -14631,6 +14631,1117 @@ declare const playbookWorkHints: PgTableWithColumns_a5zn0g44<{
 	};
 	dialect: "pg";
 }>;
+import { PgSchema as PgSchema_mtt0uw4 } from "drizzle-orm/pg-core";
+/** The `voice` Postgres schema, owned by the voice service (login role `closeline_voice`). */
+declare const voiceSchema: PgSchema_mtt0uw4<"voice">;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g45 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp45 } from "drizzle-orm/pg-core";
+/** The states of a Line. Mirrors the contract's `LINE_STATES`. */
+declare const LINE_STATES: readonly ["porting", "active", "released"];
+/** Who inbound Calls on a Line ring. Mirrors the `kind` of the contract's `lineAssignmentSchema`. */
+declare const LINE_ASSIGNMENT_KINDS: readonly ["unassigned", "team", "rep"];
+/** The longest Line label, in characters. Mirrors the contract's `MAX_LINE_LABEL_LENGTH`. */
+declare const MAX_LINE_LABEL_LENGTH = 100;
+/** The directions of a Call. Mirrors the contract's `VOICE_CALL_DIRECTIONS`. */
+declare const VOICE_CALL_DIRECTIONS: readonly ["inbound", "outbound"];
+/** The states of a Call. Mirrors the contract's `VOICE_CALL_STATES`. */
+declare const VOICE_CALL_STATES: readonly ["ringing", "connecting", "disclosing", "live", "ended", "failed", "missed"];
+/** The states a Call cannot leave. Mirrors the contract's `VOICE_CALL_FINAL_STATES`. */
+declare const VOICE_CALL_FINAL_STATES: readonly ["ended", "failed", "missed"];
+/** Why a Call ended `failed`. Mirrors the contract's `VOICE_CALL_FAILURE_REASONS`. */
+declare const VOICE_CALL_FAILURE_REASONS: readonly ["disclosure_failed", "carrier_dropped", "carrier_rejected", "busy", "no_answer", "rep_unreachable", "provider_error", "timeout"];
+/** Who ended a Call. Mirrors the contract's `VOICE_CALL_ENDED_BY`. */
+declare const VOICE_CALL_ENDED_BY: readonly ["rep", "prospect", "system"];
+/** The states of a Call's Transcript. Mirrors the contract's `VOICE_TRANSCRIPT_STATES`. */
+declare const VOICE_TRANSCRIPT_STATES: readonly ["pending", "ready", "deleted"];
+/** The longest a Call can last, in seconds. Mirrors the contract's `MAX_CALL_DURATION_SECONDS`. */
+declare const MAX_CALL_DURATION_SECONDS = 43200;
+/** The longest wrap-up note, in characters. Mirrors the contract's `MAX_WRAP_UP_NOTE_LENGTH`. */
+declare const MAX_WRAP_UP_NOTE_LENGTH = 2e3;
+/**
+* The states a Recording row is in. A Call with no row has no Recording (the contract's `none`).
+* Mirrors the contract's `VOICE_RECORDING_STATES` without `none`.
+*/
+declare const VOICE_RECORDING_STATES: readonly ["storing", "stored", "deleted"];
+/** The longest storage key of a Recording, in characters. Mirrors the contract's `MAX_RECORDING_KEY_LENGTH`. */
+declare const MAX_RECORDING_KEY_LENGTH = 512;
+/** The audio channels of a Recording: one mixed, or two (Rep on channel 1, Prospect on channel 2). */
+declare const VOICE_RECORDING_CHANNELS: readonly [1, 2];
+/** The kinds of entry in a Call's event log. */
+declare const VOICE_CALL_EVENT_KINDS: readonly ["state_changed", "disclosure_played", "recording_started", "recording_stored", "recording_deleted", "provider_callback"];
+/** The longest provider event id, in characters. */
+declare const MAX_PROVIDER_EVENT_ID_LENGTH = 200;
+/** The longest idempotency key, in characters. Mirrors the contract's `idempotencyKeySchema`. */
+declare const MAX_VOICE_IDEMPOTENCY_KEY_LENGTH = 255;
+/**
+* A Line: a phone number an Organization uses to place and receive Calls. `number` is E.164 and
+* tenant data (never logged). A number is live in at most one Organization at a time
+* (`lines_number_live_key`, over every state but `released`). Assignment is one of three shapes,
+* tied by a check: nobody (both ids null), a Team (`assignment_team_id`) or a Rep
+* (`assignment_membership_id`); a released Line is unassigned and has its release time.
+* `provider_sid` is the telephony provider's id for the number.
+*
+* Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page): all Lines
+* (`lines_list_idx`), one state (`lines_state_list_idx`); the Lines of a Team or a Rep
+* (`lines_team_idx`, `lines_rep_idx`).
+*/
+declare const voiceLines: PgTableWithColumns_a5zn0g45<{
+	name: "lines";
+	schema: "voice";
+	columns: {
+		id: PgColumn_ffrhhp45<{
+			name: "id";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp45<{
+			name: "organization_id";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		number: PgColumn_ffrhhp45<{
+			name: "number";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		country: PgColumn_ffrhhp45<{
+			name: "country";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		label: PgColumn_ffrhhp45<{
+			name: "label";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp45<{
+			name: "state";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: "active" | "porting" | "released";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["porting", "active", "released"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		assignmentKind: PgColumn_ffrhhp45<{
+			name: "assignment_kind";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: "rep" | "team" | "unassigned";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["unassigned", "team", "rep"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		assignmentTeamId: PgColumn_ffrhhp45<{
+			name: "assignment_team_id";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		assignmentMembershipId: PgColumn_ffrhhp45<{
+			name: "assignment_membership_id";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		providerSid: PgColumn_ffrhhp45<{
+			name: "provider_sid";
+			tableName: "lines";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "lines";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		releasedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "lines";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* A Call placed or taken in the Softphone. `prospect_number` is E.164 and tenant data (never
+* logged); `rep_membership_id` is null on a missed inbound Call nobody answered. The checks are the
+* contract's state machine: a `live` or `ended` Call has played its Disclosure (wording version
+* and time are both set or both null), `failed` has a reason and nothing else does,
+* `disclosure_failed` is only for a Disclosure that did not play, a final state has an end time,
+* `live` and `ended` have an answer time, only `ended` has a duration and a wrap-up (`deal_id`,
+* `note`), and times never run backwards. `transcript_state` is `pending` until a Transcript
+* exists. `idempotency_key` and `request_fingerprint` (both or neither) record how an outbound
+* Call was placed: one key, one Call, per Organization.
+*
+* Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page, always one Organization):
+* all Calls (`calls_list_idx`); of one Rep, which is how a Team's Calls are read, `rep_membership_id
+* = any($ids)` (`calls_rep_list_idx`); one state, such as the missed inbound Calls
+* (`calls_state_list_idx`); of one Prospect (`calls_prospect_list_idx`); of one Line
+* (`calls_line_list_idx`, also the foreign key's index). A direction or time-range filter is
+* applied to the rows one of those reads.
+*/
+declare const voiceCalls: PgTableWithColumns_a5zn0g45<{
+	name: "calls";
+	schema: "voice";
+	columns: {
+		id: PgColumn_ffrhhp45<{
+			name: "id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp45<{
+			name: "organization_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		direction: PgColumn_ffrhhp45<{
+			name: "direction";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "inbound" | "outbound";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["inbound", "outbound"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp45<{
+			name: "state";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "connecting" | "disclosing" | "ended" | "failed" | "live" | "missed" | "ringing";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["ringing", "connecting", "disclosing", "live", "ended", "failed", "missed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		lineId: PgColumn_ffrhhp45<{
+			name: "line_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		repMembershipId: PgColumn_ffrhhp45<{
+			name: "rep_membership_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		prospectId: PgColumn_ffrhhp45<{
+			name: "prospect_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		prospectNumber: PgColumn_ffrhhp45<{
+			name: "prospect_number";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		providerCallSid: PgColumn_ffrhhp45<{
+			name: "provider_call_sid";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		idempotencyKey: PgColumn_ffrhhp45<{
+			name: "idempotency_key";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		requestFingerprint: PgColumn_ffrhhp45<{
+			name: "request_fingerprint";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		disclosureWordingVersion: PgColumn_ffrhhp45<{
+			name: "disclosure_wording_version";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		disclosurePlayedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		aiAssisted: PgColumn_ffrhhp45<{
+			name: "ai_assisted";
+			tableName: "calls";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		answeredAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		endedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		durationSeconds: PgColumn_ffrhhp45<{
+			name: "duration_seconds";
+			tableName: "calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		endedBy: PgColumn_ffrhhp45<{
+			name: "ended_by";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "prospect" | "rep" | "system";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["rep", "prospect", "system"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		failureReason: PgColumn_ffrhhp45<{
+			name: "failure_reason";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "busy" | "carrier_dropped" | "carrier_rejected" | "disclosure_failed" | "no_answer" | "provider_error" | "rep_unreachable" | "timeout";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["disclosure_failed", "carrier_dropped", "carrier_rejected", "busy", "no_answer", "rep_unreachable", "provider_error", "timeout"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dealId: PgColumn_ffrhhp45<{
+			name: "deal_id";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		note: PgColumn_ffrhhp45<{
+			name: "note";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		transcriptState: PgColumn_ffrhhp45<{
+			name: "transcript_state";
+			tableName: "calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "deleted" | "pending" | "ready";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["pending", "ready", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* One entry of a Call's append-only event log: a state change, the Disclosure played, a Recording
+* step, or a provider callback. It is also the idempotency record for webhooks:
+* `call_events_provider_event_key` is unique over `(organization_id, provider_event_id)`, so a
+* redelivered webhook inserts nothing (`on conflict (organization_id, provider_event_id) do
+* nothing`); entries the service makes itself have no provider event id (null, and nulls never
+* conflict). `seq` orders the log. The service role may insert and delete (erasure, retention) but
+* holds no UPDATE: an entry never changes. A `state_changed` entry carries the new state
+* (`to_state`) and the one it left (`from_state`, null for the first); no other kind does.
+* Holds no number, name or Transcript text.
+*
+* Lists served: one Call's log in order, `WHERE organization_id = $1 AND call_id = $2 ORDER BY
+* seq` (`call_events_call_idx`).
+*/
+declare const voiceCallEvents: PgTableWithColumns_a5zn0g45<{
+	name: "call_events";
+	schema: "voice";
+	columns: {
+		id: PgColumn_ffrhhp45<{
+			name: "id";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp45<{
+			name: "organization_id";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		seq: PgColumn_ffrhhp45<{
+			name: "seq";
+			tableName: "call_events";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: "always";
+			generated: undefined;
+		}, {}, {}>;
+		callId: PgColumn_ffrhhp45<{
+			name: "call_id";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		kind: PgColumn_ffrhhp45<{
+			name: "kind";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: "disclosure_played" | "provider_callback" | "recording_deleted" | "recording_started" | "recording_stored" | "state_changed";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["state_changed", "disclosure_played", "recording_started", "recording_stored", "recording_deleted", "provider_callback"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		fromState: PgColumn_ffrhhp45<{
+			name: "from_state";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: "connecting" | "disclosing" | "ended" | "failed" | "live" | "missed" | "ringing";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["ringing", "connecting", "disclosing", "live", "ended", "failed", "missed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		toState: PgColumn_ffrhhp45<{
+			name: "to_state";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: "connecting" | "disclosing" | "ended" | "failed" | "live" | "missed" | "ringing";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["ringing", "connecting", "disclosing", "live", "ended", "failed", "missed"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		providerEventId: PgColumn_ffrhhp45<{
+			name: "provider_event_id";
+			tableName: "call_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		occurredAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "call_events";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		recordedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "call_events";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* The reference to a Call's Recording: the audio is in the Region's object storage under
+* `storage_key`, never in the database. At most one per Call (`recordings_call_key`). It is
+* `storing` while copied from the provider, `stored` once playable (`size_bytes`, `stored_at`
+* set), and `deleted` after an Admin deleted it (`deleted_at` set); `purge_due_at`, only on a
+* deleted row, is when the object is removed from storage. `channels` is 1 or 2 (two: the Rep and
+* the Prospect separately). A Call with no row has no Recording.
+*
+* Lookups served: by Call (`recordings_call_key`); by storage key (`recordings_storage_key_key`);
+* deleted Recordings due for purge, oldest first (`recordings_purge_idx`).
+*/
+declare const voiceRecordings: PgTableWithColumns_a5zn0g45<{
+	name: "recordings";
+	schema: "voice";
+	columns: {
+		id: PgColumn_ffrhhp45<{
+			name: "id";
+			tableName: "recordings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp45<{
+			name: "organization_id";
+			tableName: "recordings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		callId: PgColumn_ffrhhp45<{
+			name: "call_id";
+			tableName: "recordings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		storageKey: PgColumn_ffrhhp45<{
+			name: "storage_key";
+			tableName: "recordings";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sizeBytes: PgColumn_ffrhhp45<{
+			name: "size_bytes";
+			tableName: "recordings";
+			dataType: "number";
+			columnType: "PgBigInt53";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		channels: PgColumn_ffrhhp45<{
+			name: "channels";
+			tableName: "recordings";
+			dataType: "number";
+			columnType: "PgSmallInt";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp45<{
+			name: "state";
+			tableName: "recordings";
+			dataType: "string";
+			columnType: "PgText";
+			data: "deleted" | "stored" | "storing";
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["storing", "stored", "deleted"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "recordings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		storedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "recordings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		deletedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "recordings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		purgeDueAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "recordings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		updatedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "recordings";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
 /** The Drizzle schema object: every Postgres schema the services own. */
 type Schema = typeof exports_schema;
 /** A Drizzle database over a node-postgres pool. */
@@ -14910,7 +16021,7 @@ declare function withEnvironment<T>(db: Database, environmentId: string, fn: (tx
 * relation in any other schema (bar `public` and drizzle's own) is itself a gap, and a unit test
 * keeps this list equal to the schemas exported from `src/schema`.
 */
-declare const TENANT_SCHEMAS: readonly ["auth", "core", "playbook"];
+declare const TENANT_SCHEMAS: readonly ["auth", "core", "playbook", "voice"];
 /**
 * The `auth` tables scoped to an auth environment, as `schema.table`. Each has no `organization_id`
 * (users are global within a Region, ADR 0005) and is instead bound by its own forced row-level

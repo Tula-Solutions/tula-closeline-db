@@ -8,6 +8,7 @@ export interface IntegrationEnv {
   auth: string
   core: string
   playbook: string
+  voice: string
 }
 
 const ENV_NAMES = {
@@ -15,6 +16,7 @@ const ENV_NAMES = {
   auth: 'DATABASE_URL_AUTH',
   core: 'DATABASE_URL_CORE',
   playbook: 'DATABASE_URL_PLAYBOOK',
+  voice: 'DATABASE_URL_VOICE',
 } as const satisfies Record<keyof IntegrationEnv, string>
 
 /** The host port docker-compose.yml publishes Postgres on; `POSTGRES_PORT` moves both together. */
@@ -29,11 +31,17 @@ function composePort(): string {
 export function composeDefaults(): IntegrationEnv {
   const at = (login: string): string =>
     `postgres://closeline_${login}:closeline_${login}_local@127.0.0.1:${composePort()}/closeline`
-  return { owner: at('owner'), auth: at('auth'), core: at('core'), playbook: at('playbook') }
+  return {
+    owner: at('owner'),
+    auth: at('auth'),
+    core: at('core'),
+    playbook: at('playbook'),
+    voice: at('voice'),
+  }
 }
 
 /**
- * Read the owner and per-service connection strings. With none of the four variables set, use
+ * Read the owner and per-service connection strings. With none of the five variables set, use
  * {@link composeDefaults}. With some set, all must be, so a half-set environment cannot mix a
  * custom Postgres with the default one.
  */
@@ -55,6 +63,7 @@ export function integrationEnv(): IntegrationEnv {
     auth: read(ENV_NAMES.auth),
     core: read(ENV_NAMES.core),
     playbook: read(ENV_NAMES.playbook),
+    voice: read(ENV_NAMES.voice),
   }
 }
 
@@ -122,8 +131,8 @@ export function assertLocalTestDatabase(url: string): void {
 
 /**
  * The bootstrap superuser's connection string, for the few tests that must change a role's
- * attributes. With none of the four service variables set, it is the compose superuser. An
- * explicit `DATABASE_URL_ADMIN` is returned only together with all four service variables, so the
+ * attributes. With none of the five service variables set, it is the compose superuser. An
+ * explicit `DATABASE_URL_ADMIN` is returned only together with all five service variables, so the
  * superuser and the database under test cannot name different clusters. Any other combination
  * throws, so no suite is silently skipped. The host must be loopback (see
  * {@link assertLocalTestDatabase}).
@@ -160,7 +169,7 @@ export async function dropStaleTestObjects(owner: Pool, ownerUrl: string): Promi
   const stale = await owner.query<{ schema: string; name: string; kind: string }>(
     `select n.nspname as schema, c.relname as name, c.relkind as kind
        from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('auth', 'core', 'playbook', 'public') and c.relname like 'it\\_%'
+      where n.nspname in ('auth', 'core', 'playbook', 'voice', 'public') and c.relname like 'it\\_%'
         and c.relkind in ('r', 'p', 'v', 'm', 'f')
       order by (c.relkind in ('v', 'm')) desc`
   )

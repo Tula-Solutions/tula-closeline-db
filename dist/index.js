@@ -47,7 +47,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-9rv5g4cf.js";
+} from "./shared/chunk-swhx87tt.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -429,7 +429,7 @@ function tenantRlsStatements(schemaName, tableName) {
 }
 
 // src/isolation.ts
-var TENANT_SCHEMAS = ["auth", "core", "playbook"];
+var TENANT_SCHEMAS = ["auth", "core", "playbook", "voice"];
 var ALLOWED_PREDEFINED_ROLES = [
   "pg_monitor",
   "pg_read_all_settings",

@@ -8,4 +8,5 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   -v auth_password="$CLOSELINE_AUTH_PASSWORD" \
   -v core_password="$CLOSELINE_CORE_PASSWORD" \
   -v playbook_password="$CLOSELINE_PLAYBOOK_PASSWORD" \
+  -v voice_password="$CLOSELINE_VOICE_PASSWORD" \
   -f /etc/closeline/init.sql

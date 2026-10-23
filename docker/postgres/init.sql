@@ -1,6 +1,6 @@
 -- Creates the database roles Closeline needs before the first migration. Run once per database,
 -- as a role that can create roles (the bootstrap superuser locally; infra elsewhere), with the
--- psql variables owner_password, auth_password, core_password and playbook_password set.
+-- psql variables owner_password, auth_password, core_password, playbook_password and voice_password set.
 -- The passwords come from the environment and are for LOCAL use only: real environments create
 -- these roles with secrets from the secret store (tula-closeline-infra), not with this file.
 --
@@ -16,6 +16,8 @@ CREATE ROLE closeline_auth LOGIN PASSWORD :'auth_password'
 CREATE ROLE closeline_core LOGIN PASSWORD :'core_password'
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT NOBYPASSRLS;
 CREATE ROLE closeline_playbook LOGIN PASSWORD :'playbook_password'
+  NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT NOBYPASSRLS;
+CREATE ROLE closeline_voice LOGIN PASSWORD :'voice_password'
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT NOBYPASSRLS;
 
 -- The owner role owns this database, so it can create the schemas in migration 0000.
