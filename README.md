@@ -3452,5 +3452,45 @@ GRANT closeline_core_crm_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 
 The migration fails naming the role if it is missing or wrongly configured. Locally
 `docker/postgres/init.sql` does this; a volume created before v0.35.0 lacks the role, so recreate it.
-The tenant isolation check allows `BYPASSRLS` on both definer roles (`DEFINER_ROLES`) and reports
+The tenant isolation check allows `BYPASSRLS` on the definer roles (`DEFINER_ROLES`) and reports
 either if it can log in or is a superuser.
+
+## API key lookup (v0.37.0, migration `0035`)
+
+The API key exchange knows only the key it was handed, before any Organization is known.
+`core.api_key_for_hash(p_secret_hash text)` answers it:
+`TABLE(organization_id text, key_id text, scopes text[], revoked_at timestamptz, expires_at timestamptz)`,
+at most one row, from the unique `api_keys_secret_hash_key` index. `STABLE SECURITY DEFINER`,
+`search_path = pg_catalog, core, pg_temp`, `EXECUTE` revoked from `PUBLIC` and granted to
+`closeline_core` alone. It is owned by `closeline_core_key_lookup` (`KEY_LOOKUP_ROLE`): `NOLOGIN`,
+`BYPASSRLS`, `NOINHERIT`, a member of no role and held by no service role (`closeline_owner` is a
+member `WITH SET TRUE, INHERIT FALSE`, as for `closeline_core_crm_lookup`). It holds `USAGE` on `core`
+and `SELECT` on six columns of `api_keys` (`organization_id`, `id`, `secret_hash`, `scopes`,
+`revoked_at`, `expires_at`): it reads the hash to match on and never returns it, and cannot read the
+name, prefix or role ceiling.
+
+`API_KEY_FOR_HASH` is the statement, with `$1` the SHA-256 hash of the presented key as 64 lowercase
+hex characters; run it on the pooled handle, not inside `withOrganization`, then read the key inside
+`withOrganization` for the Organization it names:
+
+```sql
+select organization_id, key_id, scopes, revoked_at, expires_at from core.api_key_for_hash($1)
+```
+
+- No row for an unknown hash or one whose Organization is gone. The hash is matched exactly, never
+  as a pattern; uppercase hex gives no row.
+- A null hash, or one that is not exactly 64 lowercase hex characters, gives no row and raises
+  nothing.
+- The key is not judged: a revoked or expired key is returned with `revoked_at` / `expires_at` set,
+  and the caller refuses it. The Organization's `status` is not checked either.
+
+**Deployed Regions** (tula-closeline-infra) must create the role in the Region bootstrap, before
+migration `0035` runs, as for `closeline_core_crm_lookup`:
+
+```sql
+CREATE ROLE closeline_core_key_lookup NOLOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_key_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+```
+
+The migration fails naming the role if it is missing or wrongly configured. Locally
+`docker/postgres/init.sql` does this; a volume created before v0.37.0 lacks the role, so recreate it.

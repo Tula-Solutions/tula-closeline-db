@@ -37,5 +37,13 @@ CREATE ROLE closeline_core_crm_lookup NOLOGIN
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
 GRANT closeline_core_crm_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 
+-- closeline_core_key_lookup  owns core.api_key_for_hash (migration 0035), the lookup the API key
+--                  exchange runs before it knows the Organization. Same shape as the roles above,
+--                  but it can read six columns of api_keys: the hash it matches and the five it
+--                  returns. It cannot read the name, prefix or anything else.
+CREATE ROLE closeline_core_key_lookup NOLOGIN
+  NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_core_key_lookup TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+
 -- The owner role owns this database, so it can create the schemas in migration 0000.
 SELECT format('ALTER DATABASE %I OWNER TO closeline_owner', current_database()) \gexec

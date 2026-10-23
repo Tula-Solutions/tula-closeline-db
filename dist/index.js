@@ -361,6 +361,8 @@ async function purgeDemoRateCounters(db, limit) {
   const { rows } = await db.execute(sql`select core.purge_demo_rate_counters(${limit}) as purged`);
   return Number(rows[0]?.purged ?? 0);
 }
+// src/core-key-statements.ts
+var API_KEY_FOR_HASH = "select organization_id, key_id, scopes, revoked_at, expires_at from core.api_key_for_hash($1)";
 // src/core-lookups.ts
 import { sql as sql2 } from "drizzle-orm";
 var USER_ID = /^usr_[0-9a-f]{32}$/;
@@ -419,7 +421,8 @@ import { sql as sql5 } from "drizzle-orm";
 var OWNER_ROLE = "closeline_owner";
 var SEARCH_ROLE = "closeline_core_search";
 var CRM_LOOKUP_ROLE = "closeline_core_crm_lookup";
-var DEFINER_ROLES = [SEARCH_ROLE, CRM_LOOKUP_ROLE];
+var KEY_LOOKUP_ROLE = "closeline_core_key_lookup";
+var DEFINER_ROLES = [SEARCH_ROLE, CRM_LOOKUP_ROLE, KEY_LOOKUP_ROLE];
 
 // src/tenant.ts
 import { sql as sql4 } from "drizzle-orm";
@@ -2155,6 +2158,7 @@ export {
   ABANDON_RECORD,
   ABANDON_RESOLVE,
   ABANDON_SETTLE,
+  API_KEY_FOR_HASH,
   AUTH_STATEMENTS,
   CALL_CHANNELS2 as CALL_CHANNELS,
   CALL_CLEANUP_BEGIN,
@@ -2322,6 +2326,7 @@ export {
   INGESTION_JOB_HEARTBEAT,
   INGESTION_JOB_RETRY,
   INGESTION_MAX_RETRY_DELAY_MS,
+  KEY_LOOKUP_ROLE,
   LOCKOUT_ATTEMPT,
   LOCKOUT_CLEAR,
   LOCKOUT_MIN_RETRY_AFTER_MS,

@@ -1911,6 +1911,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
   describe('every function in core is owned, pinned and callable by exactly the roles meant to', () => {
     /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
+      api_key_for_hash: [true, false, true],
       audit_events_extend_chain: [false, true, false],
       claim_demo_notices: [true, false, true],
       consent_channels_valid: [false, false, true],
@@ -1995,11 +1996,15 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         // The CRM webhook lookup (0033) is owned by its own bypass role and pinned to
         // 'pg_catalog, core, pg_temp'; core-crm-webhook-lookup.integration.ts pins the rest.
         const crmFn = fn.name === 'crm_connection_for_account'
+        // The API key lookup (0035) likewise, with its own role and the same pinned path.
+        const keyFn = fn.name === 'api_key_for_hash'
         const expectedOwner = searchFn
           ? 'closeline_core_search'
           : crmFn
             ? 'closeline_core_crm_lookup'
-            : 'closeline_owner'
+            : keyFn
+              ? 'closeline_core_key_lookup'
+              : 'closeline_owner'
         expect([fn.name, fn.owner]).toEqual([fn.name, expectedOwner])
         // The directory writers also pin their plans to one per key (see the migration).
         const planPinned =
@@ -2008,7 +2013,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           fn.name,
           searchFn
             ? ['search_path=pg_catalog, core, public, pg_temp', 'plan_cache_mode=force_custom_plan']
-            : crmFn
+            : crmFn || keyFn
               ? ['search_path=pg_catalog, core, pg_temp']
               : planPinned
                 ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
@@ -2025,6 +2030,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         invitation_for_token: 's',
         consent_form_for_token: 's',
         crm_connection_for_account: 's',
+        api_key_for_hash: 's',
         consent_channels_valid: 'i',
         has_expired: 'i',
         prospect_merged_ids_valid: 'i',
