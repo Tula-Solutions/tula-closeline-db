@@ -17,8 +17,8 @@ Standards: `AGENTS.md` (this repo) and `.claude/COMMON.md` (shared).
 
 ## Database
 
-One Postgres per Region; each service owns one schema (`auth`, `core`, `playbook`, `voice`) and writes it
-through its own login role (`closeline_auth`, `closeline_core`, `closeline_playbook`, `closeline_voice`). Migrations
+One Postgres per Region; each service owns one schema (`auth`, `core`, `playbook`, `voice`, `outbound`) and writes it
+through its own login role (`closeline_auth`, `closeline_core`, `closeline_playbook`, `closeline_voice`, `closeline_outbound`). Migrations
 are generated and applied only from this repo and never edited once on `develop`. Never
 `drizzle-kit push`.
 
@@ -33,7 +33,7 @@ The first start runs `docker/postgres/init.sh`, which creates the owner and serv
 `docker compose down -v`. A volume created before v0.32.0 lacks `closeline_core_search` (below), so
 migration `0030` stops with a message naming it; recreate the volume.
 
-Integration tests need Postgres from the compose file. With none of the five connection
+Integration tests need Postgres from the compose file. With none of the six connection
 variables in `.env.example` set they use the compose defaults (port 5432, or `POSTGRES_PORT`), so
 this is the whole of what CI runs:
 
@@ -41,7 +41,7 @@ this is the whole of what CI runs:
 docker compose up -d --wait && bun run test:integration
 ```
 
-Set all five variables and `DATABASE_URL_ADMIN`, a superuser, together to test against another
+Set all six variables and `DATABASE_URL_ADMIN`, a superuser, together to test against another
 Postgres (`DATABASE_URL_ADMIN` alone, or a partial set, is refused). The suites drop stale test
 objects and alter roles, so they refuse any host that is not loopback unless
 `ALLOW_NON_LOCAL_TEST_DATABASE=1` is set; use that only for a disposable database. The suites cover
@@ -3634,3 +3634,71 @@ GRANT closeline_core_outbox_drain TO closeline_owner WITH SET TRUE, INHERIT FALS
 
 The migration fails naming the role if it is missing or wrongly configured. Locally
 `docker/postgres/init.sql` does this; a volume created before v0.42.0 lacks the role, so recreate it.
+
+## The outbound schema (v0.43.0, migration `0040`)
+
+The new Postgres schema `outbound` is owned by the outbound service, which connects as the login
+role `closeline_outbound` (variable `DATABASE_URL_OUTBOUND`, password `CLOSELINE_OUTBOUND_PASSWORD`
+in `docker/postgres/init.sh`). The role is created by `docker/postgres/init.sql` locally and by
+infra elsewhere before the migration runs, and reaches its own schema only. Ticket
+tula-closeline#253 adds the tables for Brand Voice, Research Briefs, Drafts and model usage; the
+service that writes them is a later ticket. Tables are exported from `src/schema/outbound-tables.ts`
+as `outboundBrandVoices`, `outboundBriefs`, `outboundBriefStatements`, `outboundDrafts`,
+`outboundDraftCitations`, `outboundDraftChecks` and `outboundModelUsage`. The lists and limits copy the
+contract's `messaging` constants and a test pins each.
+
+Every table has a composite primary key led by `organization_id`, the shape checks on every id
+(`bvo_`, `brf_`, `drf_`, `prs_`, `cpg_`, `mem_`, `sig_`, `call_`, `deal_`, `doc_` and 32 hex
+characters) and the usual fail-closed policy `<table>_tenant_isolation`. A second Organization reads
+and writes nothing, and `closeline_outbound` sees no row without an Organization set. There are no
+foreign keys across schemas: ids of Prospects, Campaigns, Memberships, signals, Calls, Deals and
+Documents are shape-checked only, and the service resolves them through the owning service.
+
+- **`brand_voices`:** one row per version of an Organization's Brand Voice. `version` (1 to
+  1000000) is unique per Organization, so two writers racing on the same `expectedVersion` cannot
+  both win; the current version is the highest. `tone` (1 to 500 characters), `preferred_words`
+  (at most 50) and `banned_phrases` (at most 100) with no empty or null term and a bounded total
+  length (the 100-character limit on each term is the service's), `sign_off` (null or 1 to 200),
+  `max_length_characters` (100 to 5000, default 1500), `created_by_membership_id`. **The role holds
+  no UPDATE:** a change is a new row, so a Draft names the exact version it was written with.
+- **`briefs`:** one Research Brief of a Prospect: `angle_text` (1 to 500), `angle_origin`
+  (`won_deals` or `model_default`), `dropped_count` (0 to 1000), `prospect_updated_at`, `language`
+  (`en`), `model`, `created_at` and `expires_at` (after `created_at`). No UPDATE for the role.
+  `briefs_prospect_idx` on `(organization_id, prospect_id, created_at desc, id desc)` serves the cache
+  lookup; `briefs_list_idx` on `(organization_id, created_at desc, id desc)` serves the list.
+- **`brief_statements`:** the rows of a Brief in order, primary key `(organization_id, brief_id,
+  position)`, `position` 0 to 39. A `statement` row has `text` (1 to 500) and one source; an
+  `angle_source` row has a source and no text. Deleting a Brief deletes its rows. No UPDATE.
+- **`drafts`:** one message for one Prospect and Step: `channel` (`email`), `goal`, `subject` (1 to 200),
+  `body` (1 to 5000; model output, never logged), `revision` (1 to 10000; `source` `edited` needs a
+  revision above 1), `ungrounded`, `won_deal_count` (0 to 100), `auto_sendable` (never true when
+  `ungrounded`), `model`, and the Brand Voice it was written with. `(organization_id,
+  brand_voice_id, voice_version)` references `brand_voices (organization_id, id, version)`, and
+  `(organization_id, brief_id, prospect_id)` references `briefs`, so a Draft cannot name a version or Brief
+  its Organization lacks, nor a Brief of another Prospect; a version a Draft uses cannot be deleted.
+  Lists newest first, keyset `(created_at, id)`: `drafts_list_idx`, `drafts_prospect_idx`,
+  `drafts_campaign_idx` (where a Campaign is set) and `drafts_ungrounded_idx` (where `ungrounded`).
+- **`draft_citations`:** the Citations of a Draft in order, primary key `(organization_id, draft_id,
+  position)`, `position` 0 to 19. **Ids and scores only:** the table has no column for a snippet,
+  passage or page text; the source is fetched when read, so a deleted source shows as removed.
+  `applies` is the one column an edit changes. `score` is allowed for a `moment` or `document` only.
+  Deleting a Draft deletes its Citations.
+- **`draft_checks`:** one row per check name (`citations_resolve`, `claims_supported`, `banned_phrase`,
+  `length`, `name_match`) per Draft, so a re-run upserts. `result` is `pass` exactly when `count` is 0.
+- **`model_usage`:** tokens, requests and `cost_micros` (millionths of a US dollar) per Organization,
+  UTC month (`month` is the first day) and model. The service adds with `insert ... on conflict
+  (organization_id, month, model) do update`; the monthly limit sums `cost_micros` over
+  `(organization_id, month)`.
+
+**Sources.** `brief_statements` and `draft_citations` share the columns `source_kind`
+(`prospect_field`, `signal`, `web_page`, `moment`, `document`) and the ones each kind uses, and a check
+requires exactly the kind's columns: `prospect_field` has `source_prospect_id` and `source_field`
+(`firstName`, `lastName`, `jobTitle`, `email`, `phone` or `linkedinUrl`); `signal` has `source_signal_id` and
+`source_observed_at`; `web_page` has `source_url` (http or https, at most 2048 characters, no
+credentials) and `source_retrieved_at`; `moment` has `source_call_id` and `source_deal_record_id`;
+`document` has `source_document_id` and, optionally, `source_page` (1 to 300).
+
+**Not enforced here.** That a `moment` or `document` id belongs to the same Organization's Playbook
+(the Playbook service resolves it, and a second Organization's ids resolve to nothing), that a Brief
+has at most 20 statements and 20 angle sources, the 100-character limit on each voice term, and that
+every check passed when a Draft is `auto_sendable`.

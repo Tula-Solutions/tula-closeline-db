@@ -9,6 +9,7 @@ export interface IntegrationEnv {
   core: string
   playbook: string
   voice: string
+  outbound: string
 }
 
 const ENV_NAMES = {
@@ -17,6 +18,7 @@ const ENV_NAMES = {
   core: 'DATABASE_URL_CORE',
   playbook: 'DATABASE_URL_PLAYBOOK',
   voice: 'DATABASE_URL_VOICE',
+  outbound: 'DATABASE_URL_OUTBOUND',
 } as const satisfies Record<keyof IntegrationEnv, string>
 
 /** The host port docker-compose.yml publishes Postgres on; `POSTGRES_PORT` moves both together. */
@@ -37,11 +39,12 @@ export function composeDefaults(): IntegrationEnv {
     core: at('core'),
     playbook: at('playbook'),
     voice: at('voice'),
+    outbound: at('outbound'),
   }
 }
 
 /**
- * Read the owner and per-service connection strings. With none of the five variables set, use
+ * Read the owner and per-service connection strings. With none of the six variables set, use
  * {@link composeDefaults}. With some set, all must be, so a half-set environment cannot mix a
  * custom Postgres with the default one.
  */
@@ -64,6 +67,7 @@ export function integrationEnv(): IntegrationEnv {
     core: read(ENV_NAMES.core),
     playbook: read(ENV_NAMES.playbook),
     voice: read(ENV_NAMES.voice),
+    outbound: read(ENV_NAMES.outbound),
   }
 }
 
@@ -131,8 +135,8 @@ export function assertLocalTestDatabase(url: string): void {
 
 /**
  * The bootstrap superuser's connection string, for the few tests that must change a role's
- * attributes. With none of the five service variables set, it is the compose superuser. An
- * explicit `DATABASE_URL_ADMIN` is returned only together with all five service variables, so the
+ * attributes. With none of the six service variables set, it is the compose superuser. An
+ * explicit `DATABASE_URL_ADMIN` is returned only together with all six service variables, so the
  * superuser and the database under test cannot name different clusters. Any other combination
  * throws, so no suite is silently skipped. The host must be loopback (see
  * {@link assertLocalTestDatabase}).
@@ -148,7 +152,7 @@ export function adminUrl(): string {
   } else {
     throw new Error(
       'Integration tests need DATABASE_URL_ADMIN (a superuser) together with all of ' +
-        `${SERVICE_URL_NAMES.join(', ')}, or none of the five to use the compose database (see the README)`
+        `${SERVICE_URL_NAMES.join(', ')}, or none of the six to use the compose database (see the README)`
     )
   }
   assertLocalTestDatabase(url)
@@ -169,7 +173,7 @@ export async function dropStaleTestObjects(owner: Pool, ownerUrl: string): Promi
   const stale = await owner.query<{ schema: string; name: string; kind: string }>(
     `select n.nspname as schema, c.relname as name, c.relkind as kind
        from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('auth', 'core', 'playbook', 'voice', 'public') and c.relname like 'it\\_%'
+      where n.nspname in ('auth', 'core', 'playbook', 'voice', 'outbound', 'public') and c.relname like 'it\\_%'
         and c.relkind in ('r', 'p', 'v', 'm', 'f')
       order by (c.relkind in ('v', 'm')) desc`
   )

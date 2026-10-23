@@ -62,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-40jazgxh.js";
+} from "./shared/chunk-fg5e8y04.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -480,7 +480,7 @@ function tenantRlsStatements(schemaName, tableName) {
 }
 
 // src/isolation.ts
-var TENANT_SCHEMAS = ["auth", "core", "playbook", "voice"];
+var TENANT_SCHEMAS = ["auth", "core", "playbook", "voice", "outbound"];
 var ALLOWED_PREDEFINED_ROLES = [
   "pg_monitor",
   "pg_read_all_settings",
