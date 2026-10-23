@@ -523,4 +523,192 @@ describe('voice twilio store tables', () => {
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
     })
   })
+
+  describe('twilio_orgs_with_expired', () => {
+    const PAST = "now() - interval '1 hour'"
+    const created = "now() - interval '3 hours'"
+    const bulk: string[] = []
+
+    /** Insert one row into a table of the store, expired (`expires_at` an hour ago) or not. */
+    const put = (
+      table: 'twilio_calls' | 'twilio_placements',
+      orgId: string,
+      expired: boolean
+    ): Promise<unknown> =>
+      scoped(voice, orgId, (c) =>
+        table === 'twilio_calls'
+          ? c.query(
+              `insert into voice.twilio_calls (organization_id, provider_call_id, direction, created_at, expires_at)
+               values ($1, $2, 'outbound', ${expired ? created : 'now()'}, ${expired ? PAST : inOneHour})`,
+              [orgId, fresh('CA')]
+            )
+          : c.query(
+              `insert into voice.twilio_placements (organization_id, idempotency_key, provider_call_id, fingerprint, created_at, expires_at)
+               values ($1, $2, $3, 'abc123', ${expired ? created : 'now()'}, ${expired ? PAST : inOneHour})`,
+              [orgId, fresh('key'), fresh('CA')]
+            )
+      )
+
+    const scan = async (now: string | null, after: string | null, limit: number | null) =>
+      (
+        await scoped(voice, null, (c) =>
+          c.query<{ organization_id: string }>(
+            'select * from voice.twilio_orgs_with_expired($1::timestamptz, $2::text, $3::int)',
+            [now, after, limit]
+          )
+        )
+      ).rows.map((r) => r.organization_id)
+
+    /** Page through every Organization with expired rows, `size` at a time, returning each page. */
+    async function pages(size: number): Promise<string[][]> {
+      const out: string[][] = []
+      let after: string | null = null
+      for (;;) {
+        const page: string[] = await scan(new Date().toISOString(), after, size)
+        if (page.length === 0) {
+          return out
+        }
+        out.push(page)
+        after = page[page.length - 1] ?? null
+      }
+    }
+
+    afterAll(async () => {
+      for (const orgId of bulk) {
+        for (const table of ['twilio_placements', 'twilio_calls']) {
+          await scoped(voice, orgId, (c) =>
+            c.query(`delete from voice.${table} where organization_id = $1`, [orgId])
+          ).catch(() => undefined)
+        }
+      }
+    }, 60_000)
+
+    test('lists an Organization once whichever table holds its expired rows, and never one with only unexpired rows', async () => {
+      const callsOnly = newScoped()
+      const placementsOnly = newScoped()
+      const both = newScoped()
+      const live = newScoped()
+      const mixed = newScoped()
+      await put('twilio_calls', callsOnly, true)
+      await put('twilio_placements', placementsOnly, true)
+      await put('twilio_calls', both, true)
+      await put('twilio_calls', both, true)
+      await put('twilio_placements', both, true)
+      await put('twilio_calls', live, false)
+      await put('twilio_placements', live, false)
+      await put('twilio_calls', mixed, false)
+      await put('twilio_placements', mixed, true)
+      const mine = new Set([callsOnly, placementsOnly, both, live, mixed])
+      const found = (await scan(new Date().toISOString(), null, 500)).filter((o) => mine.has(o))
+      expect(found).toEqual([callsOnly, placementsOnly, both, mixed].sort())
+    })
+
+    test('a row is expired at its expiry instant and not a moment before', async () => {
+      const org = newScoped()
+      await scoped(voice, org, (c) =>
+        c.query(
+          `insert into voice.twilio_calls (organization_id, provider_call_id, direction, created_at, expires_at)
+           values ($1, $2, 'inbound', '2030-01-01T00:00:00Z', '2030-01-01T01:00:00Z')`,
+          [org, fresh('CA')]
+        )
+      )
+      expect(await scan('2030-01-01T00:59:59Z', org.slice(0, -1), 500)).not.toContain(org)
+      expect(await scan('2030-01-01T01:00:00Z', org.slice(0, -1), 500)).toContain(org)
+    })
+
+    test('a null clock or a limit below one gives nothing', async () => {
+      const org = newScoped()
+      await put('twilio_calls', org, true)
+      const now = new Date().toISOString()
+      expect(await scan(null, null, 500)).toEqual([])
+      expect(await scan(now, null, 0)).toEqual([])
+      expect(await scan(now, null, -5)).toEqual([])
+      expect(await scan(now, null, null)).toEqual([])
+    })
+
+    test('pages in ascending order after the cursor, each Organization once, with no gaps', async () => {
+      const mine = [newScoped(), newScoped(), newScoped(), newScoped(), newScoped()]
+      for (const [i, org] of mine.entries()) {
+        await put(i % 2 === 0 ? 'twilio_calls' : 'twilio_placements', org, true)
+      }
+      const all = (await pages(2)).flatMap((page) => {
+        expect(page.length).toBeLessThanOrEqual(2)
+        expect(page).toEqual([...page].sort())
+        return page
+      })
+      expect(all).toEqual([...all].sort())
+      expect(new Set(all).size).toBe(all.length)
+      for (const org of mine) {
+        expect(all).toContain(org)
+      }
+      // The cursor is exclusive: asking after an Organization never returns it or anything below.
+      const [first, second, third] = [...mine].sort() as [string, string, string]
+      const after = await scan(new Date().toISOString(), second, 500)
+      expect(after).not.toContain(first)
+      expect(after).not.toContain(second)
+      expect(after).toContain(third)
+      expect(after.every((o) => o > second)).toBe(true)
+      // Past the last Organization, nothing.
+      expect(await scan(new Date().toISOString(), `org_${'f'.repeat(32)}`, 500)).toEqual([])
+    })
+
+    test('a limit of at most 500 is honoured and a larger one is cut to 500', async () => {
+      const count = 520
+      await scoped(voice, null, (c) =>
+        c.query(
+          `do $$
+           declare o text;
+           begin
+             for i in 1..${count} loop
+               o := 'org_' || lpad(to_hex(i), 32, 'e');
+               perform set_config('app.organization_id', o, true);
+               insert into voice.twilio_calls (organization_id, provider_call_id, direction, created_at, expires_at)
+                 values (o, 'CAbulk' || i, 'outbound', ${created}, ${PAST});
+             end loop;
+           end $$`
+        )
+      )
+      for (let i = 1; i <= count; i++) {
+        bulk.push(`org_${i.toString(16).padStart(32, 'e')}`)
+      }
+      const now = new Date().toISOString()
+      expect(await scan(now, null, 3)).toHaveLength(3)
+      expect(await scan(now, null, 500)).toHaveLength(500)
+      expect(await scan(now, null, 501)).toHaveLength(500)
+      expect(await scan(now, null, 1_000_000)).toHaveLength(500)
+    })
+
+    test('returns Organization ids only, never a column of a row', async () => {
+      const org = newScoped()
+      await put('twilio_calls', org, true)
+      const result = await scoped(voice, null, (c) =>
+        c.query('select * from voice.twilio_orgs_with_expired(now(), null, 500)')
+      )
+      expect(result.fields.map((f) => f.name)).toEqual(['organization_id'])
+    })
+
+    test('only closeline_voice may execute it, and every other role is refused', async () => {
+      const sig = 'voice.twilio_orgs_with_expired(timestamptz, text, integer)'
+      const run = async (role: string) =>
+        (
+          await owner.query<{ ok: boolean }>('select has_function_privilege($1, $2, $3) as ok', [
+            role,
+            sig,
+            'EXECUTE',
+          ])
+        ).rows[0]?.ok
+      expect(await run('closeline_voice')).toBe(true)
+      for (const role of ['closeline_core', 'closeline_auth', 'closeline_playbook', 'public']) {
+        expect([role, await run(role)]).toEqual([role, false])
+      }
+      for (const pool of [core, auth, playbook]) {
+        const refused = await failure(
+          scoped(pool, null, (c) =>
+            c.query('select * from voice.twilio_orgs_with_expired(now(), null, 5)')
+          )
+        )
+        expect(refused.message).toContain('permission denied')
+      }
+    })
+  })
 })

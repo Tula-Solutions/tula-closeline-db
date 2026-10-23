@@ -219,6 +219,7 @@ export {
   OUTBOX_DRAIN_ROLE,
   OWNER_ROLE,
   SEARCH_ROLE,
+  VOICE_PURGE_SCAN_ROLE,
 } from './roles'
 export {
   OUTBOX_DEDUPE_KEY_MAX_LENGTH,

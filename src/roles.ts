@@ -30,10 +30,18 @@ export const KEY_LOOKUP_ROLE = 'closeline_core_key_lookup'
  */
 export const OUTBOX_DRAIN_ROLE = 'closeline_core_outbox_drain'
 
+/**
+ * The NOLOGIN role that owns `voice.twilio_orgs_with_expired` and bypasses row-level security so
+ * the Twilio purge can list the Organizations that hold expired rows. It reads two columns of
+ * `twilio_calls` and of `twilio_placements`; no service role is a member of it.
+ */
+export const VOICE_PURGE_SCAN_ROLE = 'closeline_voice_purge_scan'
+
 /** The NOLOGIN definer roles that bypass row-level security by design. */
 export const DEFINER_ROLES = [
   SEARCH_ROLE,
   CRM_LOOKUP_ROLE,
   KEY_LOOKUP_ROLE,
   OUTBOX_DRAIN_ROLE,
+  VOICE_PURGE_SCAN_ROLE,
 ] as const

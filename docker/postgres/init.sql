@@ -55,5 +55,13 @@ CREATE ROLE closeline_core_outbox_drain NOLOGIN
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
 GRANT closeline_core_outbox_drain TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 
+-- closeline_voice_purge_scan  owns voice.twilio_orgs_with_expired (migration 0042), which lists the
+--                  Organizations that hold expired Twilio rows for the purge. Same shape as the
+--                  roles above; it reads two columns (organization_id, expires_at) of each of
+--                  voice.twilio_calls and voice.twilio_placements and nothing else.
+CREATE ROLE closeline_voice_purge_scan NOLOGIN
+  NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
+GRANT closeline_voice_purge_scan TO closeline_owner WITH SET TRUE, INHERIT FALSE;
+
 -- The owner role owns this database, so it can create the schemas in migration 0000.
 SELECT format('ALTER DATABASE %I OWNER TO closeline_owner', current_database()) \gexec

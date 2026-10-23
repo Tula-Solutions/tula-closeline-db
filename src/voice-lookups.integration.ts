@@ -326,6 +326,7 @@ describe('the voice line lookup', () => {
       sync_line_directory: [true, true, false],
       sync_twilio_call_directory: [true, true, false],
       sync_twilio_recording_directory: [true, true, false],
+      twilio_orgs_with_expired: [true, false, true],
       twilio_owner: [true, false, true],
     }
 
@@ -368,13 +369,20 @@ describe('the voice line lookup', () => {
     test('each is owned by closeline_owner with search_path pinned, SECURITY DEFINER only where intended, and the lookup is STABLE', async () => {
       for (const fn of await catalog()) {
         const [definer, trigger] = FUNCTIONS[fn.name] ?? [false, false, false]
-        expect([fn.name, fn.owner]).toEqual([fn.name, 'closeline_owner'])
+        expect([fn.name, fn.owner]).toEqual([
+          fn.name,
+          fn.name === 'twilio_orgs_with_expired' ? 'closeline_voice_purge_scan' : 'closeline_owner',
+        ])
         expect([fn.name, fn.config]).toEqual([fn.name, ['search_path=pg_catalog, pg_temp']])
         expect([fn.name, fn.definer]).toEqual([fn.name, definer])
         expect([fn.name, fn.trigger]).toEqual([fn.name, trigger])
         expect([fn.name, fn.volatility]).toEqual([
           fn.name,
-          fn.name === 'line_for_number' || fn.name === 'twilio_owner' ? 's' : 'v',
+          fn.name === 'line_for_number' ||
+          fn.name === 'twilio_owner' ||
+          fn.name === 'twilio_orgs_with_expired'
+            ? 's'
+            : 'v',
         ])
       }
     })

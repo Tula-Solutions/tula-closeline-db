@@ -440,11 +440,13 @@ var SEARCH_ROLE = "closeline_core_search";
 var CRM_LOOKUP_ROLE = "closeline_core_crm_lookup";
 var KEY_LOOKUP_ROLE = "closeline_core_key_lookup";
 var OUTBOX_DRAIN_ROLE = "closeline_core_outbox_drain";
+var VOICE_PURGE_SCAN_ROLE = "closeline_voice_purge_scan";
 var DEFINER_ROLES = [
   SEARCH_ROLE,
   CRM_LOOKUP_ROLE,
   KEY_LOOKUP_ROLE,
-  OUTBOX_DRAIN_ROLE
+  OUTBOX_DRAIN_ROLE,
+  VOICE_PURGE_SCAN_ROLE
 ];
 
 // src/tenant.ts
@@ -2411,6 +2413,7 @@ export {
   RIGHTS_MAX_WORDING_VERSION2 as RIGHTS_MAX_WORDING_VERSION,
   SEARCH_ROLE,
   TENANT_SCHEMAS,
+  VOICE_PURGE_SCAN_ROLE,
   WORK_KINDS2 as WORK_KINDS,
   assertTenantIsolation,
   callReuploadRequeues2 as callReuploadRequeues,
