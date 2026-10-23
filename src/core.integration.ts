@@ -259,7 +259,11 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     test('the migrated database passes the check, and only the two directories, the status table and the playbook work registry need the allowlist', async () => {
       expect(await findTenantIsolationGaps(handle.db)).toEqual([])
       expect([...NON_TENANT_TABLES].sort()).toEqual(
-        [...NO_ACCESS_TABLES.map((name) => `core.${name}`), 'playbook.work_hints'].sort()
+        [
+          ...NO_ACCESS_TABLES.map((name) => `core.${name}`),
+          'core.demo_request',
+          'playbook.work_hints',
+        ].sort()
       )
       const without = await findTenantIsolationGaps(handle.db, [])
       expect(
@@ -267,7 +271,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           .filter((gap) => gap.schema === 'core' && !gap.table.startsWith('it_'))
           .map((g) => g.table)
           .sort()
-      ).toEqual([...NO_ACCESS_TABLES].sort())
+      ).toEqual([...NO_ACCESS_TABLES, 'demo_request'].sort())
     })
 
     describe('a second Organization cannot read or write any tenant table', () => {

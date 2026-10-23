@@ -3217,3 +3217,27 @@ null array give no row. Metadata only, no text, and no migration, table or colum
 ids after the 100th get no row. It does not refuse them (a plain statement cannot raise), so the caller
 must pass at most 100, which the search's over-fetch window (`topK` 100) already guarantees. A plan
 test pins that one index condition holds both `organization_id` and `id = ANY`, with no Seq Scan.
+
+## Demo Requests (v0.23.0, migration `0021`)
+
+`core.demo_request` holds a Visitor's submitted wish to see Closeline. Closeline itself holds it, not
+an Organization, so it has no `organization_id` and sits outside row-level security, like the core
+directories (ADR 0011): it is on the allowlist in `NON_TENANT_TABLE_REASONS`, and the catalog check
+fails if any service role holds a privilege on it. The migration revokes the schema's default
+privileges from `closeline_core`, so today only the owner reaches it; a service reaches it through
+`SECURITY DEFINER` functions a later migration adds.
+
+| Column | Rule |
+| --- | --- |
+| `id` | `dreq_` and 32 hex digits, built by the service |
+| `name`, `company_name` | 1 to 200 characters after trimming |
+| `work_email` | stored lower-cased, the `invitations.email` rule (3 to 320 printable ASCII, one `@`) |
+| `message` | null, or at most 2000 characters |
+| `source_page` | 1 to 200 characters, starting with `/` |
+| `idempotency_key` | 16 to 128 characters, unique across all rows |
+| `notification_status` | `pending` (default), `sent` or `failed`; with `notification_attempts` and `notification_last_attempt_at`, the outbox for the notice to the team |
+| `submitted_at` | `now()` by default |
+
+The honeypot field is never stored: there is no column for it. `demo_requests_submitted_at_idx`
+serves the twelve-month retention purge, and the partial `demo_requests_notice_idx` serves the scan
+for notices still `pending`.

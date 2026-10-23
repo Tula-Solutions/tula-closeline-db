@@ -1,5 +1,6 @@
 export * from './auth'
 export * from './core'
+export * from './core-demo-requests'
 export * from './core-tables'
 export * from './playbook'
 export * from './playbook-calls'

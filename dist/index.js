@@ -47,7 +47,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-5t5d0jz6.js";
+} from "./shared/chunk-3g5na2bn.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -379,6 +379,7 @@ var CONTROL_PLANE_TABLE_REASONS = {
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
+  "core.demo_request": "a Visitor's Demo Request, held by Closeline itself and not by any Organization, so it has no organization_id; it is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read a Visitor's name, email or message",
   "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
   "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in",
   "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
