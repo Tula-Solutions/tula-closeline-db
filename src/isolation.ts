@@ -98,6 +98,8 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * reached only through a `SECURITY DEFINER` function.
  */
 export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'core.demo_rate_counter':
+    'a per-address request counter for the public demo-request route, held by Closeline itself and not by any Organization, so it has no organization_id; it holds only an HMAC of an address, a window and a count, is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read it',
   'core.demo_request':
     "a Visitor's Demo Request, held by Closeline itself and not by any Organization, so it has no organization_id; it is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read a Visitor's name, email or message",
   'core.invitation_directory':

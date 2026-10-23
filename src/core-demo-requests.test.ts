@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import {
   claimDemoNotices,
+  DEMO_RATE_PURGE_BATCH_MAX,
+  hitDemoRateLimit,
+  purgeDemoRateCounters,
   purgeDemoRequests,
   settleDemoNotice,
   submitDemoRequest,
@@ -110,5 +113,66 @@ describe('purgeDemoRequests', () => {
   test('rejects a bad limit and returns the count', async () => {
     await expect(purgeDemoRequests(dbAnswering([]).db, 0)).rejects.toThrow('limit')
     expect(await purgeDemoRequests(dbAnswering([{ purged: 7 }]).db, 10)).toBe(7)
+  })
+})
+
+describe('hitDemoRateLimit', () => {
+  const HASH = new Uint8Array(32).fill(7)
+
+  test('passes the hash, window and limit as parameters and returns the boolean', async () => {
+    const { db, seen } = dbAnswering([{ allowed: true }])
+    expect(await hitDemoRateLimit(db, { addressHash: HASH, windowSeconds: 60, limit: 10 })).toBe(
+      true
+    )
+    expect(seen[0]?.sql).toContain('core.hit_demo_rate_limit(')
+    expect(seen[0]?.params).toHaveLength(3)
+    expect(seen[0]?.params.slice(1)).toEqual([60, 10])
+    const denied = dbAnswering([{ allowed: false }])
+    expect(
+      await hitDemoRateLimit(denied.db, { addressHash: HASH, windowSeconds: 60, limit: 10 })
+    ).toBe(false)
+  })
+
+  test.each([
+    ['a 31 byte hash', new Uint8Array(31), 60, 10],
+    ['a 33 byte hash', new Uint8Array(33), 60, 10],
+    ['an empty hash', new Uint8Array(0), 60, 10],
+    ['a zero window', HASH, 0, 10],
+    ['a negative window', HASH, -1, 10],
+    ['a fractional window', HASH, 1.5, 10],
+    ['a NaN window', HASH, Number.NaN, 10],
+    ['a window over a day', HASH, 86_401, 10],
+    ['a zero limit', HASH, 60, 0],
+    ['a fractional limit', HASH, 60, 2.5],
+    ['an infinite limit', HASH, 60, Number.POSITIVE_INFINITY],
+    ['a limit over the integer range', HASH, 60, 2_147_483_648],
+  ])('rejects %s before any query', async (_name, addressHash, windowSeconds, limit) => {
+    const { db, seen } = dbAnswering([{ allowed: true }])
+    await expect(hitDemoRateLimit(db, { addressHash, windowSeconds, limit })).rejects.toThrow(
+      'hitDemoRateLimit'
+    )
+    expect(seen).toEqual([])
+  })
+
+  test('treats a missing row as not allowed', async () => {
+    const { db } = dbAnswering([])
+    expect(await hitDemoRateLimit(db, { addressHash: HASH, windowSeconds: 60, limit: 1 })).toBe(
+      false
+    )
+  })
+})
+
+describe('purgeDemoRateCounters', () => {
+  test('rejects a bad limit before any query and returns the count', async () => {
+    const { db, seen } = dbAnswering([{ purged: 3 }])
+    await expect(purgeDemoRateCounters(db, 0)).rejects.toThrow('limit')
+    await expect(purgeDemoRateCounters(db, 1.5)).rejects.toThrow('limit')
+    expect(seen).toEqual([])
+    expect(await purgeDemoRateCounters(db, 10)).toBe(3)
+    expect(seen[0]?.sql).toContain('core.purge_demo_rate_counters(')
+  })
+
+  test('exports the batch cap the database applies', () => {
+    expect(DEMO_RATE_PURGE_BATCH_MAX).toBe(1000)
   })
 })

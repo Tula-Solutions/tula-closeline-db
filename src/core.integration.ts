@@ -261,6 +261,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect([...NON_TENANT_TABLES].sort()).toEqual(
         [
           ...NO_ACCESS_TABLES.map((name) => `core.${name}`),
+          'core.demo_rate_counter',
           'core.demo_request',
           'playbook.work_hints',
         ].sort()
@@ -271,7 +272,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           .filter((gap) => gap.schema === 'core' && !gap.table.startsWith('it_'))
           .map((g) => g.table)
           .sort()
-      ).toEqual([...NO_ACCESS_TABLES, 'demo_request'].sort())
+      ).toEqual([...NO_ACCESS_TABLES, 'demo_rate_counter', 'demo_request'].sort())
     })
 
     describe('a second Organization cannot read or write any tenant table', () => {
@@ -1908,8 +1909,10 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       claim_demo_notices: [true, false, true],
       has_expired: [false, false, true],
+      hit_demo_rate_limit: [true, false, true],
       invitation_for_token: [true, false, true],
       organization_of_user: [true, false, true],
+      purge_demo_rate_counters: [true, false, true],
       purge_demo_requests: [true, false, true],
       refuse_idempotency_rewrite: [false, true, false],
       refuse_region_change: [false, true, false],

@@ -20,6 +20,7 @@ export type { Database, DbHandle, DbOptions, Schema, Transaction } from './clien
 export { createDb, DEFAULT_POOL_OPTIONS, reportConnectionError } from './client'
 export type {
   ClaimedDemoNotice,
+  DemoRateLimitHit,
   DemoRequestInput,
   DemoRequestSubmission,
   SettledDemoNoticeStatus,
@@ -28,7 +29,10 @@ export {
   claimDemoNotices,
   DEMO_NOTICE_CLAIM_MAX,
   DEMO_PURGE_BATCH_MAX,
+  DEMO_RATE_PURGE_BATCH_MAX,
   DemoRequestRefusedError,
+  hitDemoRateLimit,
+  purgeDemoRateCounters,
   purgeDemoRequests,
   settleDemoNotice,
   submitDemoRequest,
