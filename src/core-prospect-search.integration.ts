@@ -158,24 +158,33 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
 
   afterAll(async () => {
     // Row-level security binds the owner too: without the setting the delete matches nothing and
-    // the rows stay behind, so the Organization is scoped, then the count is checked.
+    // the rows stay behind, so the Organization is scoped, then the count is checked in the same
+    // transaction. The history trigger is BEFORE INSERT OR UPDATE, so the delete needs no disable.
     const c = await owner.connect()
+    let left = -1
+    let trigger = ''
     try {
       await c.query('begin')
       await c.query('select set_config($1, $2, true)', [SETTING, orgId])
-      await c.query('alter table core.prospect_fields disable trigger user')
       await c.query('delete from core.organizations where organization_id = $1', [orgId])
+      left = (await c.query('select count(*)::int as n from core.prospects')).rows[0].n
       await c.query('commit')
-      await c.query('begin')
-      await c.query('select set_config($1, $2, true)', [SETTING, orgId])
-      const left = await c.query('select count(*)::int as n from core.prospects')
-      await c.query('rollback')
-      expect(left.rows[0].n).toBe(0)
+      trigger = (
+        await c.query(
+          "select tgenabled from pg_trigger where tgname = 'prospect_fields_history_limit'"
+        )
+      ).rows[0]?.tgenabled
+    } catch (error) {
+      await c.query('rollback').catch(() => undefined)
+      throw error
     } finally {
       c.release()
+      await dropStaleTestObjects(owner, env.owner).catch(() => undefined)
+      await Promise.all([owner.end(), core.end()])
     }
-    await dropStaleTestObjects(owner, env.owner)
-    await Promise.all([owner.end(), core.end()])
+    expect(left).toBe(0)
+    // The load disables triggers only inside its own transaction; the shared database keeps them.
+    expect(trigger).toBe('O')
   }, 600_000)
 
   const FIELD_QUERY = `select prospect_id from core.prospect_fields
