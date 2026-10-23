@@ -218,6 +218,13 @@
       "when": 1792734063259,
       "tag": "0030_core_prospect_search_definer",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792735639160,
+      "tag": "0031_core_crm",
+      "breakpoints": true
     }
   ]
 }

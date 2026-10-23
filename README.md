@@ -3327,3 +3327,20 @@ GRANT closeline_core_search TO closeline_owner WITH SET TRUE, INHERIT FALSE;
 The migration fails with a message naming the role if it is missing, is not `NOLOGIN`/`BYPASSRLS`,
 or `closeline_owner` cannot `SET ROLE` to it. Locally `docker/postgres/init.sql` does this.
 `SEARCH_ROLE` is exported for tools that name the role.
+
+## CRM sync tables (v0.33.0, migration `0031`)
+
+Five `core` tables for ADR 0022, all tenant-scoped with forced row-level security, granted to
+`closeline_core` alone. Schema in `src/schema/core-crm.ts` (the contract's value sets are mirrored
+there as `CRM_*` constants and pinned by a test).
+
+| Table | Key | Notes |
+| --- | --- | --- |
+| `crm_connection` | `(organization_id, id)`; unique `(organization_id, provider)` | one per provider per Organization. Unique `(provider, external_account_id)` across **all** Organizations (ADR 0022). `access_token_sealed`/`refresh_token_sealed` are `bytea` ciphertext with `token_key_id`; there is no plaintext token column. Disconnect deletes the row, and with it the mapping, runs, refs and receipts (cascade) |
+| `crm_mapping` | `(organization_id, connection_id, kind, key)` | `kind` is `stage` (with `outcome`) or `field` (with `direction`; `activity.notes` is never `both`) |
+| `crm_sync_run` | `(organization_id, id)` | lifecycle checked per `state`; counts, `skipped`/`failures` reports (at most 50), `cursor`. Lists by `(organization_id, connection_id, requested_at desc, id desc)`, also by state and object kind |
+| `crm_external_ref` | `(organization_id, id)`; unique `(organization_id, provider, object_kind, external_id)` | lookup by local id on `(organization_id, provider, object_kind, local_id)`. `pending_write` rows have a null `external_id` and a `write_key`, unique per `(organization_id, provider, write_key)`, recorded before the CRM call |
+| `crm_webhook_receipt` | `(organization_id, connection_id, event_id)` | the primary key dedupes on the provider's event id; prune by `(organization_id, received_at)` |
+
+Not built here: ADR 0022's pre-Organization webhook lookup (provider and external account id to an
+Organization id). It needs a definer function like `0030`'s, so it is a separate ticket.
