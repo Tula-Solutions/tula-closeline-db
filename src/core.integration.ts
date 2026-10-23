@@ -265,6 +265,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           'core.demo_rate_counter',
           'core.demo_request',
           'playbook.work_hints',
+          'voice.line_directory',
         ].sort()
       )
       const without = await findTenantIsolationGaps(handle.db, [])

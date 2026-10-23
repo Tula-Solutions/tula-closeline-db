@@ -237,10 +237,11 @@ import {
   MAX_PROVIDER_EVENT_ID_LENGTH2,
   MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2,
   voiceLines2,
+  voiceLineDirectory2,
   voiceCalls2,
   voiceCallEvents2,
   voiceRecordings2
-} from "../shared/chunk-zcrm602h.js";
+} from "../shared/chunk-r193v07r.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -476,6 +477,7 @@ export {
   verificationTokens2 as verificationTokens,
   voiceCallEvents2 as voiceCallEvents,
   voiceCalls2 as voiceCalls,
+  voiceLineDirectory2 as voiceLineDirectory,
   voiceLines2 as voiceLines,
   voiceRecordings2 as voiceRecordings,
   voiceSchema2 as voiceSchema,

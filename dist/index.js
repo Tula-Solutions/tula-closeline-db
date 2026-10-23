@@ -47,7 +47,7 @@ import {
   CALL_PENDING_CLEANUP_PREDICATE2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-zcrm602h.js";
+} from "./shared/chunk-r193v07r.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -494,6 +494,7 @@ var NON_TENANT_TABLE_REASONS = {
   "core.invitation_directory": "asked before the Organization is known (accepting an invitation looks up a token hash); holds token hash, Organization id, invitation id and expiry for pending invitations only, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.invitation_for_token is the only way in",
   "core.membership_directory": "asked before the Organization is known (sign-in asks which Organization a user belongs to); holds user id and Organization id, is written only by SECURITY DEFINER triggers, and no service role holds any privilege on it: core.organization_of_user is the only way in",
   "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
+  "voice.line_directory": "asked before the Organization is known (the inbound webhook receives only the dialled number); holds number, Organization id, Line id and state for Lines that are not released only, is written only by a SECURITY DEFINER trigger on voice.lines, and no service role holds any privilege on it: voice.line_for_number is the only way in",
   "playbook.work_hints": "asked before the Organization is known (a sweep asks which Organizations have purge, job or message work due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by SECURITY DEFINER triggers and the discovery function, and no service role holds any privilege on it: playbook.organizations_with_work is the only way in"
 };
 var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);
@@ -2090,6 +2091,17 @@ var PLAYBOOK_STATEMENTS = {
   ORGANIZATIONS_WITH_WORK,
   ...CALL_STATEMENTS
 };
+// src/voice-lookups.ts
+import { sql as sql6 } from "drizzle-orm";
+var E164 = /^\+[1-9][0-9]{6,14}$/;
+async function lineForNumber(db, number) {
+  if (!E164.test(number)) {
+    return null;
+  }
+  const { rows } = await db.execute(sql6`select organization_id, line_id from voice.line_for_number(${number})`);
+  const row = rows[0];
+  return row ? { organizationId: row.organization_id, lineId: row.line_id } : null;
+}
 
 // src/index.ts
 var PACKAGE = "tula-closeline-db";
@@ -2301,6 +2313,7 @@ export {
   findTenantIsolationGaps,
   hitDemoRateLimit,
   invitationForToken,
+  lineForNumber,
   organizationOfUser,
   purgeDemoRateCounters,
   purgeDemoRequests,
