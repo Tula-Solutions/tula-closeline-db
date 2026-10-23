@@ -239,7 +239,6 @@ CREATE UNIQUE INDEX "prospect_company_fields_current_key" ON "core"."prospect_co
 CREATE INDEX "prospect_company_fields_history_idx" ON "core"."prospect_company_fields" USING btree ("organization_id","company_id","field_name","set_at" DESC NULLS LAST,"seq" DESC NULLS LAST);--> statement-breakpoint
 CREATE UNIQUE INDEX "prospect_fields_current_key" ON "core"."prospect_fields" USING btree ("organization_id","prospect_id","field_name") WHERE "core"."prospect_fields"."state" = 'current';--> statement-breakpoint
 CREATE INDEX "prospect_fields_history_idx" ON "core"."prospect_fields" USING btree ("organization_id","prospect_id","field_name","set_at" DESC NULLS LAST,"seq" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "prospect_fields_prospect_idx" ON "core"."prospect_fields" USING btree ("organization_id","prospect_id","field_name") WHERE "core"."prospect_fields"."state" = 'current';--> statement-breakpoint
 CREATE UNIQUE INDEX "prospect_identities_primary_key" ON "core"."prospect_identities" USING btree ("organization_id","prospect_id","kind") WHERE "core"."prospect_identities"."is_primary";--> statement-breakpoint
 CREATE INDEX "prospect_identities_prospect_idx" ON "core"."prospect_identities" USING btree ("organization_id","prospect_id");--> statement-breakpoint
 CREATE INDEX "prospect_import_rows_result_idx" ON "core"."prospect_import_rows" USING btree ("organization_id","import_id","result","row_number");--> statement-breakpoint
@@ -306,13 +305,21 @@ SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   owner_column text := TG_ARGV[0];
+  owner_id text := to_jsonb(NEW) ->> owner_column;
   kept integer;
 BEGIN
+  IF TG_OP = 'UPDATE' AND owner_id IS NOT DISTINCT FROM to_jsonb(OLD) ->> owner_column
+     AND NEW.field_name = OLD.field_name THEN
+    RETURN NEW;
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(NEW.organization_id || '/' || owner_id || '/' || NEW.field_name, 0)
+  );
   EXECUTE format(
     'SELECT count(*) FROM %I.%I WHERE organization_id = $1 AND %I = $2 AND field_name = $3',
     TG_TABLE_SCHEMA, TG_TABLE_NAME, owner_column
   ) INTO kept
-  USING NEW.organization_id, to_jsonb(NEW) ->> owner_column, NEW.field_name;
+  USING NEW.organization_id, owner_id, NEW.field_name;
   IF kept >= 50 THEN
     RAISE EXCEPTION 'field history is full: at most 50 entries per field'
       USING ERRCODE = 'check_violation', CONSTRAINT = TG_TABLE_NAME || '_history_limit';
@@ -323,7 +330,6 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION "core"."limit_field_history"() FROM PUBLIC;
 --> statement-breakpoint
+CREATE TRIGGER "prospect_fields_history_limit" BEFORE INSERT OR UPDATE OF organization_id, prospect_id, field_name ON "core"."prospect_fields" FOR EACH ROW EXECUTE FUNCTION "core"."limit_field_history"('prospect_id');
 --> statement-breakpoint
-CREATE TRIGGER "prospect_fields_history_limit" BEFORE INSERT ON "core"."prospect_fields" FOR EACH ROW EXECUTE FUNCTION "core"."limit_field_history"('prospect_id');
---> statement-breakpoint
-CREATE TRIGGER "prospect_company_fields_history_limit" BEFORE INSERT ON "core"."prospect_company_fields" FOR EACH ROW EXECUTE FUNCTION "core"."limit_field_history"('company_id');
+CREATE TRIGGER "prospect_company_fields_history_limit" BEFORE INSERT OR UPDATE OF organization_id, company_id, field_name ON "core"."prospect_company_fields" FOR EACH ROW EXECUTE FUNCTION "core"."limit_field_history"('company_id');

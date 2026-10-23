@@ -353,6 +353,101 @@ describe('core prospect tables', () => {
       await addField(a, 'first_name', 'superseded')
     })
 
+    test('two concurrent inserts for the 50th entry of a field: exactly one succeeds', async () => {
+      const a = await seed()
+      for (let n = 0; n < 48; n++) {
+        await addField(a, 'email', 'superseded')
+      }
+      const sql =
+        "insert into core.prospect_fields (organization_id, prospect_id, field_name, state, value, source, set_at) values ($1, $2, 'email', 'superseded', 'v', 'import', now())"
+      const open = async () => {
+        const c = await core.connect()
+        await c.query('begin')
+        await c.query('select set_config($1, $2, true)', [SETTING, a.orgId])
+        return c
+      }
+      const first = await open()
+      const second = await open()
+      try {
+        await first.query(sql, [a.orgId, a.prospectId])
+        const pending = second.query(sql, [a.orgId, a.prospectId]).then(
+          () => 'inserted',
+          (error: { code?: string }) => error.code
+        )
+        // The second insert waits on the field's lock until the first transaction ends.
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        await first.query('commit')
+        expect(await pending).toBe(CHECK_VIOLATION)
+        await second.query('rollback')
+      } finally {
+        first.release()
+        second.release()
+      }
+      const counted = await run(
+        a.orgId,
+        "select count(*)::int as n from core.prospect_fields where field_name = 'email'"
+      )
+      expect(counted.rows[0].n).toBe(50)
+    })
+
+    test('an UPDATE that moves an entry onto a full field is refused', async () => {
+      const a = await seed()
+      for (let n = 0; n < 49; n++) {
+        await addField(a, 'email', 'superseded')
+      }
+      await addField(a, 'first_name', 'superseded')
+      const refused = await refusal(
+        run(
+          a.orgId,
+          "update core.prospect_fields set field_name = 'email' where prospect_id = $1 and field_name = 'first_name'",
+          [a.prospectId]
+        )
+      )
+      expect(refused.code).toBe(CHECK_VIOLATION)
+      expect(refused.message).toContain('at most 50 entries')
+      // An update that keeps the field is not counted again.
+      await run(
+        a.orgId,
+        "update core.prospect_fields set value = 'w' where prospect_id = $1 and field_name = 'email'",
+        [a.prospectId]
+      )
+    })
+
+    test('an UPDATE that moves a company entry onto a full field is refused', async () => {
+      const a = await seed()
+      const add = (field: string) =>
+        run(
+          a.orgId,
+          "insert into core.prospect_company_fields (organization_id, company_id, field_name, state, value, source, set_at) values ($1, $2, $3, 'superseded', 'v', 'import', now())",
+          [a.orgId, a.companyId, field]
+        )
+      for (let n = 0; n < 49; n++) {
+        await add('name')
+      }
+      await add('domain')
+      const refused = await refusal(
+        run(
+          a.orgId,
+          "update core.prospect_company_fields set field_name = 'name' where company_id = $1 and field_name = 'domain'",
+          [a.companyId]
+        )
+      )
+      expect(refused.code).toBe(CHECK_VIOLATION)
+    })
+
+    test('the unique current-value index serves the per-Prospect lookup', async () => {
+      const a = await seed()
+      const plan = await scoped(a.orgId, async (c) => {
+        await c.query('set local enable_seqscan = off')
+        return c.query(
+          "explain select * from core.prospect_fields where organization_id = $1 and prospect_id = $2 and state = 'current'",
+          [a.orgId, a.prospectId]
+        )
+      })
+      const text = plan.rows.map((r: Record<string, string>) => r['QUERY PLAN']).join('\n')
+      expect(text).toContain('prospect_fields_current_key')
+    })
+
     test('the 51st company entry is refused', async () => {
       const a = await seed()
       const add = () =>

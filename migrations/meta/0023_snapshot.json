@@ -1,5 +1,5 @@
 {
-  "id": "a1fa4a87-1674-483c-94c3-fe3d06678d39",
+  "id": "6561cd73-cdda-4338-96ef-c92a182c242c",
   "prevId": "70d1a0de-16c8-4343-9803-6ded5e940822",
   "version": "7",
   "dialect": "postgresql",
@@ -6622,34 +6622,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "prospect_fields_prospect_idx": {
-          "name": "prospect_fields_prospect_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "prospect_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "field_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"core\".\"prospect_fields\".\"state\" = 'current'",
           "concurrently": false,
           "method": "btree",
           "with": {}

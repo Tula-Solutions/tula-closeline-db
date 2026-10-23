@@ -7918,8 +7918,8 @@ declare const prospectIdentities: PgTableWithColumns_a5zn0g35<{
 * trigger); the service removes the oldest non-current entries first. `seq` orders entries set at
 * the same time, and with `set_at` is the history cursor.
 *
-* Lists served: a Prospect's fields (`prospect_fields_prospect_idx`) and one field's history,
-* newest first (`prospect_fields_history_idx`). Erasing a Prospect deletes its entries (cascade).
+* Lists served: a Prospect's current values (`prospect_fields_current_key`) and one field's
+* history, newest first (`prospect_fields_history_idx`). Erasing a Prospect deletes its entries (cascade).
 */
 declare const prospectFields: PgTableWithColumns_a5zn0g35<{
 	name: "prospect_fields";
