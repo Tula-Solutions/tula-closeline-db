@@ -38,12 +38,22 @@ const TENANT = [
   'team_members',
   'teams',
 ]
+const PROSPECT_TABLES = [
+  'prospect_companies',
+  'prospect_company_fields',
+  'prospect_fields',
+  'prospect_identities',
+  'prospect_import_rows',
+  'prospect_imports',
+  'prospect_merges',
+  'prospects',
+]
 const NO_ACCESS = ['invitation_directory', 'membership_directory', 'organization_state']
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the two directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the two directories, the status table, the Demo Request table and the demo rate counter, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
-      [...NO_ACCESS, 'demo_rate_counter', 'demo_request', ...TENANT].sort()
+      [...NO_ACCESS, 'demo_rate_counter', 'demo_request', ...TENANT, ...PROSPECT_TABLES].sort()
     )
   })
 
