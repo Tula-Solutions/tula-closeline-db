@@ -2152,6 +2152,25 @@ describe('the playbook schema', () => {
     })
 
     describe('the plans use the list indexes under a generic plan', () => {
+      // The branch for a state filter is served by documents_state_list_idx only while the planner
+      // expects `state = $5` to keep a fraction of the rows. `documents` is shared by every test in
+      // the run and autovacuum re-analyzes it a minute or more after the first rows (on a slow
+      // runner, part-way through this file). A sample that holds one state only (`uploaded` is the
+      // default) gives n_distinct 1 and a most-common frequency of 1, the filter then looks free
+      // and documents_list_idx with `Filter: (state = $5)` wins. So the plans are asserted for the
+      // statistics the table has in production, five states, with this table's own autovacuum off
+      // so no sample taken later changes them.
+      beforeAll(async () => {
+        await owner.query('alter table playbook.documents set (autovacuum_enabled = false)')
+        await owner.query('alter table playbook.documents alter column state set (n_distinct = 5)')
+        await owner.query('analyze playbook.documents')
+      })
+      afterAll(async () => {
+        await owner.query('alter table playbook.documents reset (autovacuum_enabled)')
+        await owner.query('alter table playbook.documents alter column state reset (n_distinct)')
+        await owner.query('analyze playbook.documents')
+      })
+
       interface PlanNode {
         'Node Type': string
         'Relation Name'?: string
