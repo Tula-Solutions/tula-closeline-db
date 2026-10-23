@@ -14242,12 +14242,12 @@ declare const CALL_MAX_SEQ = 2147483647;
 declare const CALL_MAX_MOMENTS = 1e6;
 /** The most times a Call purge may be claimed: the table's bound, as for documents. */
 declare const CALL_PURGE_MAX_ATTEMPTS = 20;
-/** The most times a Call job may be claimed: the table's bound, as for ingestion jobs. */
+/** The most attempts a Call job may spend: the table's bound, as for ingestion jobs; a deferral ({@link CALL_JOB_DEFER}) gives its claim's attempt back. */
 declare const CALL_JOB_MAX_ATTEMPTS = 20;
 /**
 * The most sends of one Recording to the transcription vendor over the Call's whole life. A transcribe
-* job is claimed at most {@link CALL_JOB_MAX_ATTEMPTS} times and each attempt sends at most once, but a
-* restore starts a new job, so the bound is on the Call itself: the table refuses a twenty-first
+* job spends at most {@link CALL_JOB_MAX_ATTEMPTS} attempts and each claim sends at most once, and a
+* restore starts a new job, so the bound is on the Call itself, not on the claims: the table refuses a twenty-first
 * send, and {@link CALL_SENT_TO_VENDOR} answers `sent` false instead of counting it.
 */
 declare const CALL_MAX_VENDOR_SENDS = 20;
