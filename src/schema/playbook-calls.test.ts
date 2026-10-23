@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import {
+  CALL_JOB_MAX_DEFER_DELAY_MS,
   CALL_ROW_FIELDS,
   CALL_STATEMENTS,
   type CallJobClaimRow,
@@ -166,6 +167,15 @@ describe('the Call tables', () => {
     expect(CALL_STATEMENTS.CALL_SET_REP).toContain(
       "when $3::text is null or $3::text not in ('speaker', 'channel') then 'invalid'"
     )
+  })
+
+  test('a deferral gives the claim back and may wait up to the cap; a retry still counts', () => {
+    const defer = CALL_STATEMENTS.CALL_JOB_DEFER
+    expect(defer).toContain('attempts = greatest(attempts - 1, 0)')
+    expect(defer).toContain(String(CALL_JOB_MAX_DEFER_DELAY_MS))
+    expect(CALL_JOB_MAX_DEFER_DELAY_MS).toBe(25 * 3_600_000)
+    expect(CALL_STATEMENTS.CALL_JOB_RETRY).not.toContain('attempts =')
+    expect(CALL_STATEMENTS.CALL_JOB_RETRY).not.toContain(String(CALL_JOB_MAX_DEFER_DELAY_MS))
   })
 
   test('every send to the vendor needs its own confirmation', () => {

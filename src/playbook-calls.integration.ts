@@ -16,9 +16,11 @@ import {
   CALL_INSERT,
   CALL_JOB_CLAIM,
   CALL_JOB_COMPLETE,
+  CALL_JOB_DEFER,
   CALL_JOB_FAIL,
   CALL_JOB_GIVE_UP_SPENT,
   CALL_JOB_HEARTBEAT,
+  CALL_JOB_MAX_DEFER_DELAY_MS,
   CALL_JOB_RECORD,
   CALL_JOB_RETRY,
   CALL_JOB_TRANSCRIBED,
@@ -63,7 +65,7 @@ import {
   REMOVE_ALL_IDEMPOTENCY_ROUTE,
   RIGHTS_CONFIRM,
 } from './playbook-statements'
-import { MAX_SEARCH_STATE_IDS } from './schema/playbook-calls'
+import { CALL_JOB_MAX_ATTEMPTS, MAX_SEARCH_STATE_IDS } from './schema/playbook-calls'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 // Every test works in Organizations of its own (random ids), so no test sees another's rows.
@@ -650,6 +652,69 @@ describe('sales history, part two: Calls', () => {
         state: 'failed',
         failure_reason: 'processing_failed',
       })
+    })
+
+    test('a deferral keeps the attempt count and may wait a day; a retry still counts', async () => {
+      const org = await newConfirmedOrg()
+      const u = await mustAdd(org)
+      const day = 86_400_000
+      const waits = async () =>
+        Number(
+          (
+            await asOwner(org, (c) =>
+              c.query(
+                `select extract(epoch from next_attempt_at - clock_timestamp()) as s from playbook.call_jobs`
+              )
+            )
+          ).rows[0].s
+        )
+      const first = await claimOf(org, u.id)
+      expect(first.attempts).toBe(1)
+      expect(
+        (await q(org, CALL_JOB_DEFER, [org, first.id, crypto.randomUUID(), day])).rowCount
+      ).toBe(0)
+      expect(
+        (await q(org, CALL_JOB_DEFER, [org, first.id, first.claim_token, day])).rows[0]
+      ).toMatchObject({ attempts: 0 })
+      expect(await waits()).toBeGreaterThan(day / 1000 - 60)
+      expect(await claim(org)).toEqual([])
+      // A repeat of the same claim token finds nothing: the job is queued, not running.
+      expect((await q(org, CALL_JOB_DEFER, [org, first.id, first.claim_token, day])).rowCount).toBe(
+        0
+      )
+      // More deferrals than the attempt limit never spend it.
+      let job = first
+      for (let i = 0; i < CALL_JOB_MAX_ATTEMPTS + 2; i++) {
+        await asOwner(org, (c) =>
+          c.query(
+            `update playbook.call_jobs set next_attempt_at = clock_timestamp() - interval '1 second'`
+          )
+        )
+        job = await claimOf(org, u.id)
+        expect(job.attempts).toBe(1)
+        await q(org, CALL_JOB_DEFER, [org, job.id, job.claim_token, day])
+      }
+      // The delay is cut to the cap.
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.call_jobs set next_attempt_at = clock_timestamp() - interval '1 second'`
+        )
+      )
+      job = await claimOf(org, u.id)
+      await q(org, CALL_JOB_DEFER, [org, job.id, job.claim_token, 10 * day])
+      expect(await waits()).toBeLessThanOrEqual(CALL_JOB_MAX_DEFER_DELAY_MS / 1000)
+      expect(await waits()).toBeGreaterThan(CALL_JOB_MAX_DEFER_DELAY_MS / 1000 - 60)
+      // A retry still counts the attempt.
+      await asOwner(org, (c) =>
+        c.query(
+          `update playbook.call_jobs set next_attempt_at = clock_timestamp() - interval '1 second'`
+        )
+      )
+      job = await claimOf(org, u.id)
+      expect(
+        (await q(org, CALL_JOB_RETRY, [org, job.id, job.claim_token, 0])).rows[0]
+      ).toMatchObject({ attempts: 1 })
+      expect((await claimOf(org, u.id)).attempts).toBe(2)
     })
 
     test('a job whose Call was deleted meanwhile is cancelled by the claim, not run', async () => {

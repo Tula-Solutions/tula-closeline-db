@@ -552,6 +552,26 @@ set state = 'queued', claim_token = null,
 where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
 returning id, attempts`
 
+/** The longest delay, in milliseconds, {@link CALL_JOB_DEFER} will impose (25 hours: the next UTC day plus jitter); a longer one is cut to it. */
+export const CALL_JOB_MAX_DEFER_DELAY_MS = 90_000_000
+
+/**
+ * Put a job back for a later time without spending the attempt its claim counted, for a wait that
+ * is not a failure (the Organization's daily embed budget is used up and the Call waits for the
+ * next UTC day). `$1` Organization, `$2` job, `$3` the claim token, `$4` the delay in milliseconds
+ * (cut to {@link CALL_JOB_MAX_DEFER_DELAY_MS}; the service jitters it). The job returns to `queued`
+ * and its `attempts` goes back by the one the claim added, so any number of deferrals leaves the
+ * {@link CALL_JOB_MAX_ATTEMPTS} limit untouched; a real failure still ends an attempt with
+ * {@link CALL_JOB_RETRY} or {@link CALL_JOB_FAIL}. Returns `id` and `attempts` (as kept). No row: the
+ * claim was lost. The service must bound deferrals itself: this statement counts none.
+ */
+export const CALL_JOB_DEFER = `update playbook.call_jobs
+set state = 'queued', claim_token = null, attempts = greatest(attempts - 1, 0),
+    next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), ${CALL_JOB_MAX_DEFER_DELAY_MS}) / 1000),
+    updated_at = clock_timestamp()
+where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+returning id, attempts`
+
 /**
  * Record that the Recording is about to be sent to the vendor, before the request is made, so a
  * purge or erasure knows a vendor copy may exist and waits for {@link CALL_VENDOR_REMOVED}. `$1`
@@ -1057,6 +1077,7 @@ export const CALL_STATEMENTS = {
   CALL_JOB_CLAIM,
   CALL_JOB_HEARTBEAT,
   CALL_JOB_RETRY,
+  CALL_JOB_DEFER,
   CALL_SENT_TO_VENDOR,
   CALL_JOB_RECORD,
   CALL_JOB_TRANSCRIBED,

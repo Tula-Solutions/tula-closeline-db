@@ -2405,6 +2405,17 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     returning id, attempts
     ```
 
+    `CALL_JOB_DEFER`:
+
+    ```sql
+    update playbook.call_jobs
+    set state = 'queued', claim_token = null, attempts = greatest(attempts - 1, 0),
+        next_attempt_at = clock_timestamp() + make_interval(secs => least(greatest(coalesce($4::float8, 0), 0), 90000000) / 1000),
+        updated_at = clock_timestamp()
+    where organization_id = $1 and id = $2 and claim_token = $3::uuid and state = 'running'
+    returning id, attempts
+    ```
+
     `CALL_SENT_TO_VENDOR`:
 
     ```sql
@@ -2987,7 +2998,7 @@ deadlock the statement locks job rows first, then the Call row, the order the cl
 **Jobs.** `CALL_JOB_CLAIM` leases with `for update skip locked`, bounds the batch, and cancels the job
 of a deleted Call instead of running it. Workers record intermediate facts with `CALL_JOB_RECORD`,
 finish a transcription with `CALL_JOB_TRANSCRIBED`, and a rebuild or process with `CALL_JOB_COMPLETE`.
-`CALL_JOB_RETRY` and `CALL_JOB_FAIL` end an attempt; `CALL_JOB_GIVE_UP_SPENT` fails the Call of a job
+`CALL_JOB_RETRY` and `CALL_JOB_FAIL` end an attempt (`CALL_JOB_DEFER` ends a claim without spending it); `CALL_JOB_GIVE_UP_SPENT` fails the Call of a job
 out of attempts. None of them takes the Organization upload lock.
 
 **Outcome re-tag and search.** `inSearch` is derived in the same query as the Deal's Outcome:
@@ -3519,3 +3530,19 @@ shape). Only `closeline_voice` can reach it.
   `(organization_id, created_at)`.
 - **Row-level security:** the canonical fail-closed policy on `organization_id`; the table needs no
   entry in `NON_TENANT_TABLES`.
+
+## Deferring a Call job without spending an attempt (v0.39.0, no migration)
+
+`CALL_JOB_DEFER` returns a claimed Call job to `queued` for a later time and gives back the attempt
+its claim counted (`attempts = greatest(attempts - 1, 0)`). It is for a wait that is not a failure:
+the playbook's per-Organization daily embed budget is used up, so the Call waits for the next UTC
+day. `CALL_JOB_RETRY` cuts a delay to one hour and counts the attempt, so a deferral of about 24 hours
+through it could use all `CALL_JOB_MAX_ATTEMPTS` (20) and the Call would be failed unembedded.
+
+- `$1` Organization, `$2` job, `$3` claim token, `$4` delay in milliseconds, cut to
+  `CALL_JOB_MAX_DEFER_DELAY_MS` (90,000,000, 25 hours). The service jitters the delay. No row: the
+  claim was lost. The row has `id` and the `attempts` kept.
+- Real failures are unchanged: `CALL_JOB_RETRY` still counts the attempt and `CALL_JOB_FAIL` ends the
+  job. The statement counts no deferrals, so the service bounds them itself.
+- No schema change, so there is no migration; the playbook Call job calls `CALL_JOB_DEFER` for
+  budget deferrals and `CALL_JOB_RETRY` for everything else.
