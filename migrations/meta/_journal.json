@@ -169,6 +169,13 @@
       "when": 1792721567884,
       "tag": "0023_core_prospects",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792725888256,
+      "tag": "0024_core_consent",
+      "breakpoints": true
     }
   ]
 }
