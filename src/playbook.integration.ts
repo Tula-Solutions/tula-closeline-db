@@ -12,6 +12,7 @@ import {
   dropStaleTestObjects,
   integrationEnv,
   migrateUp,
+  pinColumnStats,
   rejectionOf,
 } from './integration-support'
 import { assertTenantIsolation } from './isolation'
@@ -2160,15 +2161,12 @@ describe('the playbook schema', () => {
       // and documents_list_idx with `Filter: (state = $5)` wins. So the plans are asserted for the
       // statistics the table has in production, five states, with this table's own autovacuum off
       // so no sample taken later changes them.
+      let unpin: () => Promise<void>
       beforeAll(async () => {
-        await owner.query('alter table playbook.documents set (autovacuum_enabled = false)')
-        await owner.query('alter table playbook.documents alter column state set (n_distinct = 5)')
-        await owner.query('analyze playbook.documents')
+        unpin = await pinColumnStats(owner, 'playbook.documents', { state: 5 })
       })
       afterAll(async () => {
-        await owner.query('alter table playbook.documents reset (autovacuum_enabled)')
-        await owner.query('alter table playbook.documents alter column state reset (n_distinct)')
-        await owner.query('analyze playbook.documents')
+        await unpin?.()
       })
 
       interface PlanNode {
