@@ -143,6 +143,48 @@ export const rollupDaily = coreSchema.table(
 )
 
 /**
+ * Which events the rollups have already counted, so replaying an event stream cannot count one twice
+ * and the nightly reconcile can recompute a day from what was counted. One row per Organization,
+ * metric and `dedupe_key` (`analytics_event_pkey`): the key is the event id, or the id of the Message
+ * the event is about when a later event about it must not count again. A consumer inserts the row
+ * first (`ON CONFLICT DO NOTHING`) and adds to `rollup_daily` only when a row went in, in one
+ * transaction. `day` is the UTC day the event is counted on, so a late event keeps its original day;
+ * `channel` is set when the event has one. Holds ids, a day and a label: never text.
+ *
+ * Lists served: the reconcile's per-day recount, `group by metric, day, channel` over a bounded day
+ * range (`analytics_event_day_idx`).
+ */
+export const analyticsEvents = coreSchema.table(
+  'analytics_event',
+  {
+    organizationId: orgRef(),
+    metric: text('metric', { enum: ROLLUP_METRICS }).notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    day: date('day', { mode: 'string' }).notNull(),
+    channel: text('channel'),
+    recordedAt: ts('recorded_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'analytics_event_pkey',
+      columns: [t.organizationId, t.metric, t.dedupeKey],
+    }),
+    check('analytics_event_organization_id_shape', orgShape),
+    check('analytics_event_organization_not_global', notGlobal),
+    check('analytics_event_metric_known', sql`${t.metric} in (${list(ROLLUP_METRICS)})`),
+    check(
+      'analytics_event_dedupe_key_shape',
+      sql`char_length(${t.dedupeKey}) between 1 and ${num(MAX_ROLLUP_GROUP_KEY_LENGTH)}`
+    ),
+    check(
+      'analytics_event_channel_known',
+      sql`${t.channel} is null or ${t.channel} in (${list(TOUCH_CHANNELS)})`
+    ),
+    index('analytics_event_day_idx').on(t.organizationId, t.day, t.metric),
+  ]
+)
+
+/**
  * One Message or Call that Attribution links to a Prospect, kept so a Deal's Outcome can be traced
  * to what touched the Prospect. **References only**: the Message or Call is named by `ref_id`
  * and holds no text. One row per Message or Call (`touches_ref_key`), so a replayed event is the

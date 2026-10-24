@@ -99,6 +99,7 @@ import {
   CONVERSATION_OUTCOME_LABELS2,
   MAX_SUMMARY_LENGTH2,
   rollupDaily2,
+  analyticsEvents2,
   touches2,
   sourcePerformance2,
   assessments2,
@@ -438,7 +439,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-d1fbwrrw.js";
+} from "../shared/chunk-z8x641tv.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -758,6 +759,7 @@ export {
   agentInstructionPointers2 as agentInstructionPointers,
   agentInstructionVersions2 as agentInstructionVersions,
   agentSettings2 as agentSettings,
+  analyticsEvents2 as analyticsEvents,
   apiKeyUsage2 as apiKeyUsage,
   apiKeys2 as apiKeys,
   approvalDecisions2 as approvalDecisions,
