@@ -18,6 +18,12 @@ const SETTING = 'app.organization_id'
 const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`
 const hex = (): string => crypto.randomUUID().replaceAll('-', '')
 
+/** CALL_INSERT as it was before the `origin` column existed: this test runs at an old schema. */
+const CALL_INSERT_BEFORE_ORIGIN = CALL_INSERT.replace(', origin)', ')').replace(
+  ",\n    coalesce($20::text, 'imported')",
+  ''
+)
+
 describe('migration 0018 on data that exists before it', () => {
   let admin: Pool
   let folder: string
@@ -57,7 +63,7 @@ describe('migration 0018 on data that exists before it', () => {
       await scoped(playbook, org, (c) => c.query(RIGHTS_CONFIRM, [org, `usr_${hex()}`, 1]))
       await scoped(playbook, org, async (c) => {
         await c.query(QUOTA_LOCK, [org])
-        return c.query(CALL_INSERT, [
+        return c.query(CALL_INSERT_BEFORE_ORIGIN, [
           org,
           id,
           'D-1',

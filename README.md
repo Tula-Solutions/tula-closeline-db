@@ -2056,9 +2056,10 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ins as (
       insert into playbook.calls
         (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash,
-         uploaded_by, object_key, rep_by, rep_label, rep_channel)
+         uploaded_by, object_key, rep_by, rep_label, rep_channel, origin)
       select $2::text, $1, coalesce((select id from deal), (select id from made)), $7::text, $5::text, $6::text,
-        $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text
+        $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text,
+        coalesce($20::text, 'imported')
       from go
       returning id, state, epoch, rep_seq),
     queued as (
@@ -2080,7 +2081,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
       (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.kind, c.origin, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
       c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
       c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
       (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable
@@ -2093,7 +2094,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     select c.id as call_id,
       (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-      c.epoch, c.rep_seq, c.deal_record_id
+      c.epoch, c.rep_seq, c.deal_record_id, c.origin
     from playbook.calls c
     join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
     where c.organization_id = $1 and c.id = any(($2::text[])[1:100])
@@ -2105,7 +2106,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
       (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.kind, c.origin, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
       c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
       c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
       (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
@@ -2120,7 +2121,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
       (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.kind, c.origin, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
       c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
       c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
       (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
@@ -2135,7 +2136,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
       (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.kind, c.origin, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
       c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
       c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
       (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
@@ -2150,7 +2151,7 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
     ```sql
     select c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
       (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-      c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+      c.kind, c.origin, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
       c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
       c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
       (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable, c.created_at::text as cursor_at
