@@ -3704,6 +3704,26 @@ credentials) and `source_retrieved_at`; `moment` has `source_call_id` and `sourc
 has at most 20 statements and 20 angle sources, the 100-character limit on each voice term, and that
 every check passed when a Draft is `auto_sendable`.
 
+## Enrichment, Signals and fit criteria (v0.51.0, migration `0048`)
+
+Six tenant tables in the `outbound` schema, each with `organization_id` first in its key and forced
+row-level security: `enrichment_runs` (one run per Prospect request, unique on `(organization_id,
+prospect_id, request_id)` so a retried request is charged once), `enrichment_attempts` (one row per
+provider tried in a run), `signals` (a Prospect's buying signals; a webhook `event_id` is unique per
+Organization), `fit_criteria`, `provider_settings` and `enrichment_spend` (one row per Organization,
+month and provider; the service upserts and adds to the sums).
+
+- `enrichment_attempts` and `signals` are append-only: `UPDATE` is revoked from `closeline_outbound`;
+  `DELETE` stays for the run cascade and erasure.
+- A provider API key is stored as `credential_ciphertext` (bytea) with `credential_key_id` and
+  `credential_updated_at`, all three set or all three null. The service seals it before the insert; the
+  database never sees the key.
+- Every list has a keyset index (`*_list_idx`, `*_prospect_idx`, `*_run_set_idx`, `*_status_idx`).
+  There is no statements file: the service reads and writes through drizzle under the tenant helper.
+- A Signal's `expires_at` only ends its freshness; nothing purges by it, so there is no expiry index.
+- The kind-specific Signal payload and the length of each fit-condition value are validated at the
+  service edge by the contract, because a `CHECK` cannot hold a subquery.
+
 ## Organizations with expired Twilio rows (v0.45.0, migration `0042`)
 
 `voice.twilio_orgs_with_expired(p_now timestamptz, p_after text, p_limit integer)` returns the

@@ -337,6 +337,13 @@
       "when": 1792811874474,
       "tag": "0047_approval_hash_agent_learning",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792813425749,
+      "tag": "0048_outbound_enrichment",
+      "breakpoints": true
     }
   ]
 }
