@@ -237,7 +237,7 @@ describe('the auth table categories', () => {
     }
   })
 
-  test('exempt only the three core directories, the status table, the Demo Request table, the demo rate counter, the playbook work registry, the voice line directory and the voice Twilio directory, each with a precise reason, and no auth table', () => {
+  test('exempt only the three core directories, the status table, the Demo Request table, the demo rate counter, the playbook work registry, the outbound work registry, the voice line directory and the voice Twilio directory, each with a precise reason, and no auth table', () => {
     expect([...NON_TENANT_TABLES].sort()).toEqual([
       'core.consent_form_directory',
       'core.demo_rate_counter',
@@ -245,6 +245,7 @@ describe('the auth table categories', () => {
       'core.invitation_directory',
       'core.membership_directory',
       'core.organization_state',
+      'outbound.work_hints',
       'playbook.work_hints',
       'voice.line_directory',
       'voice.twilio_directory',
