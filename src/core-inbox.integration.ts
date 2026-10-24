@@ -435,7 +435,7 @@ describe('core inbox tables', () => {
       expect(error.code).toBe(CHECK_VIOLATION)
     })
 
-    test('sources are written once: no update, and a repeated position is refused', async () => {
+    test('sources are written once: no update or delete, and a repeated position is refused', async () => {
       const a = await seed()
       const update = await refusal(
         run(a.orgId, 'update core.draft_sources set evidence_count = 9 where draft_id = $1', [
@@ -443,6 +443,10 @@ describe('core inbox tables', () => {
         ])
       )
       expect(update.code).toBe(INSUFFICIENT_PRIVILEGE)
+      const remove = await refusal(
+        run(a.orgId, 'delete from core.draft_sources where draft_id = $1', [a.draftId])
+      )
+      expect(remove.code).toBe(INSUFFICIENT_PRIVILEGE)
       const error = await refusal(
         run(
           a.orgId,

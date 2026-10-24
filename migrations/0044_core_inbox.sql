@@ -311,13 +311,13 @@ CREATE POLICY "escalation_rules_tenant_isolation" ON "core"."escalation_rules" A
 -- is stored, and a Rep may correct it); the body, the author and the ids are never rewritten and
 -- no Message is deleted, and so neither a Conversation nor a Draft (a cascade would remove Messages), which
 -- is why DELETE is revoked on them too. An Organization's or a Prospect's removal still cascades, because the
--- foreign key action runs as the table owner. Decisions are append-only; a Source is written once.
+-- foreign key action runs as the table owner. Decisions are append-only; a Source is written once and never removed.
 REVOKE UPDATE, DELETE, TRUNCATE ON "core"."messages" FROM closeline_core;
 --> statement-breakpoint
 GRANT UPDATE ("classification_label", "classification_confidence", "classification_decided_by", "classification_corrected_by_membership_id", "classified_at") ON "core"."messages" TO closeline_core;
 --> statement-breakpoint
 REVOKE UPDATE, DELETE, TRUNCATE ON "core"."approval_decisions" FROM closeline_core;
 --> statement-breakpoint
-REVOKE UPDATE, TRUNCATE ON "core"."draft_sources" FROM closeline_core;
+REVOKE UPDATE, DELETE, TRUNCATE ON "core"."draft_sources" FROM closeline_core;
 --> statement-breakpoint
 REVOKE DELETE ON "core"."conversations", "core"."drafts" FROM closeline_core;

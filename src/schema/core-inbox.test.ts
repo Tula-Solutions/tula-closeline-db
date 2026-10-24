@@ -136,7 +136,7 @@ describe('the inbox tables', () => {
       'REVOKE UPDATE, DELETE, TRUNCATE ON "core"."approval_decisions" FROM closeline_core;'
     )
     expect(migration).toContain(
-      'REVOKE UPDATE, TRUNCATE ON "core"."draft_sources" FROM closeline_core;'
+      'REVOKE UPDATE, DELETE, TRUNCATE ON "core"."draft_sources" FROM closeline_core;'
     )
   })
 
