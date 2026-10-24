@@ -404,6 +404,7 @@ import {
   MAX_PROVIDER_KEY_LENGTH2,
   MAX_MICRO_DOLLARS2,
   MAX_ATTEMPT_DURATION_MS2,
+  MAX_RESERVATION_HOLD_KEY_LENGTH2,
   MAX_RUN_REQUEST_ID_LENGTH2,
   MAX_SIGNAL_DETAIL_BYTES2,
   MAX_FIT_CONDITION_BYTES2,
@@ -418,6 +419,7 @@ import {
   fitCriteria2,
   providerSettings2,
   enrichmentSpend2,
+  enrichmentReservations2,
   playbookSchema2,
   DOCUMENT_STATES2,
   DOCUMENT_FAILURE_REASONS2,
@@ -536,7 +538,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-jbmnykcx.js";
+} from "../shared/chunk-ttx23s21.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -795,6 +797,7 @@ export {
   MAX_PROVIDER_REFERENCE_LENGTH2 as MAX_PROVIDER_REFERENCE_LENGTH,
   MAX_QUEUED_DEAL_IMPORTS2 as MAX_QUEUED_DEAL_IMPORTS,
   MAX_RECORDING_KEY_LENGTH2 as MAX_RECORDING_KEY_LENGTH,
+  MAX_RESERVATION_HOLD_KEY_LENGTH2 as MAX_RESERVATION_HOLD_KEY_LENGTH,
   MAX_ROLLUP_COUNT2 as MAX_ROLLUP_COUNT,
   MAX_ROLLUP_GROUP_KEY_LENGTH2 as MAX_ROLLUP_GROUP_KEY_LENGTH,
   MAX_RUN_FIELDS2 as MAX_RUN_FIELDS,
@@ -973,6 +976,7 @@ export {
   draftSources2 as draftSources,
   drafts2 as drafts,
   enrichmentAttempts2 as enrichmentAttempts,
+  enrichmentReservations2 as enrichmentReservations,
   enrichmentRuns2 as enrichmentRuns,
   enrichmentSpend2 as enrichmentSpend,
   environmentSettings2 as environmentSettings,

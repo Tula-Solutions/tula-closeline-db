@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core'
 import { outboundSchema } from './outbound'
 
@@ -90,6 +91,8 @@ export const MAX_PROVIDER_KEY_LENGTH = 32
 export const MAX_MICRO_DOLLARS = 1_000_000_000_000
 /** The longest an attempt may take, in milliseconds. Mirrors the contract's attempt `durationMs`. */
 export const MAX_ATTEMPT_DURATION_MS = 600_000
+/** The longest hold key of a reservation, in characters. */
+export const MAX_RESERVATION_HOLD_KEY_LENGTH = 256
 /** The longest request id of a run, in characters. */
 export const MAX_RUN_REQUEST_ID_LENGTH = 256
 /** The largest detail of a Signal, in bytes of its JSON text. */
@@ -127,6 +130,10 @@ const EVENT_ID = '^[A-Za-z0-9_-]{8,100}$'
  * `run_set_id` ties the runs of one bulk request together (the counts of a set are computed from
  * its runs). `fields` holds the provenance of each filled field (an array of at most 11, validated
  * by the contract at the service edge) and `email_verification` the verification result, or null.
+ * `lease_token` is the fencing token of the worker holding the run: a new random uuid on each
+ * claim, so a worker that lost its lease cannot write; `heartbeat_at` is when the holder last
+ * renewed it (both null until a worker claims the run; `started_at` is when it first started and
+ * does not move). `enrichment_runs_request_idx` finds a request id across Prospects.
  * `stop_reason` is set exactly when the run is `stopped`; `completed_at` exactly when it is in a
  * final state; a `queued` run has not started. Costs are whole micro-dollars.
  *
@@ -153,6 +160,8 @@ export const enrichmentRuns = outboundSchema.table(
     createdAt: ts('created_at').notNull().defaultNow(),
     startedAt: ts('started_at'),
     completedAt: ts('completed_at'),
+    leaseToken: uuid('lease_token'),
+    heartbeatAt: ts('heartbeat_at'),
   },
   (t) => [
     primaryKey({ name: 'enrichment_runs_pkey', columns: [t.organizationId, t.id] }),
@@ -200,6 +209,7 @@ export const enrichmentRuns = outboundSchema.table(
         and ${t.ceilingMicros} between 0 and ${num(MAX_MICRO_DOLLARS)}`
     ),
     uniqueIndex('enrichment_runs_request_key').on(t.organizationId, t.prospectId, t.requestId),
+    index('enrichment_runs_request_idx').on(t.organizationId, t.requestId),
     index('enrichment_runs_list_idx').on(t.organizationId, t.createdAt.desc(), t.id.desc()),
     index('enrichment_runs_prospect_idx').on(
       t.organizationId,
@@ -496,5 +506,66 @@ export const enrichmentSpend = outboundSchema.table(
     check('enrichment_spend_cost_not_negative', sql`${t.costMicros} >= 0`),
     check('enrichment_spend_calls_not_negative', sql`${t.calls} >= 0`),
     index('enrichment_spend_list_idx').on(t.organizationId, t.month.desc(), t.provider),
+  ]
+)
+
+/**
+ * Spend held back for a run before its provider calls, so concurrent runs cannot together pass the
+ * monthly budget. Replaces the old `hold_`-prefixed rows of `enrichment_spend`: spend by provider
+ * no longer has to skip them. `hold_key` is the caller's idempotency key (unique per Organization,
+ * `enrichment_reservations_hold_key`), so a retried hold finds its row. `month` is the first day of
+ * the month (UTC), as in `enrichment_spend`; `amount_micros` is whole micro-dollars. A reservation
+ * counts against the month while `released_at` is null; releasing sets it, never deletes. A run's
+ * reservations go with the run.
+ *
+ * Lookups served: the held sum of an Organization's month (`enrichment_reservations_open_idx`,
+ * only unreleased rows), and a run's reservations (`enrichment_reservations_run_idx`).
+ */
+export const enrichmentReservations = outboundSchema.table(
+  'enrichment_reservations',
+  {
+    id: text('id').notNull(),
+    organizationId: text('organization_id').notNull(),
+    runId: text('run_id').notNull(),
+    provider: text('provider').notNull(),
+    month: date('month', { mode: 'string' }).notNull(),
+    amountMicros: bigint('amount_micros', { mode: 'number' }).notNull(),
+    holdKey: text('hold_key').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    releasedAt: ts('released_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'enrichment_reservations_pkey', columns: [t.organizationId, t.id] }),
+    check('enrichment_reservations_id_shape', idShape('id', 'ersv')),
+    check('enrichment_reservations_organization_id_shape', orgShape),
+    check('enrichment_reservations_organization_not_global', notGlobal),
+    check('enrichment_reservations_run_id_shape', idShape('run_id', 'erun')),
+    check(
+      'enrichment_reservations_provider_shape',
+      sql`${t.provider} ~ ${sql.raw(`'${PROVIDER_KEY}'`)}`
+    ),
+    check('enrichment_reservations_month_first_day', sql`extract(day from ${t.month}) = 1`),
+    check(
+      'enrichment_reservations_amount_range',
+      sql`${t.amountMicros} between 0 and ${num(MAX_MICRO_DOLLARS)}`
+    ),
+    check(
+      'enrichment_reservations_hold_key_shape',
+      sql`char_length(${t.holdKey}) between 1 and ${num(MAX_RESERVATION_HOLD_KEY_LENGTH)}`
+    ),
+    check(
+      'enrichment_reservations_released_after_created',
+      sql`${t.releasedAt} is null or ${t.releasedAt} >= ${t.createdAt}`
+    ),
+    foreignKey({
+      name: 'enrichment_reservations_run_fk',
+      columns: [t.organizationId, t.runId],
+      foreignColumns: [enrichmentRuns.organizationId, enrichmentRuns.id],
+    }).onDelete('cascade'),
+    uniqueIndex('enrichment_reservations_hold_key').on(t.organizationId, t.holdKey),
+    index('enrichment_reservations_open_idx')
+      .on(t.organizationId, t.month)
+      .where(sql`${t.releasedAt} is null`),
+    index('enrichment_reservations_run_idx').on(t.organizationId, t.runId),
   ]
 )

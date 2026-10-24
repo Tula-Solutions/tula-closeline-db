@@ -6,6 +6,7 @@ import {
   ATTEMPT_FAILURES,
   ATTEMPT_OUTCOMES,
   enrichmentAttempts,
+  enrichmentReservations,
   enrichmentRuns,
   enrichmentSpend,
   FIELD_GROUPS,
@@ -27,6 +28,13 @@ const migration = readFileSync(
   new URL(`../../migrations/${migrationFile ?? 'missing'}`, import.meta.url),
   'utf8'
 )
+const leaseMigrationFile = readdirSync(new URL('../../migrations/', import.meta.url)).find((f) =>
+  f.startsWith('0050_')
+)
+const leaseMigration = readFileSync(
+  new URL(`../../migrations/${leaseMigrationFile ?? 'missing'}`, import.meta.url),
+  'utf8'
+)
 
 const TABLES = {
   enrichment_runs: enrichmentRuns,
@@ -35,6 +43,7 @@ const TABLES = {
   fit_criteria: fitCriteria,
   provider_settings: providerSettings,
   enrichment_spend: enrichmentSpend,
+  enrichment_reservations: enrichmentReservations,
 }
 
 const columnNames = (table: (typeof TABLES)[keyof typeof TABLES]) =>
@@ -88,8 +97,9 @@ describe('the outbound enrichment tables', () => {
   test.each(Object.keys(TABLES))(
     'the migration runs the canonical row-level-security statements for %s',
     (name) => {
+      const source = name === 'enrichment_reservations' ? leaseMigration : migration
       for (const statement of tenantRlsStatements('outbound', name)) {
-        expect(migration).toContain(statement)
+        expect(source).toContain(statement)
       }
     }
   )
@@ -107,7 +117,7 @@ describe('the outbound enrichment tables', () => {
     for (const table of Object.values(TABLES)) {
       for (const name of columnNames(table)) {
         if (/key|secret|token|password|credential/.test(name)) {
-          expect(name).toMatch(/ciphertext|key_id|updated_at|request_id/)
+          expect(name).toMatch(/ciphertext|key_id|updated_at|request_id|^lease_token$|^hold_key$/)
         }
       }
     }
@@ -122,6 +132,9 @@ describe('the outbound enrichment tables', () => {
     [signals, 'signals_prospect_kind_idx', 5],
     [fitCriteria, 'fit_criteria_list_idx', 3],
     [enrichmentSpend, 'enrichment_spend_list_idx', 3],
+    [enrichmentRuns, 'enrichment_runs_request_idx', 2],
+    [enrichmentReservations, 'enrichment_reservations_open_idx', 2],
+    [enrichmentReservations, 'enrichment_reservations_run_idx', 2],
   ] as const)('%s has the keyset list index %s', (table, name, width) => {
     const index = getTableConfig(table).indexes.find((i) => i.config.name === name)
     expect(index?.config.columns.length).toBe(width)
@@ -138,5 +151,24 @@ describe('the outbound enrichment tables', () => {
   test('a webhook event id is unique per Organization', () => {
     const index = getTableConfig(signals).indexes.find((i) => i.config.name === 'signals_event_key')
     expect(index?.config.unique).toBe(true)
+  })
+
+  test('a run holds a lease token and heartbeat, both optional', () => {
+    const columns = getTableConfig(enrichmentRuns).columns
+    for (const name of ['lease_token', 'heartbeat_at']) {
+      expect(columns.find((c) => c.name === name)?.notNull).toBe(false)
+    }
+    expect(columns.find((c) => c.name === 'lease_token')?.getSQLType()).toBe('uuid')
+  })
+
+  test('a hold key is unique per Organization, and reservations carry a month and amount', () => {
+    const index = getTableConfig(enrichmentReservations).indexes.find(
+      (i) => i.config.name === 'enrichment_reservations_hold_key'
+    )
+    expect(index?.config.unique).toBe(true)
+    expect(index?.config.columns.length).toBe(2)
+    expect(columnNames(enrichmentReservations)).toEqual(
+      expect.arrayContaining(['month', 'amount_micros', 'released_at', 'run_id', 'provider'])
+    )
   })
 })
