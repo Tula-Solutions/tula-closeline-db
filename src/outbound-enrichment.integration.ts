@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { createDb, type DbHandle } from './client'
 import { dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
@@ -22,6 +22,7 @@ const TABLES = [
   'fit_criteria',
   'provider_settings',
   'enrichment_spend',
+  'enrichment_reservations',
 ]
 
 /** One harmless update per table that allows updates, to prove a second Organization updates nothing. */
@@ -30,6 +31,7 @@ const UPDATES = {
   fit_criteria: 'weight = 7',
   provider_settings: 'enabled = false',
   enrichment_spend: 'calls = 9',
+  enrichment_reservations: 'released_at = now()',
 } as const
 
 interface Seeded {
@@ -300,6 +302,37 @@ describe('outbound enrichment tables', () => {
       ]
     )
 
+  const addReservation = async (
+    orgId: string,
+    runId: string,
+    options: {
+      id?: string
+      month?: string
+      provider?: string
+      amount?: number
+      holdKey?: string
+      releasedAt?: Date | null
+    } = {}
+  ) => {
+    const id = options.id ?? newId('ersv')
+    await run(
+      orgId,
+      `insert into outbound.enrichment_reservations (id, organization_id, run_id, provider, month, amount_micros, hold_key, released_at, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, now() - interval '1 hour')`,
+      [
+        id,
+        orgId,
+        runId,
+        options.provider ?? 'apollo',
+        options.month ?? '2026-10-01',
+        options.amount ?? 2000,
+        options.holdKey ?? `hold-${randomBytes(6).toString('hex')}`,
+        options.releasedAt ?? null,
+      ]
+    )
+    return id
+  }
+
   /** Create an Organization with one row in every table. */
   async function seed(): Promise<Seeded> {
     const orgId = newOrg()
@@ -310,6 +343,7 @@ describe('outbound enrichment tables', () => {
     await addCriterion(orgId)
     await addProvider(orgId)
     await addSpend(orgId)
+    await addReservation(orgId, runId)
     return { orgId, runId, prospectId }
   }
 
@@ -532,6 +566,63 @@ describe('outbound enrichment tables', () => {
       expect(seen).toHaveLength(7)
       expect(new Set(seen).size).toBe(7)
       expect([...seen].sort()).toEqual([...ids].sort())
+    })
+
+    test('a worker claim stores a fencing token and heartbeat apart from started_at', async () => {
+      const orgId = newOrg()
+      const runId = await addRun(orgId, { status: 'running' })
+      const before = (
+        await run(
+          orgId,
+          'select lease_token, heartbeat_at, started_at from outbound.enrichment_runs'
+        )
+      ).rows[0]
+      expect(before.lease_token).toBeNull()
+      expect(before.heartbeat_at).toBeNull()
+      const token = randomUUID()
+      await run(
+        orgId,
+        'update outbound.enrichment_runs set lease_token = $2, heartbeat_at = now() where id = $1',
+        [runId, token]
+      )
+      const renewed = await run(
+        orgId,
+        `update outbound.enrichment_runs set heartbeat_at = now() + interval '1 minute'
+         where id = $1 and lease_token = $2`,
+        [runId, token]
+      )
+      expect(renewed.rowCount).toBe(1)
+      const stale = await run(
+        orgId,
+        'update outbound.enrichment_runs set heartbeat_at = now() where id = $1 and lease_token = $2',
+        [runId, randomUUID()]
+      )
+      expect(stale.rowCount).toBe(0)
+      const after = (
+        await run(orgId, 'select lease_token, started_at from outbound.enrichment_runs')
+      ).rows[0]
+      expect(after.lease_token).toBe(token)
+      expect(after.started_at).toEqual(before.started_at)
+    })
+
+    test('a request id is found across Prospects by its index', async () => {
+      const orgId = newOrg()
+      await addRun(orgId, { requestId: 'req-x' })
+      await addRun(orgId, { requestId: 'req-x' })
+      const index = (
+        await run(
+          orgId,
+          `select indexdef from pg_indexes where schemaname = 'outbound' and indexname = 'enrichment_runs_request_idx'`
+        )
+      ).rows[0]
+      expect(index.indexdef).toContain('(organization_id, request_id)')
+      expect(
+        (
+          await run(orgId, 'select 1 from outbound.enrichment_runs where request_id = $1', [
+            'req-x',
+          ])
+        ).rowCount
+      ).toBe(2)
     })
 
     test('deleting a run deletes its attempts', async () => {
@@ -936,6 +1027,94 @@ describe('outbound enrichment tables', () => {
       expect(seen[0]).toBe('2026-10-01/apollo')
       expect(seen[8]).toBe('2026-08-01/zero_bounce')
       expect(new Set(seen).size).toBe(9)
+    })
+  })
+  describe('enrichment_reservations', () => {
+    test('the id, provider, month and amount are checked', async () => {
+      const orgId = newOrg()
+      const runId = await addRun(orgId)
+      expect((await refusal(addReservation(orgId, runId, { id: 'ersv_nope' }))).code).toBe(
+        CHECK_VIOLATION
+      )
+      expect((await refusal(addReservation(orgId, runId, { provider: 'Bad Name' }))).code).toBe(
+        CHECK_VIOLATION
+      )
+      expect((await refusal(addReservation(orgId, runId, { month: '2026-10-02' }))).code).toBe(
+        CHECK_VIOLATION
+      )
+      expect((await refusal(addReservation(orgId, runId, { amount: -1 }))).code).toBe(
+        CHECK_VIOLATION
+      )
+      expect((await refusal(addReservation(orgId, runId, { holdKey: '' }))).code).toBe(
+        CHECK_VIOLATION
+      )
+      await addReservation(orgId, runId, { amount: 0 })
+    })
+
+    test('a hold key holds once per Organization, so a retried hold finds its row', async () => {
+      const orgId = newOrg()
+      const runId = await addRun(orgId)
+      await addReservation(orgId, runId, { holdKey: 'hold-1' })
+      expect((await refusal(addReservation(orgId, runId, { holdKey: 'hold-1' }))).code).toBe(
+        UNIQUE_VIOLATION
+      )
+      const again = await run(
+        orgId,
+        `insert into outbound.enrichment_reservations (id, organization_id, run_id, provider, month, amount_micros, hold_key)
+         values ($1, $2, $3, 'apollo', '2026-10-01', 2000, 'hold-1') on conflict (organization_id, hold_key) do nothing`,
+        [newId('ersv'), orgId, runId]
+      )
+      expect(again.rowCount).toBe(0)
+      await addReservation(newOrg(), await addRun(orgs[orgs.length - 1] as string), {
+        holdKey: 'hold-1',
+      })
+    })
+
+    test('a reservation names a run of its own Organization', async () => {
+      const a = await seed()
+      const b = await seed()
+      expect((await refusal(addReservation(b.orgId, a.runId))).code).toBe(FOREIGN_KEY_VIOLATION)
+    })
+
+    test('the held sum of a month counts only unreleased reservations', async () => {
+      const orgId = newOrg()
+      const runId = await addRun(orgId)
+      await addReservation(orgId, runId, { amount: 1000 })
+      await addReservation(orgId, runId, { amount: 2500, provider: 'exa' })
+      await addReservation(orgId, runId, { amount: 7000, releasedAt: new Date() })
+      await addReservation(orgId, runId, { amount: 9000, month: '2026-11-01' })
+      const held = await run(
+        orgId,
+        `select coalesce(sum(amount_micros), 0) as held from outbound.enrichment_reservations
+         where month = '2026-10-01' and released_at is null`
+      )
+      expect(Number(held.rows[0].held)).toBe(3500)
+      const plan = await run(
+        orgId,
+        `select indexdef from pg_indexes where indexname = 'enrichment_reservations_open_idx'`
+      )
+      expect(plan.rows[0].indexdef).toContain('WHERE (released_at IS NULL)')
+    })
+
+    test('a release cannot come before the hold', async () => {
+      const orgId = newOrg()
+      const runId = await addRun(orgId)
+      expect(
+        (
+          await refusal(
+            addReservation(orgId, runId, { releasedAt: new Date(Date.now() - 86_400_000) })
+          )
+        ).code
+      ).toBe(CHECK_VIOLATION)
+    })
+
+    test('deleting a run deletes its reservations', async () => {
+      const orgId = newOrg()
+      const runId = await addRun(orgId)
+      await addReservation(orgId, runId)
+      expect(await countOf(orgId, 'enrichment_reservations')).toBe(1)
+      await run(orgId, 'delete from outbound.enrichment_runs where id = $1', [runId])
+      expect(await countOf(orgId, 'enrichment_reservations')).toBe(0)
     })
   })
 })

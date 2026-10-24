@@ -351,6 +351,13 @@
       "when": 1792817488517,
       "tag": "0049_outbound_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792818240321,
+      "tag": "0050_outbound_enrichment_lease",
+      "breakpoints": true
     }
   ]
 }
