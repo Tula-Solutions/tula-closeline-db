@@ -62,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-xa8f9x4k.js";
+} from "./shared/chunk-jbmnykcx.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -535,6 +535,7 @@ var NON_TENANT_TABLE_REASONS = {
   "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
   "voice.line_directory": "asked before the Organization is known (the inbound webhook receives only the dialled number); holds number, Organization id, Line id and state for Lines that are not released only, is written only by a SECURITY DEFINER trigger on voice.lines, and no service role holds any privilege on it: voice.line_for_number is the only way in",
   "voice.twilio_directory": "asked before the Organization is known (the Twilio adapter receives only a provider call or Recording id from a webhook); holds a kind, the provider id, Organization id and provider call id, is written only by SECURITY DEFINER triggers on voice.twilio_calls and voice.twilio_recordings, and no service role holds any privilege on it: voice.twilio_owner is the only way in",
+  "outbound.work_hints": "asked before the Organization is known (a sweep asks which Organizations have a campaign step due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by a SECURITY DEFINER trigger on outbound.enrollments and the discovery function, and no service role holds any privilege on it: outbound.organizations_with_work is the only way in",
   "playbook.work_hints": "asked before the Organization is known (a sweep asks which Organizations have purge, job or message work due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by SECURITY DEFINER triggers and the discovery function, and no service role holds any privilege on it: playbook.organizations_with_work is the only way in"
 };
 var NON_TENANT_TABLES = Object.keys(NON_TENANT_TABLE_REASONS);

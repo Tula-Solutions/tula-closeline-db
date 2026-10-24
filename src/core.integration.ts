@@ -264,6 +264,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           'core.consent_form_directory',
           'core.demo_rate_counter',
           'core.demo_request',
+          'outbound.work_hints',
           'playbook.work_hints',
           'voice.line_directory',
           'voice.twilio_directory',

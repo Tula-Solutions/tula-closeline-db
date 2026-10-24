@@ -114,6 +114,8 @@ export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
     'asked before the Organization is known (the inbound webhook receives only the dialled number); holds number, Organization id, Line id and state for Lines that are not released only, is written only by a SECURITY DEFINER trigger on voice.lines, and no service role holds any privilege on it: voice.line_for_number is the only way in',
   'voice.twilio_directory':
     'asked before the Organization is known (the Twilio adapter receives only a provider call or Recording id from a webhook); holds a kind, the provider id, Organization id and provider call id, is written only by SECURITY DEFINER triggers on voice.twilio_calls and voice.twilio_recordings, and no service role holds any privilege on it: voice.twilio_owner is the only way in',
+  'outbound.work_hints':
+    'asked before the Organization is known (a sweep asks which Organizations have a campaign step due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by a SECURITY DEFINER trigger on outbound.enrollments and the discovery function, and no service role holds any privilege on it: outbound.organizations_with_work is the only way in',
   'playbook.work_hints':
     'asked before the Organization is known (a sweep asks which Organizations have purge, job or message work due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by SECURITY DEFINER triggers and the discovery function, and no service role holds any privilege on it: playbook.organizations_with_work is the only way in',
 }
