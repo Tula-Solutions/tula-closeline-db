@@ -73,6 +73,7 @@ const CONTROL_TABLES = [
   'export_parts',
 ]
 const ANALYTICS_TABLES = [
+  'analytics_event',
   'assessment_findings',
   'assessments',
   'conversation_summaries',

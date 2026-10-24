@@ -6,6 +6,7 @@ import {
   ASSESSMENT_JUDGE_SOURCES,
   ASSESSMENT_SUBJECT_KINDS,
   ASSESSMENT_VERDICTS,
+  analyticsEvents,
   assessmentFindings,
   assessments,
   CONVERSATION_OUTCOME_LABELS,
@@ -35,8 +36,13 @@ const file = readdirSync(migrationsDir).find((name) =>
   name.endsWith('_core_analytics_playbook_suggestions.sql')
 )
 const migration = file ? readFileSync(new URL(file, migrationsDir), 'utf8') : ''
+const ledgerFile = readdirSync(migrationsDir).find((name) =>
+  name.endsWith('_core_analytics_event.sql')
+)
+const ledgerMigration = ledgerFile ? readFileSync(new URL(ledgerFile, migrationsDir), 'utf8') : ''
 
 const TABLES = {
+  analytics_event: analyticsEvents,
   assessment_findings: assessmentFindings,
   assessments,
   conversation_summaries: conversationSummaries,
@@ -68,7 +74,7 @@ describe('the analytics, assessment and summary tables', () => {
     'the migration runs the canonical RLS statements for %s',
     (name) => {
       for (const statement of tenantRlsStatements('core', name)) {
-        expect(migration).toContain(statement)
+        expect(name === 'analytics_event' ? ledgerMigration : migration).toContain(statement)
       }
     }
   )
