@@ -3730,3 +3730,88 @@ GRANT closeline_voice_purge_scan TO closeline_owner WITH SET TRUE, INHERIT FALSE
 
 The migration fails naming the role if it is missing or wrongly configured. Locally
 `docker/postgres/init.sql` does this; a volume created before v0.45.0 lacks the role, so recreate it.
+
+## Suggestions, the approval hash and the learning switch (v0.50.0, migration `0047`)
+
+Three additions for the approval queue (hub issue 285) and Agent-origin learning (hub issue 312).
+
+- **`core.approval_decisions.edited_body_sha256`** (text, null): the lowercase hex SHA-256 of the
+  body a member sent in an edited approval. Two checks: `approval_decisions_edited_body_sha256_shape`
+  (64 lowercase hex digits when set) and `approval_decisions_edited_hash_matches_kind` (set exactly
+  when `kind = 'edit_approve'`). The table stays INSERT and SELECT only for `closeline_core`. The
+  migration assumes no `edit_approve` row exists yet (core writes none before this release).
+- **`playbook.index_settings.learn_from_agent_moments`** (boolean, not null, default true): the
+  Organization's switch for indexing Moments of its Agents' own Calls. `closeline_playbook` may
+  update it at any time, vectors written or not (the `index_settings_final` trigger watches only the
+  model, dimension and `vectors_written_at`). The row exists only once settings are recorded
+  (`INDEX_SETTINGS_UPSERT`), so a service treats a missing row as on.
+- **Suggestion statements** (`playbook.suggestions`, from migration `0038`; no schema change). Each
+  runs under `withOrganization` and names the Organization in its own `where`. Row fields:
+  `SUGGESTION_ROW_FIELDS`. Lists are keysets on `(created_at, id)` with the text `cursor_at`, first
+  page `'infinity'` and `''`, page size clamped to 1..100. `SUGGESTION_INSERT` returns no row for a
+  known fingerprint (any state); `SUGGESTION_DECIDE` returns a row only for the call that moved a
+  pending Suggestion, so of two racing calls exactly one wins.
+
+    `SUGGESTION_INSERT`:
+
+    ```sql
+    insert into playbook.suggestions
+      (organization_id, id, kind, text, fingerprint, deal_record_id, moments)
+    values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+    on conflict (organization_id, fingerprint) do nothing
+    returning id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+      decided_by_membership_id
+    ```
+
+    `SUGGESTION_GET`:
+
+    ```sql
+    select id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+      decided_by_membership_id
+    from playbook.suggestions
+    where organization_id = $1 and id = $2
+    ```
+
+    `SUGGESTION_LIST`:
+
+    ```sql
+    select id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+      decided_by_membership_id, created_at::text as cursor_at
+    from playbook.suggestions
+    where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
+    order by created_at desc, id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `SUGGESTION_LIST_BY_STATUS`:
+
+    ```sql
+    select id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+      decided_by_membership_id, created_at::text as cursor_at
+    from playbook.suggestions
+    where organization_id = $1 and status = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
+    order by created_at desc, id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `SUGGESTION_DECIDE`:
+
+    ```sql
+    update playbook.suggestions
+    set status = $3::text, decided_by_membership_id = $4::text, decided_at = clock_timestamp(),
+      text = coalesce($5::text, text)
+    where organization_id = $1 and id = $2 and status = 'pending'
+    returning id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+      decided_by_membership_id
+    ```
+
+    `SUGGESTION_LIST_ACCEPTED`:
+
+    ```sql
+    select id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+      decided_by_membership_id, created_at::text as cursor_at
+    from playbook.suggestions
+    where organization_id = $1 and status = 'accepted' and (created_at, id) < ($2::timestamptz, $3::text)
+    order by created_at desc, id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```

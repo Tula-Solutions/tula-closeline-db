@@ -3343,6 +3343,7 @@ var approvalDecisions2 = coreSchema2.table("approval_decisions", {
   kind: text39("kind", { enum: DECISION_KINDS2 }).notNull(),
   decidedByMembershipId: text39("decided_by_membership_id"),
   note: text39("note"),
+  editedBodySha256: text39("edited_body_sha256"),
   acknowledgedUngrounded: boolean11("acknowledged_ungrounded").notNull().default(false),
   decidedAt: ts6("decided_at").notNull().defaultNow()
 }, (t) => [
@@ -3359,6 +3360,8 @@ var approvalDecisions2 = coreSchema2.table("approval_decisions", {
   check20("approval_decisions_member_matches_kind", sql25`(${t.kind} = 'auto_release') = (${t.decidedByMembershipId} is null)`),
   check20("approval_decisions_acknowledgement_is_approval", sql25`not ${t.acknowledgedUngrounded} or ${t.kind} in ('approve', 'edit_approve')`),
   check20("approval_decisions_note_is_rejection", sql25`${t.note} is null or ${t.kind} = 'reject'`),
+  check20("approval_decisions_edited_body_sha256_shape", sql25`${t.editedBodySha256} is null or ${t.editedBodySha256} ~ '^[0-9a-f]{64}$'`),
+  check20("approval_decisions_edited_hash_matches_kind", sql25`(${t.kind} = 'edit_approve') = (${t.editedBodySha256} is not null)`),
   foreignKey10({
     name: "approval_decisions_conversation_fk",
     columns: [t.organizationId, t.conversationId],
@@ -4177,7 +4180,7 @@ import {
 import { sql as sql30 } from "drizzle-orm";
 import {
   bigint as bigint10,
-  boolean as boolean13,
+  boolean as boolean14,
   check as check25,
   date as date5,
   foreignKey as foreignKey14,
@@ -4195,6 +4198,7 @@ import {
 import { sql as sql29 } from "drizzle-orm";
 import {
   bigint as bigint9,
+  boolean as boolean13,
   check as check24,
   customType as customType9,
   foreignKey as foreignKey13,
@@ -4369,6 +4373,7 @@ var indexSettings2 = playbookSchema2.table("index_settings", {
   embeddingModel: text43("embedding_model").notNull(),
   embeddingDimension: integer22("embedding_dimension").notNull(),
   vectorsWrittenAt: ts9("vectors_written_at"),
+  learnFromAgentMoments: boolean13("learn_from_agent_moments").notNull().default(true),
   createdAt: createdAt3(),
   updatedAt: updatedAt3()
 }, (t) => [
@@ -4431,7 +4436,7 @@ var deals2 = playbookSchema2.table("deals", {
   closedAt: date5("closed_at", { mode: "string" }),
   amount: numeric("amount", { precision: 17, scale: 2 }),
   currency: text44("currency"),
-  appearedInImport: boolean13("appeared_in_import").notNull().default(false),
+  appearedInImport: boolean14("appeared_in_import").notNull().default(false),
   createdAt: ts10("created_at").notNull().defaultNow(),
   updatedAt: ts10("updated_at").notNull().defaultNow()
 }, (t) => [
@@ -5033,7 +5038,7 @@ var voiceIdempotencyKeys2 = voiceSchema2.table("idempotency_keys", {
 import { sql as sql39 } from "drizzle-orm";
 import {
   bigint as bigint12,
-  boolean as boolean14,
+  boolean as boolean15,
   check as check34,
   foreignKey as foreignKey16,
   index as index43,
@@ -5154,7 +5159,7 @@ var voiceCalls2 = voiceSchema2.table("calls", {
   requestFingerprint: text53("request_fingerprint"),
   disclosureWordingVersion: integer26("disclosure_wording_version"),
   disclosurePlayedAt: ts14("disclosure_played_at"),
-  aiAssisted: boolean14("ai_assisted").notNull().default(false),
+  aiAssisted: boolean15("ai_assisted").notNull().default(false),
   createdAt: ts14("created_at").notNull().defaultNow(),
   answeredAt: ts14("answered_at"),
   endedAt: ts14("ended_at"),
@@ -5284,7 +5289,7 @@ var voiceRecordings2 = voiceSchema2.table("recordings", {
 // src/schema/voice-twilio.ts
 import { sql as sql40 } from "drizzle-orm";
 import {
-  boolean as boolean15,
+  boolean as boolean16,
   check as check35,
   foreignKey as foreignKey17,
   index as index44,
@@ -5309,9 +5314,9 @@ var voiceTwilioCalls2 = voiceSchema2.table("twilio_calls", {
   callId: text54("call_id"),
   direction: text54("direction", { enum: VOICE_CALL_DIRECTIONS2 }).notNull(),
   disclosureWordingVersion: integer27("disclosure_wording_version"),
-  disclosureAiAssisted: boolean15("disclosure_ai_assisted"),
+  disclosureAiAssisted: boolean16("disclosure_ai_assisted"),
   disclosurePlayedAt: ts15("disclosure_played_at"),
-  disclosureStarted: boolean15("disclosure_started").notNull().default(false),
+  disclosureStarted: boolean16("disclosure_started").notNull().default(false),
   bridgedTo: text54("bridged_to"),
   ringIdentities: text54("ring_identities").array().notNull().default(sql40`'{}'::text[]`),
   recordingId: text54("recording_id"),

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   bigint,
+  boolean,
   check,
   customType,
   foreignKey,
@@ -362,6 +363,9 @@ export const ingestionJobs = playbookSchema.table(
  * (ADR 0010). Once `vectors_written_at` is set a trigger refuses any change of either, and the
  * service role cannot delete the row: changing the model is a deliberate re-index, done by an
  * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
+ *
+ * `learn_from_agent_moments` is the Organization's switch for indexing Moments of its Agents' own
+ * Calls (default on). It may change at any time, vectors or not; a missing row means the default.
  */
 export const indexSettings = playbookSchema.table(
   'index_settings',
@@ -370,6 +374,7 @@ export const indexSettings = playbookSchema.table(
     embeddingModel: text('embedding_model').notNull(),
     embeddingDimension: integer('embedding_dimension').notNull(),
     vectorsWrittenAt: ts('vectors_written_at'),
+    learnFromAgentMoments: boolean('learn_from_agent_moments').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { getTableConfig } from 'drizzle-orm/pg-core'
 import {
   CONSUMED_CLAIM,
   CONSUMED_COMPLETE,
@@ -63,11 +64,21 @@ import {
   RIGHTS_CONFIRM,
 } from './playbook-statements'
 import {
+  SUGGESTION_DECIDE,
+  SUGGESTION_INSERT,
+  SUGGESTION_LIST,
+  SUGGESTION_LIST_ACCEPTED,
+  SUGGESTION_LIST_BY_STATUS,
+  SUGGESTION_ROW_FIELDS,
+  SUGGESTION_STATEMENTS,
+} from './playbook-suggestion-statements'
+import {
   DEAL_IMPORT_APPLY_BATCH,
   DEAL_IMPORT_MAX_ATTEMPTS,
   DEAL_IMPORT_MAX_ROWS,
   MAX_QUEUED_DEAL_IMPORTS,
 } from './schema/playbook-sales-history'
+import { suggestions } from './schema/playbook-suggestions'
 import { DOCUMENT_PURGE_MAX_ATTEMPTS, INGESTION_JOB_MAX_ATTEMPTS } from './schema/playbook-tables'
 import { WORK_KINDS } from './schema/playbook-work-hints'
 
@@ -92,6 +103,9 @@ const TAKES_A_TIME = [
   'CALL_LIST_BY_DEAL',
   'CALL_LIST_BY_DEAL_STATE',
   'CALL_LIST_PENDING_CLEANUP',
+  'SUGGESTION_LIST',
+  'SUGGESTION_LIST_BY_STATUS',
+  'SUGGESTION_LIST_ACCEPTED',
 ]
 
 describe('the documented playbook statements', () => {
@@ -795,5 +809,41 @@ describe('DOCUMENT_SEARCH_STATE (v0.22.0)', () => {
     for (const column of ['object_key', 'content_hash', 'uploaded_by', 'failure_reason']) {
       expect(text).not.toContain(column)
     }
+  })
+})
+
+describe('the Suggestion statements', () => {
+  test('they are part of PLAYBOOK_STATEMENTS', () => {
+    for (const [name, text] of Object.entries(SUGGESTION_STATEMENTS)) {
+      expect(PLAYBOOK_STATEMENTS[name as keyof typeof PLAYBOOK_STATEMENTS]).toBe(text)
+    }
+  })
+
+  test('the row fields are columns of the table, in the contract field order', () => {
+    const columns = getTableConfig(suggestions).columns.map((c) => c.name)
+    for (const field of SUGGESTION_ROW_FIELDS) {
+      expect(columns).toContain(field)
+    }
+    expect(SUGGESTION_ROW_FIELDS.slice(0, 4)).toEqual(['id', 'kind', 'status', 'text'])
+  })
+
+  test('an insert skips a known fingerprint instead of failing', () => {
+    expect(SUGGESTION_INSERT).toContain('on conflict (organization_id, fingerprint) do nothing')
+    expect(SUGGESTION_INSERT).toContain('returning')
+  })
+
+  test('a decision applies only to a pending Suggestion', () => {
+    expect(SUGGESTION_DECIDE).toContain("status = 'pending'")
+    expect(SUGGESTION_DECIDE).toContain('returning')
+  })
+
+  test.each([
+    ['SUGGESTION_LIST', SUGGESTION_LIST],
+    ['SUGGESTION_LIST_BY_STATUS', SUGGESTION_LIST_BY_STATUS],
+    ['SUGGESTION_LIST_ACCEPTED', SUGGESTION_LIST_ACCEPTED],
+  ])('%s is a clamped keyset page', (_name, text) => {
+    expect(text).toContain('(created_at, id) < ($2::timestamptz, $3::text)')
+    expect(text).toContain('limit least(greatest(coalesce($4::int, 1), 1), ')
+    expect(text).toContain('cursor_at')
   })
 })

@@ -213,6 +213,16 @@ export {
   type WorkDiscoveryRow,
 } from './playbook-statements'
 export {
+  SUGGESTION_DECIDE,
+  SUGGESTION_GET,
+  SUGGESTION_INSERT,
+  SUGGESTION_LIST,
+  SUGGESTION_LIST_ACCEPTED,
+  SUGGESTION_LIST_BY_STATUS,
+  SUGGESTION_ROW_FIELDS,
+  SUGGESTION_STATEMENTS,
+} from './playbook-suggestion-statements'
+export {
   CRM_LOOKUP_ROLE,
   DEFINER_ROLES,
   KEY_LOOKUP_ROLE,

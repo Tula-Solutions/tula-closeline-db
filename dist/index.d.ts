@@ -13823,7 +13823,9 @@ declare const draftSources: PgTableWithColumns_a5zn0g39<{
 * One decision about a Draft or a Conversation: an approval (with or without an edit), a
 * rejection, an automatic release, a takeover or a hand-back. Append-only for the service role
 * (INSERT and SELECT). Takeover and hand-back name the Conversation only; the others name a Draft.
-* An automatic release has no member; only a rejection carries a note.
+* An automatic release has no member; only a rejection carries a note. An edited approval, and
+* only that, carries `edited_body_sha256`: the lowercase hex SHA-256 of the body the member sent,
+* so the decision proves what was approved without storing the body again.
 *
 * Lists served: a Conversation's decisions, newest first (`approval_decisions_conversation_idx`);
 * a Draft's (`approval_decisions_draft_idx`).
@@ -13936,6 +13938,23 @@ declare const approvalDecisions: PgTableWithColumns_a5zn0g39<{
 		}, {}, {}>;
 		note: PgColumn_ffrhhp39<{
 			name: "note";
+			tableName: "approval_decisions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		editedBodySha256: PgColumn_ffrhhp39<{
+			name: "edited_body_sha256";
 			tableName: "approval_decisions";
 			dataType: "string";
 			columnType: "PgText";
@@ -24166,6 +24185,9 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g52<{
 * (ADR 0010). Once `vectors_written_at` is set a trigger refuses any change of either, and the
 * service role cannot delete the row: changing the model is a deliberate re-index, done by an
 * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
+*
+* `learn_from_agent_moments` is the Organization's switch for indexing Moments of its Agents' own
+* Calls (default on). It may change at any time, vectors or not; a missing row means the default.
 */
 declare const indexSettings: PgTableWithColumns_a5zn0g52<{
 	name: "index_settings";
@@ -24231,6 +24253,23 @@ declare const indexSettings: PgTableWithColumns_a5zn0g52<{
 			driverParam: string;
 			notNull: false;
 			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		learnFromAgentMoments: PgColumn_ffrhhp52<{
+			name: "learn_from_agent_moments";
+			tableName: "index_settings";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
@@ -28306,6 +28345,12 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly CALL_RETAGGED: "update playbook.calls c\\nset tagged_outcome_seq = $3::int, updated_at = clock_timestamp()\\nfrom playbook.deals d\\nwhere c.organization_id = $1 and c.id = any(($2::text[])[1:500]) and c.state = 'ready'\\n  and c.tagged_outcome_seq < $3::int\\n  and d.organization_id = $1 and d.id = c.deal_record_id and $3::int <= d.outcome_seq\\nreturning c.id";
 	readonly DEAL_RETAG_LOCK: "select id, outcome, outcome_seq, retag_through\nfrom playbook.deals\nwhere organization_id = $1 and id = $2\nfor no key update";
 	readonly DEAL_RETAG_DONE: "update playbook.deals d\\nset retag_through = $3::int\\nwhere d.organization_id = $1 and d.id = $2 and d.retag_through < $3::int and $3::int <= d.outcome_seq\\n  and not exists (\\n    select 1 from playbook.calls c\\n    where c.organization_id = $1 and c.deal_record_id = d.id and c.state = 'ready' and c.tagged_outcome_seq < $3::int)\\nreturning d.id, d.retag_through, d.outcome_seq";
+	readonly SUGGESTION_INSERT: "insert into playbook.suggestions\n  (organization_id, id, kind, text, fingerprint, deal_record_id, moments)\nvalues ($1, $2, $3, $4, $5, $6, $7::jsonb)\non conflict (organization_id, fingerprint) do nothing\nreturning id, kind, status, text, deal_record_id, moments, created_at, decided_at,\n  decided_by_membership_id";
+	readonly SUGGESTION_GET: "select id, kind, status, text, deal_record_id, moments, created_at, decided_at,\n  decided_by_membership_id\nfrom playbook.suggestions\nwhere organization_id = $1 and id = $2";
+	readonly SUGGESTION_LIST: string;
+	readonly SUGGESTION_LIST_BY_STATUS: string;
+	readonly SUGGESTION_DECIDE: "update playbook.suggestions\\nset status = $3::text, decided_by_membership_id = $4::text, decided_at = clock_timestamp(),\\n  text = coalesce($5::text, text)\\nwhere organization_id = $1 and id = $2 and status = 'pending'\\nreturning id, kind, status, text, deal_record_id, moments, created_at, decided_at,\\n  decided_by_membership_id";
+	readonly SUGGESTION_LIST_ACCEPTED: string;
 	readonly QUOTA_LOCK: "select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked";
 	readonly QUOTA_USAGE: "select document_count, byte_count\nfrom playbook.organization_usage\nwhere organization_id = $1";
 	readonly DOCUMENT_INSERT: "with ins as (\n  insert into playbook.documents\n    (id, organization_id, name, content_hash, size_bytes, declared_type, detected_type, uploaded_by, object_key)\n  select $2::text, $1::text, $3::text, $4::bytea, $5::bigint, $6::text, $7::text, $8::text, $9::text\n  where coalesce((select document_count from playbook.organization_usage where organization_id = $1), 0) < $11::bigint\n    and coalesce((select byte_count from playbook.organization_usage where organization_id = $1), 0) + $5::bigint <= $12::bigint\n  on conflict (organization_id, content_hash) where purge_started_at is null and restore_barred_at is null do nothing\n  returning id, organization_id, epoch),\nqueued as (\n  insert into playbook.ingestion_jobs (id, organization_id, document_id, epoch, next_attempt_at)\n  select $10::text, organization_id, id, epoch, clock_timestamp() from ins)\nselect id, epoch from ins";
@@ -28380,6 +28425,55 @@ declare const PLAYBOOK_STATEMENTS: {
 	readonly RIGHTS_GET: "select confirmed_by, confirmed_at, wording_version\nfrom playbook.rights_confirmations\nwhere organization_id = $1";
 	readonly RIGHTS_CONFIRM: "with up as (\n  insert into playbook.rights_confirmations as r (organization_id, confirmed_by, confirmed_at, wording_version)\n  values ($1, $2::text, clock_timestamp(), $3::int)\n  on conflict (organization_id) do update\n    set confirmed_by = excluded.confirmed_by, confirmed_at = excluded.confirmed_at, wording_version = excluded.wording_version\n    where r.wording_version < excluded.wording_version\n  returning confirmed_by, confirmed_at, wording_version)\nselect confirmed_by, confirmed_at, wording_version, true as recorded from up\nunion all\nselect confirmed_by, confirmed_at, wording_version, false\nfrom playbook.rights_confirmations\nwhere organization_id = $1 and not exists (select 1 from up)";
 	readonly ORGANIZATIONS_WITH_WORK: string;
+};
+/** The names of the columns of a Suggestion answer, in order, for the service's row type. */
+declare const SUGGESTION_ROW_FIELDS: readonly ["id", "kind", "status", "text", "deal_record_id", "moments", "created_at", "decided_at", "decided_by_membership_id"];
+/**
+* Propose a Suggestion. `$1` Organization, `$2` id (`sgs_` and 32 hex digits), `$3` kind, `$4` text,
+* `$5` the 32-byte SHA-256 fingerprint of the kind and normalised text, `$6` the won Deal's record
+* id, `$7` the cited Moments as a JSON array (at most 10). A row back means the Suggestion is new.
+* No row means the Organization already holds one with that fingerprint, in any state, so a
+* rejected proposal is not made again and a retried delivery stores it once.
+*/
+declare const SUGGESTION_INSERT2 = "insert into playbook.suggestions\n  (organization_id, id, kind, text, fingerprint, deal_record_id, moments)\nvalues ($1, $2, $3, $4, $5, $6, $7::jsonb)\non conflict (organization_id, fingerprint) do nothing\nreturning id, kind, status, text, deal_record_id, moments, created_at, decided_at,\n  decided_by_membership_id";
+/** Read one Suggestion. `$1` Organization, `$2` id. No row means unknown or another Organization's. */
+declare const SUGGESTION_GET2 = "select id, kind, status, text, deal_record_id, moments, created_at, decided_at,\n  decided_by_membership_id\nfrom playbook.suggestions\nwhere organization_id = $1 and id = $2";
+/**
+* List the Suggestions of every status, newest first, one page by keyset. `$1` Organization, `$2`
+* and `$3` the `cursor_at` (text) and `id` of the last row of the previous page (`'infinity'` and
+* `''` for the first), `$4` the page size, clamped to 1..{@link DOCUMENT_LIST_MAX_PAGE}. Each row
+* carries `cursor_at`. On `suggestions_list_idx`, read backwards.
+*/
+declare const SUGGESTION_LIST2: string;
+/**
+* {@link SUGGESTION_LIST} for one status (`$5`: `pending`, `accepted` or `rejected`), on
+* `suggestions_status_list_idx`. The Admin's queue is `pending`.
+*/
+declare const SUGGESTION_LIST_BY_STATUS2: string;
+/**
+* Decide a Suggestion, once. `$1` Organization, `$2` id, `$3` the new status (`accepted` or
+* `rejected`), `$4` the deciding Membership, `$5` the edited text for an acceptance (null keeps the
+* proposed text). A row back means this call decided it. No row means it is unknown, another
+* Organization's, or already decided: read {@link SUGGESTION_GET} to tell `suggestion.not_found`
+* from `suggestion.not_pending`. Of two concurrent calls exactly one gets the row; the other
+* re-checks `status = 'pending'` once the first commits and gets none.
+*/
+declare const SUGGESTION_DECIDE2 = "update playbook.suggestions\\nset status = $3::text, decided_by_membership_id = $4::text, decided_at = clock_timestamp(),\\n  text = coalesce($5::text, text)\\nwhere organization_id = $1 and id = $2 and status = 'pending'\\nreturning id, kind, status, text, deal_record_id, moments, created_at, decided_at,\\n  decided_by_membership_id";
+/**
+* List the accepted Suggestions of an Organization for the index, newest first, one bounded page
+* by keyset. `$1` Organization, `$2` and `$3` the `cursor_at` and `id` of the last row of the
+* previous page (`'infinity'` and `''` for the first), `$4` the page size, clamped to
+* 1..{@link DOCUMENT_LIST_MAX_PAGE}. On `suggestions_status_list_idx`.
+*/
+declare const SUGGESTION_LIST_ACCEPTED2: string;
+/** Every Suggestion statement by name, spread into `PLAYBOOK_STATEMENTS`. */
+declare const SUGGESTION_STATEMENTS: {
+	readonly SUGGESTION_INSERT2: "insert into playbook.suggestions\n  (organization_id, id, kind, text, fingerprint, deal_record_id, moments)\nvalues ($1, $2, $3, $4, $5, $6, $7::jsonb)\non conflict (organization_id, fingerprint) do nothing\nreturning id, kind, status, text, deal_record_id, moments, created_at, decided_at,\n  decided_by_membership_id";
+	readonly SUGGESTION_GET2: "select id, kind, status, text, deal_record_id, moments, created_at, decided_at,\n  decided_by_membership_id\nfrom playbook.suggestions\nwhere organization_id = $1 and id = $2";
+	readonly SUGGESTION_LIST2: string;
+	readonly SUGGESTION_LIST_BY_STATUS2: string;
+	readonly SUGGESTION_DECIDE2: "update playbook.suggestions\\nset status = $3::text, decided_by_membership_id = $4::text, decided_at = clock_timestamp(),\\n  text = coalesce($5::text, text)\\nwhere organization_id = $1 and id = $2 and status = 'pending'\\nreturning id, kind, status, text, deal_record_id, moments, created_at, decided_at,\\n  decided_by_membership_id";
+	readonly SUGGESTION_LIST_ACCEPTED2: string;
 };
 /** The one database role that owns every schema and table and runs every migration. */
 declare const OWNER_ROLE = "closeline_owner";
@@ -28472,4 +28566,4 @@ interface LineForNumber {
 declare function lineForNumber(db: Pick<Database, "execute">, number: string): Promise<LineForNumber | null>;
 /** This library's package name, so a consumer can report which shared libraries it resolved. */
 declare const PACKAGE = "tula-closeline-db";
-export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, API_KEY_FOR_HASH, AUTH_STATEMENTS, ApiKeyForHashRow, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_DEFER2 as CALL_JOB_DEFER, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_MAX_DEFER_DELAY_MS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_MOMENTS_RECORD2 as CALL_MOMENTS_RECORD, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SEARCH_STATE2 as CALL_SEARCH_STATE, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_ID_PATTERN, CALL_VENDOR_ID_RECORD2 as CALL_VENDOR_ID_RECORD, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CRM_CONNECTION_FOR_ACCOUNT, CRM_LOOKUP_ROLE, CallJobClaimRow, ClaimedCallJob, ClaimedDemoNotice, ClaimedIngestionJob, ConsentFormForToken, CrmConnectionForAccountRow, DB_TYPES, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_LIST_ERASED, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DEFINER_ROLES, DEMO_NOTICE_CLAIM_MAX, DEMO_PURGE_BATCH_MAX, DEMO_RATE_PURGE_BATCH_MAX, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SEARCH_STATE, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DemoRateLimitHit, DemoRequestInput, DemoRequestRefusedError, DemoRequestSubmission, DocumentRow, EMBED_USAGE_ADD, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, EMBED_USAGE_PURGE, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, KEY_LOOKUP_ROLE, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, LineForNumber, MAX_DOCUMENT_SEARCH_STATE_IDS, MAX_QUEUED_DEAL_IMPORTS, MAX_SEARCH_STATE_IDS, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_CLAIM, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_DONE, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, ORPHAN_SWEEP_PAGE_DONE, ORPHAN_SWEEP_STATE, OUTBOX_CLAIM, OUTBOX_COMPLETE, OUTBOX_DEDUPE_KEY_MAX_LENGTH, OUTBOX_DRAIN_ROLE, OUTBOX_ENQUEUE, OUTBOX_ERROR_CODE_MAX_LENGTH, OUTBOX_FAIL, OUTBOX_MAX_ATTEMPTS, OUTBOX_MAX_BATCH, OUTBOX_MAX_LEASE_MS, OUTBOX_MAX_RETRY_DELAY_MS, OUTBOX_MIN_LEASE_MS, OUTBOX_PAYLOAD_MAX_BYTES, OUTBOX_TOPIC_MAX_LENGTH, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, OutboxClaimRow, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, SEARCH_ROLE, Schema, SettledDemoNoticeStatus, TENANT_SCHEMAS, TenantIsolationGap, Transaction, VOICE_PURGE_SCAN_ROLE, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimDemoNotices, claimedCallJobs, claimedJobs, consentFormForToken, createDb, discoveredOrganizations, findTenantIsolationGaps, hitDemoRateLimit, invitationForToken, lineForNumber, organizationOfUser, purgeDemoRateCounters, purgeDemoRequests, repChangeAllowed, reportConnectionError, settleDemoNotice, submitDemoRequest, tenantRlsStatements, withEnvironment, withOrganization };
+export { ABANDON_CLAIM, ABANDON_GIVE_UP_SPENT, ABANDON_LEARN, ABANDON_MIN_GRACE_MS, ABANDON_PURGE_BATCH, ABANDON_RECORD, ABANDON_RESOLVE, ABANDON_SETTLE, API_KEY_FOR_HASH, AUTH_STATEMENTS, ApiKeyForHashRow, AuthTableCategories, CALL_CHANNELS, CALL_CLEANUP_BEGIN2 as CALL_CLEANUP_BEGIN, CALL_CLEANUP_DONE2 as CALL_CLEANUP_DONE, CALL_ERASE_BATCH2 as CALL_ERASE_BATCH, CALL_FAILURE_REASONS, CALL_GET2 as CALL_GET, CALL_INSERT2 as CALL_INSERT, CALL_JOB_CLAIM2 as CALL_JOB_CLAIM, CALL_JOB_COMPLETE2 as CALL_JOB_COMPLETE, CALL_JOB_DEFER2 as CALL_JOB_DEFER, CALL_JOB_FAIL2 as CALL_JOB_FAIL, CALL_JOB_GIVE_UP_SPENT2 as CALL_JOB_GIVE_UP_SPENT, CALL_JOB_HEARTBEAT2 as CALL_JOB_HEARTBEAT, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_MAX_DEFER_DELAY_MS, CALL_JOB_RECORD2 as CALL_JOB_RECORD, CALL_JOB_RETRY2 as CALL_JOB_RETRY, CALL_JOB_STATES, CALL_JOB_TRANSCRIBED2 as CALL_JOB_TRANSCRIBED, CALL_KINDS, CALL_LIST2 as CALL_LIST, CALL_LIST_BY_DEAL2 as CALL_LIST_BY_DEAL, CALL_LIST_BY_DEAL_STATE2 as CALL_LIST_BY_DEAL_STATE, CALL_LIST_BY_STATE2 as CALL_LIST_BY_STATE, CALL_LIST_PENDING_CLEANUP2 as CALL_LIST_PENDING_CLEANUP, CALL_LIST_SPENT_PURGES2 as CALL_LIST_SPENT_PURGES, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_MOMENTS_RECORD2 as CALL_MOMENTS_RECORD, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_CLAIM2 as CALL_PURGE_CLAIM, CALL_PURGE_COMPLETE2 as CALL_PURGE_COMPLETE, CALL_PURGE_MAX_ATTEMPTS, CALL_PURGE_RESET2 as CALL_PURGE_RESET, CALL_REP_BY, CALL_REQUEUE2 as CALL_REQUEUE, CALL_RESTORE2 as CALL_RESTORE, CALL_RESTORE_FOR_UPLOAD2 as CALL_RESTORE_FOR_UPLOAD, CALL_RETAGGED2 as CALL_RETAGGED, CALL_ROW_FIELDS, CALL_SEARCH_STATE2 as CALL_SEARCH_STATE, CALL_SENT_TO_VENDOR2 as CALL_SENT_TO_VENDOR, CALL_SET_REP2 as CALL_SET_REP, CALL_SOFT_DELETE2 as CALL_SOFT_DELETE, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATEMENTS, CALL_STATES, CALL_USAGE2 as CALL_USAGE, CALL_VENDOR_ID_PATTERN, CALL_VENDOR_ID_RECORD2 as CALL_VENDOR_ID_RECORD, CALL_VENDOR_REMOVED2 as CALL_VENDOR_REMOVED, CONSUMED_CLAIM, CONSUMED_COMPLETE, CONSUMED_LOOKUP, CONSUMED_PURGE, CONSUMED_PURGE_AGE_MS, CONSUMED_RELEASE, CONSUMED_RENEW, CONTROL_PLANE_TABLES, CONTROL_PLANE_TABLE_REASONS, COUNTER_MIN_PERIOD_MS, COUNTER_PURGE_BATCH, CRM_CONNECTION_FOR_ACCOUNT, CRM_LOOKUP_ROLE, CallJobClaimRow, ClaimedCallJob, ClaimedDemoNotice, ClaimedIngestionJob, ConsentFormForToken, CrmConnectionForAccountRow, DB_TYPES, DEAL_BY_DEAL_ID, DEAL_ERASE_BATCH, DEAL_GET, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_CLAIM, DEAL_IMPORT_ERASE_BATCH, DEAL_IMPORT_FAIL, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_FINISH, DEAL_IMPORT_GET, DEAL_IMPORT_GIVE_UP_SPENT, DEAL_IMPORT_HEARTBEAT, DEAL_IMPORT_INSERT, DEAL_IMPORT_LIST, DEAL_IMPORT_LIST_ERASED, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_OBJECT_REMOVED, DEAL_IMPORT_PURGE_BATCH, DEAL_IMPORT_RETRY, DEAL_IMPORT_ROWS_LIST, DEAL_IMPORT_ROWS_LIST_BY_RESULT, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_LIST, DEAL_LIST_BY_IMPORT_FLAG, DEAL_LIST_BY_OUTCOME, DEAL_LIST_PENDING_RETAG2 as DEAL_LIST_PENDING_RETAG, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DEAL_RETAG_BATCH2 as DEAL_RETAG_BATCH, DEAL_RETAG_DONE2 as DEAL_RETAG_DONE, DEAL_RETAG_LOCK2 as DEAL_RETAG_LOCK, DEAL_ROW_FIELDS, DEAL_SET_OUTCOME, DEAL_USAGE, DEFAULT_POOL_OPTIONS, DEFINER_ROLES, DEMO_NOTICE_CLAIM_MAX, DEMO_PURGE_BATCH_MAX, DEMO_RATE_PURGE_BATCH_MAX, DOCUMENT_BY_HASH, DOCUMENT_CLEANUP_BEGIN, DOCUMENT_CLEANUP_DONE, DOCUMENT_ERASE_BATCH, DOCUMENT_GET, DOCUMENT_INSERT, DOCUMENT_LIST, DOCUMENT_LIST_DELETED, DOCUMENT_LIST_FILTERED, DOCUMENT_LIST_MAX_PAGE, DOCUMENT_LIST_PENDING_CLEANUP, DOCUMENT_LIST_SPENT_PURGES, DOCUMENT_MIN_RETENTION_MS, DOCUMENT_PURGE_CLAIM, DOCUMENT_PURGE_COMPLETE, DOCUMENT_PURGE_RESET, DOCUMENT_REQUEUE, DOCUMENT_RESTORE, DOCUMENT_RESTORE_FOR_UPLOAD, DOCUMENT_ROW_FIELDS, DOCUMENT_SEARCH_STATE, DOCUMENT_SOFT_DELETE, Database, DbHandle, DbOptions, DemoRateLimitHit, DemoRequestInput, DemoRequestRefusedError, DemoRequestSubmission, DocumentRow, EMBED_USAGE_ADD, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, EMBED_USAGE_PURGE, ENVIRONMENT_POLICY_EXPRESSION, ENVIRONMENT_SCOPED_TABLES, ENVIRONMENT_SETTING, IDEMPOTENCY_BEGIN, IDEMPOTENCY_COMPLETE, IDEMPOTENCY_LOOKUP, IDEMPOTENCY_MIN_PURGE_AGE_MS, IDEMPOTENCY_PURGE, IDEMPOTENCY_PURGE_AGE_MS, INDEX_SETTINGS_UPSERT, INDEX_VECTORS_MARK, INGESTION_JOB_ADVANCE, INGESTION_JOB_CLAIM, INGESTION_JOB_COMPLETE, INGESTION_JOB_FAIL, INGESTION_JOB_GIVE_UP_SPENT, INGESTION_JOB_HEARTBEAT, INGESTION_JOB_RETRY, INGESTION_MAX_RETRY_DELAY_MS, IngestionJobClaimRow, InvitationForToken, KEY_LOOKUP_ROLE, LOCKOUT_ATTEMPT, LOCKOUT_CLEAR, LOCKOUT_MIN_RETRY_AFTER_MS, LOCKOUT_RETRY_AFTER, LineForNumber, MAX_DOCUMENT_SEARCH_STATE_IDS, MAX_QUEUED_DEAL_IMPORTS, MAX_SEARCH_STATE_IDS, NON_TENANT_TABLES, NON_TENANT_TABLE_REASONS, ORGANIZATIONS_WITH_WORK, ORGANIZATION_REMOVAL_STATUS, ORGANIZATION_REMOVE_REST, ORGANIZATION_SETTING, ORPHAN_SWEEP_AGE_MS, ORPHAN_SWEEP_CLAIM, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_DONE, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, ORPHAN_SWEEP_PAGE_DONE, ORPHAN_SWEEP_STATE, OUTBOX_CLAIM, OUTBOX_COMPLETE, OUTBOX_DEDUPE_KEY_MAX_LENGTH, OUTBOX_DRAIN_ROLE, OUTBOX_ENQUEUE, OUTBOX_ERROR_CODE_MAX_LENGTH, OUTBOX_FAIL, OUTBOX_MAX_ATTEMPTS, OUTBOX_MAX_BATCH, OUTBOX_MAX_LEASE_MS, OUTBOX_MAX_RETRY_DELAY_MS, OUTBOX_MIN_LEASE_MS, OUTBOX_PAYLOAD_MAX_BYTES, OUTBOX_TOPIC_MAX_LENGTH, OWNER_ROLE, OrganizationOfUser, OrganizationStatus, OutboxClaimRow, PACKAGE, PENDING_CLEANUP_PREDICATE, PLAYBOOK_MAX_BATCH, PLAYBOOK_MIN_LEASE_MS, PLAYBOOK_STATEMENTS, QUOTA_LOCK, QUOTA_USAGE, RATE_HIT, REMOVE_ALL_IDEMPOTENCY_ROUTE, RIGHTS_CONFIRM, RIGHTS_GET, RIGHTS_MAX_WORDING_VERSION, SEARCH_ROLE, SUGGESTION_DECIDE2 as SUGGESTION_DECIDE, SUGGESTION_GET2 as SUGGESTION_GET, SUGGESTION_INSERT2 as SUGGESTION_INSERT, SUGGESTION_LIST2 as SUGGESTION_LIST, SUGGESTION_LIST_ACCEPTED2 as SUGGESTION_LIST_ACCEPTED, SUGGESTION_LIST_BY_STATUS2 as SUGGESTION_LIST_BY_STATUS, SUGGESTION_ROW_FIELDS, SUGGESTION_STATEMENTS, Schema, SettledDemoNoticeStatus, TENANT_SCHEMAS, TenantIsolationGap, Transaction, VOICE_PURGE_SCAN_ROLE, WORK_KINDS, WorkDiscoveryRow, assertTenantIsolation, callReuploadRequeues, claimDemoNotices, claimedCallJobs, claimedJobs, consentFormForToken, createDb, discoveredOrganizations, findTenantIsolationGaps, hitDemoRateLimit, invitationForToken, lineForNumber, organizationOfUser, purgeDemoRateCounters, purgeDemoRequests, repChangeAllowed, reportConnectionError, settleDemoNotice, submitDemoRequest, tenantRlsStatements, withEnvironment, withOrganization };

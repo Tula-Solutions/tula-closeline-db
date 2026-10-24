@@ -40,6 +40,11 @@ const migration = readFileSync(
   'utf8'
 )
 
+const hashMigration = readFileSync(
+  new URL('../../migrations/0047_approval_hash_agent_learning.sql', import.meta.url),
+  'utf8'
+)
+
 const TABLES = {
   approval_decisions: approvalDecisions,
   approval_policies: approvalPolicies,
@@ -138,6 +143,21 @@ describe('the inbox tables', () => {
     expect(migration).toContain(
       'REVOKE UPDATE, DELETE, TRUNCATE ON "core"."draft_sources" FROM closeline_core;'
     )
+  })
+
+  test('an edited approval records the SHA-256 of the sent body, and only that kind does', () => {
+    const column = getTableConfig(approvalDecisions).columns.find(
+      (c) => c.name === 'edited_body_sha256'
+    )
+    expect(column?.notNull).toBe(false)
+    expect(hashMigration).toContain('ADD COLUMN "edited_body_sha256" text;')
+    expect(hashMigration).toContain("~ '^[0-9a-f]{64}$'")
+    expect(hashMigration).toContain(
+      `CHECK (("core"."approval_decisions"."kind" = 'edit_approve') = ("core"."approval_decisions"."edited_body_sha256" is not null))`
+    )
+    const names = getTableConfig(approvalDecisions).checks.map((c) => c.name)
+    expect(names).toContain('approval_decisions_edited_body_sha256_shape')
+    expect(names).toContain('approval_decisions_edited_hash_matches_kind')
   })
 
   test('mirrors the contract constants', () => {

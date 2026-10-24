@@ -514,7 +514,9 @@ export const draftSources = coreSchema.table(
  * One decision about a Draft or a Conversation: an approval (with or without an edit), a
  * rejection, an automatic release, a takeover or a hand-back. Append-only for the service role
  * (INSERT and SELECT). Takeover and hand-back name the Conversation only; the others name a Draft.
- * An automatic release has no member; only a rejection carries a note.
+ * An automatic release has no member; only a rejection carries a note. An edited approval, and
+ * only that, carries `edited_body_sha256`: the lowercase hex SHA-256 of the body the member sent,
+ * so the decision proves what was approved without storing the body again.
  *
  * Lists served: a Conversation's decisions, newest first (`approval_decisions_conversation_idx`);
  * a Draft's (`approval_decisions_draft_idx`).
@@ -529,6 +531,7 @@ export const approvalDecisions = coreSchema.table(
     kind: text('kind', { enum: DECISION_KINDS }).notNull(),
     decidedByMembershipId: text('decided_by_membership_id'),
     note: text('note'),
+    editedBodySha256: text('edited_body_sha256'),
     acknowledgedUngrounded: boolean('acknowledged_ungrounded').notNull().default(false),
     decidedAt: ts('decided_at').notNull().defaultNow(),
   },
@@ -561,6 +564,14 @@ export const approvalDecisions = coreSchema.table(
       sql`not ${t.acknowledgedUngrounded} or ${t.kind} in ('approve', 'edit_approve')`
     ),
     check('approval_decisions_note_is_rejection', sql`${t.note} is null or ${t.kind} = 'reject'`),
+    check(
+      'approval_decisions_edited_body_sha256_shape',
+      sql`${t.editedBodySha256} is null or ${t.editedBodySha256} ~ '^[0-9a-f]{64}$'`
+    ),
+    check(
+      'approval_decisions_edited_hash_matches_kind',
+      sql`(${t.kind} = 'edit_approve') = (${t.editedBodySha256} is not null)`
+    ),
     foreignKey({
       name: 'approval_decisions_conversation_fk',
       columns: [t.organizationId, t.conversationId],
