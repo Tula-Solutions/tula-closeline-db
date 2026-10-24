@@ -1,5 +1,5 @@
 {
-  "id": "b9be8f03-6fb5-49c7-bcb3-c14af666bce0",
+  "id": "9400820e-92ee-41c9-81b9-f1868318cc74",
   "prevId": "86f3a1d4-3097-4e03-90c4-b423a8e938ba",
   "version": "7",
   "dialect": "postgresql",
@@ -12340,6 +12340,28 @@
           "method": "btree",
           "with": {}
         },
+        "drafts_trigger_message_idx": {
+          "name": "drafts_trigger_message_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "reason_trigger_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"core\".\"drafts\".\"reason_trigger_message_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "drafts_pending_queue_idx": {
           "name": "drafts_pending_queue_idx",
           "columns": [
@@ -13015,6 +13037,10 @@
         "messages_classification_correction_names_rep": {
           "name": "messages_classification_correction_names_rep",
           "value": "\"core\".\"messages\".\"classification_label\" is null\n        or (\"core\".\"messages\".\"classification_decided_by\" = 'rep') = (\"core\".\"messages\".\"classification_corrected_by_membership_id\" is not null)"
+        },
+        "messages_correction_needs_label": {
+          "name": "messages_correction_needs_label",
+          "value": "\"core\".\"messages\".\"classification_corrected_by_membership_id\" is null or \"core\".\"messages\".\"classification_label\" is not null"
         },
         "messages_classification_label_known": {
           "name": "messages_classification_label_known",

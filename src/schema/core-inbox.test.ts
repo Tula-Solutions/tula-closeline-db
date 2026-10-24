@@ -118,6 +118,19 @@ describe('the inbox tables', () => {
     )
   })
 
+  test('conversations and drafts cannot be deleted by the service role', () => {
+    expect(migration).toContain(
+      'REVOKE DELETE ON "core"."conversations", "core"."drafts" FROM closeline_core;'
+    )
+  })
+
+  test('the trigger message of a Draft is indexed for the foreign key', () => {
+    expect(indexColumns(drafts, 'drafts_trigger_message_idx')).toEqual({
+      unique: false,
+      columns: ['organization_id', 'reason_trigger_message_id'],
+    })
+  })
+
   test('decisions are append-only and Sources are written once', () => {
     expect(migration).toContain(
       'REVOKE UPDATE, DELETE, TRUNCATE ON "core"."approval_decisions" FROM closeline_core;'

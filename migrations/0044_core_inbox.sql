@@ -229,6 +229,7 @@ CREATE TABLE "core"."messages" (
 	CONSTRAINT "messages_classification_decider_known" CHECK ("core"."messages"."classification_decided_by" is null or "core"."messages"."classification_decided_by" in ('model', 'rep')),
 	CONSTRAINT "messages_classification_correction_names_rep" CHECK ("core"."messages"."classification_label" is null
         or ("core"."messages"."classification_decided_by" = 'rep') = ("core"."messages"."classification_corrected_by_membership_id" is not null)),
+	CONSTRAINT "messages_correction_needs_label" CHECK ("core"."messages"."classification_corrected_by_membership_id" is null or "core"."messages"."classification_label" is not null),
 	CONSTRAINT "messages_classification_label_known" CHECK ("core"."messages"."classification_label" is null or "core"."messages"."classification_label" in ('positive', 'question', 'objection', 'not_now', 'wrong_person', 'unsubscribe', 'out_of_office', 'bounce', 'negative', 'other'))
 );
 --> statement-breakpoint
@@ -255,6 +256,7 @@ CREATE INDEX "conversations_state_list_idx" ON "core"."conversations" USING btre
 CREATE INDEX "conversations_owner_state_list_idx" ON "core"."conversations" USING btree ("organization_id","owner_membership_id","state","last_message_at" DESC NULLS LAST,"id" DESC NULLS LAST) WHERE "core"."conversations"."owner_membership_id" is not null;--> statement-breakpoint
 CREATE INDEX "conversations_prospect_idx" ON "core"."conversations" USING btree ("organization_id","prospect_id","channel");--> statement-breakpoint
 CREATE INDEX "drafts_conversation_idx" ON "core"."drafts" USING btree ("organization_id","conversation_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "drafts_trigger_message_idx" ON "core"."drafts" USING btree ("organization_id","reason_trigger_message_id") WHERE "core"."drafts"."reason_trigger_message_id" is not null;--> statement-breakpoint
 CREATE INDEX "drafts_pending_queue_idx" ON "core"."drafts" USING btree ("organization_id","created_at","id") WHERE "core"."drafts"."status" = 'pending';--> statement-breakpoint
 CREATE UNIQUE INDEX "escalation_rules_trigger_key" ON "core"."escalation_rules" USING btree ("organization_id","trigger");--> statement-breakpoint
 CREATE UNIQUE INDEX "messages_provider_message_key" ON "core"."messages" USING btree ("organization_id","channel","provider_message_id");--> statement-breakpoint
@@ -307,7 +309,8 @@ CREATE POLICY "escalation_rules_tenant_isolation" ON "core"."escalation_rules" A
 -- table. A Message is a record of what was said: the service role may insert and read it, and
 -- may update only the five classification columns (a classifier writes its label after the Message
 -- is stored, and a Rep may correct it); the body, the author and the ids are never rewritten and
--- no Message is deleted. An Organization's or a Prospect's removal still cascades, because the
+-- no Message is deleted, and so neither a Conversation nor a Draft (a cascade would remove Messages), which
+-- is why DELETE is revoked on them too. An Organization's or a Prospect's removal still cascades, because the
 -- foreign key action runs as the table owner. Decisions are append-only; a Source is written once.
 REVOKE UPDATE, DELETE, TRUNCATE ON "core"."messages" FROM closeline_core;
 --> statement-breakpoint
@@ -316,3 +319,5 @@ GRANT UPDATE ("classification_label", "classification_confidence", "classificati
 REVOKE UPDATE, DELETE, TRUNCATE ON "core"."approval_decisions" FROM closeline_core;
 --> statement-breakpoint
 REVOKE UPDATE, TRUNCATE ON "core"."draft_sources" FROM closeline_core;
+--> statement-breakpoint
+REVOKE DELETE ON "core"."conversations", "core"."drafts" FROM closeline_core;

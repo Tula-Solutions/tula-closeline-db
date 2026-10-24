@@ -314,6 +314,18 @@ describe('core inbox tables', () => {
       expect(truncate.code).toBe(INSUFFICIENT_PRIVILEGE)
     })
 
+    test('a correction needs a label', async () => {
+      const a = await seed()
+      const error = await refusal(
+        run(
+          a.orgId,
+          'update core.messages set classification_corrected_by_membership_id = $2 where id = $1',
+          [a.inboundId, a.memberId]
+        )
+      )
+      expect(error.code).toBe(CHECK_VIOLATION)
+    })
+
     test('the service role may write the classification of a message', async () => {
       const a = await seed()
       await run(
@@ -356,6 +368,15 @@ describe('core inbox tables', () => {
       expect(agent.code).toBe(CHECK_VIOLATION)
     })
 
+    test('the service role may not delete a conversation, which would cascade into messages', async () => {
+      const a = await seed()
+      const error = await refusal(
+        run(a.orgId, 'delete from core.conversations where id = $1', [a.conversationId])
+      )
+      expect(error.code).toBe(INSUFFICIENT_PRIVILEGE)
+      expect(await countOf(a.orgId, 'messages')).toBe(1)
+    })
+
     test('an unknown state is refused', async () => {
       const a = await seed()
       const error = await refusal(
@@ -391,6 +412,15 @@ describe('core inbox tables', () => {
         "insert into core.drafts (id, organization_id, conversation_id, author, author_membership_id, body) values ($1, $2, $3, 'rep', $4, 'x')",
         [newId('drf'), a.orgId, a.conversationId, a.memberId]
       )
+    })
+
+    test('the service role may not delete a Draft', async () => {
+      const a = await seed()
+      const error = await refusal(
+        run(a.orgId, 'delete from core.drafts where id = $1', [a.draftId])
+      )
+      expect(error.code).toBe(INSUFFICIENT_PRIVILEGE)
+      expect(await countOf(a.orgId, 'approval_decisions')).toBe(1)
     })
 
     test('a pending agent Draft must say why it is held', async () => {

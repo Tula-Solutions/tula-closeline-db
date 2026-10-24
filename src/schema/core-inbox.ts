@@ -310,6 +310,10 @@ export const messages = coreSchema.table(
         or (${t.classificationDecidedBy} = 'rep') = (${t.classificationCorrectedByMembershipId} is not null)`
     ),
     check(
+      'messages_correction_needs_label',
+      sql`${t.classificationCorrectedByMembershipId} is null or ${t.classificationLabel} is not null`
+    ),
+    check(
       'messages_classification_label_known',
       sql`${t.classificationLabel} is null or ${t.classificationLabel} in (${list(REPLY_LABELS)})`
     ),
@@ -438,6 +442,9 @@ export const drafts = coreSchema.table(
       t.createdAt.desc(),
       t.id.desc()
     ),
+    index('drafts_trigger_message_idx')
+      .on(t.organizationId, t.reasonTriggerMessageId)
+      .where(sql`${t.reasonTriggerMessageId} is not null`),
     index('drafts_pending_queue_idx')
       .on(t.organizationId, t.createdAt, t.id)
       .where(sql`${t.status} = 'pending'`),

@@ -3184,6 +3184,7 @@ var messages2 = coreSchema2.table("messages", {
   check20("messages_classification_decider_known", sql25`${t.classificationDecidedBy} is null or ${t.classificationDecidedBy} in (${list8(CLASSIFICATION_DECIDERS2)})`),
   check20("messages_classification_correction_names_rep", sql25`${t.classificationLabel} is null
         or (${t.classificationDecidedBy} = 'rep') = (${t.classificationCorrectedByMembershipId} is not null)`),
+  check20("messages_correction_needs_label", sql25`${t.classificationCorrectedByMembershipId} is null or ${t.classificationLabel} is not null`),
   check20("messages_classification_label_known", sql25`${t.classificationLabel} is null or ${t.classificationLabel} in (${list8(REPLY_LABELS2)})`),
   foreignKey10({
     name: "messages_conversation_fk",
@@ -3248,6 +3249,7 @@ var drafts2 = coreSchema2.table("drafts", {
     foreignColumns: [messages2.organizationId, messages2.id]
   }),
   index31("drafts_conversation_idx").on(t.organizationId, t.conversationId, t.createdAt.desc(), t.id.desc()),
+  index31("drafts_trigger_message_idx").on(t.organizationId, t.reasonTriggerMessageId).where(sql25`${t.reasonTriggerMessageId} is not null`),
   index31("drafts_pending_queue_idx").on(t.organizationId, t.createdAt, t.id).where(sql25`${t.status} = 'pending'`)
 ]);
 var draftSources2 = coreSchema2.table("draft_sources", {
