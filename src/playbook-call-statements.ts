@@ -25,7 +25,7 @@ import {
 // The columns every Call read returns, from the Call `c` joined to its Deal `d`.
 const READ_COLUMNS = `c.id, c.deal_record_id, d.deal_id, d.outcome as deal_outcome,
   (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-  c.kind, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
+  c.kind, c.origin, c.file_name, c.media_type, c.size_bytes, c.duration_seconds, c.state, c.failure_reason,
   c.rep_by, c.rep_label, c.rep_channel, c.speaker_labels, c.deleted_at, c.purge_due_at,
   c.uploaded_by, c.created_at, c.updated_at, c.rep_seq, c.epoch, c.deletion_seq,
   (c.state = 'deleted' and (c.purge_due_at <= clock_timestamp() or c.purge_started_at is not null or c.restore_barred_at is not null)) as not_restorable`
@@ -46,6 +46,7 @@ export const CALL_ROW_FIELDS = [
   'deal_outcome',
   'in_search',
   'kind',
+  'origin',
   'file_name',
   'media_type',
   'size_bytes',
@@ -89,7 +90,9 @@ where organization_id = $1`
  * object key, `$12` to `$14` the Rep choice (`by`, `label`, `channel`; all null for a Recording that
  * will wait in `awaiting_rep`), `$15` the new job's `cjob_…` id, `$16` the most Calls, `$17` the most
  * Recording bytes in total and `$18` the most Deals the Organization may hold after this one, `$19`
- * the service's **current rights wording version**.
+ * the service's **current rights wording version**, `$20` the Call's `origin` (`imported`, `rep` or
+ * `agent`), or **null for the column default (`imported`)**. A prepared statement needs every
+ * parameter bound, so a caller passes `null` when it has no origin to give.
  *
  * One row, whose `result` says what happened, decided in this order and in one statement (so the
  * rights check, the duplicate check, the quota and the insert see one snapshot under the upload
@@ -129,9 +132,10 @@ made as (
 ins as (
   insert into playbook.calls
     (id, organization_id, deal_record_id, kind, file_name, media_type, size_bytes, content_hash,
-     uploaded_by, object_key, rep_by, rep_label, rep_channel)
+     uploaded_by, object_key, rep_by, rep_label, rep_channel, origin)
   select $2::text, $1, coalesce((select id from deal), (select id from made)), $7::text, $5::text, $6::text,
-    $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text
+    $8::bigint, $9::bytea, $10::text, $11::text, $12::text, $13::text, $14::text,
+    coalesce($20::text, 'imported')
   from go
   returning id, state, epoch, rep_seq),
 queued as (
@@ -167,7 +171,7 @@ where c.organization_id = $1 and c.id = $2`
  */
 export const CALL_SEARCH_STATE = `select c.id as call_id,
   (c.state = 'ready' and d.outcome = 'won' and c.tagged_outcome_seq >= d.outcome_seq) as in_search,
-  c.epoch, c.rep_seq, c.deal_record_id
+  c.epoch, c.rep_seq, c.deal_record_id, c.origin
 from playbook.calls c
 join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
 where c.organization_id = $1 and c.id = any(($2::text[])[1:${MAX_SEARCH_STATE_IDS}])

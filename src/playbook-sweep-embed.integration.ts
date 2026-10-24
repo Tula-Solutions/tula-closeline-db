@@ -456,6 +456,7 @@ describe('the orphan sweep cursor, the embed usage counter and the Call Moment c
           10 ** 12,
           100,
           1,
+          null,
         ])
       })
       const read = () =>

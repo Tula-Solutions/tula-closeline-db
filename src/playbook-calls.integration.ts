@@ -93,6 +93,7 @@ interface Upload {
   maxRecordingBytes: number
   maxDeals: number
   wording: number
+  origin?: 'imported' | 'rep' | 'agent'
 }
 
 describe('sales history, part two: Calls', () => {
@@ -205,6 +206,7 @@ describe('sales history, part two: Calls', () => {
     u.maxRecordingBytes,
     u.maxDeals,
     u.wording,
+    u.origin ?? null,
   ]
   /** The upload transaction: the lock first, then the insert. */
   const add = async (org: string, u: Upload) =>
@@ -2050,6 +2052,7 @@ describe('sales history, part two: Calls', () => {
       epoch: number
       rep_seq: number
       deal_record_id: string
+      origin: string
     }
     const stateOf = async (org: string, ids: string[]) =>
       (await q(org, CALL_SEARCH_STATE, [org, ids])).rows as State[]
@@ -2072,6 +2075,7 @@ describe('sales history, part two: Calls', () => {
           epoch: one.epoch,
           rep_seq: one.rep_seq,
           deal_record_id: one.deal_record_id,
+          origin: one.origin,
         })
       }
       expect(rows.find((r) => r.call_id === won.id)?.in_search).toBe(true)
@@ -2079,6 +2083,25 @@ describe('sales history, part two: Calls', () => {
       // A Deal that turns lost takes the Call out of search at once.
       await q(org, DEAL_SET_OUTCOME, [org, deal.id, 'lost', null, false])
       expect((await stateOf(org, [won.id]))[0]?.in_search).toBe(false)
+    })
+
+    test('a Call keeps the origin it was added with, and the default is imported', async () => {
+      const org = await newConfirmedOrg()
+      const plain = await mustAdd(org, upload())
+      const byRep = await mustAdd(org, upload({ origin: 'rep' }))
+      const byAgent = await mustAdd(org, upload({ origin: 'agent' }))
+      expect((await get(org, plain.id)).origin).toBe('imported')
+      expect((await get(org, byRep.id)).origin).toBe('rep')
+      expect((await get(org, byAgent.id)).origin).toBe('agent')
+      const states = await stateOf(org, [plain.id, byRep.id, byAgent.id])
+      expect(Object.fromEntries(states.map((r) => [r.call_id, r.origin]))).toEqual({
+        [plain.id]: 'imported',
+        [byRep.id]: 'rep',
+        [byAgent.id]: 'agent',
+      })
+      expect(await rejectionOf(add(org, upload({ origin: 'bot' as 'rep' })))).toContain(
+        'calls_origin_known'
+      )
     })
 
     test('another Organization’s ids return no rows, even when passed explicitly', async () => {
@@ -2116,6 +2139,7 @@ describe('sales history, part two: Calls', () => {
           epoch: one.epoch,
           rep_seq: one.rep_seq,
           deal_record_id: one.deal_record_id,
+          origin: one.origin,
         },
       ])
       return { one, row: rows[0] as State }
