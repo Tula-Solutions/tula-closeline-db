@@ -107,6 +107,12 @@ describe('the outbound mail tables', () => {
     )
   })
 
+  test('the service role cannot delete Mailboxes, sends or events', () => {
+    for (const table of ['mailboxes', 'mail_messages', 'mail_events']) {
+      expect(migration).toContain(`REVOKE DELETE ON "outbound"."${table}" FROM closeline_outbound;`)
+    }
+  })
+
   test('tokens are stored as ciphertext only, never under a plaintext name', () => {
     const names = getTableConfig(mailboxes).columns.map((c) => c.name)
     expect(names).toContain('access_token_ciphertext')

@@ -15,6 +15,9 @@ const INSUFFICIENT_PRIVILEGE = '42501'
 
 const newId = (prefix: string): string => `${prefix}_${randomBytes(16).toString('hex')}`
 
+/** Tables whose rows the outbound role cannot remove: disconnecting keeps the Mailbox and its history. */
+const DELETE_REVOKED = ['mailboxes', 'mail_messages', 'mail_events']
+
 const TABLES = ['mailboxes', 'mailbox_limits', 'mail_messages', 'mail_events', 'health_daily']
 
 /** One harmless update per table that allows updates, to prove a second Organization updates nothing. */
@@ -33,12 +36,17 @@ interface Seeded {
 
 describe('outbound mail tables', () => {
   let outbound: Pool
+  let owner: Pool
   let handle: DbHandle
   const orgs: string[] = []
 
   /** Run `fn` in one transaction scoped to `organizationId` (or to none), as the outbound role. */
-  async function scoped<T>(orgId: string | null, fn: (c: PoolClient) => Promise<T>): Promise<T> {
-    const c = await outbound.connect()
+  async function scoped<T>(
+    orgId: string | null,
+    fn: (c: PoolClient) => Promise<T>,
+    pool: Pool = outbound
+  ): Promise<T> {
+    const c = await pool.connect()
     try {
       await c.query('begin')
       if (orgId) {
@@ -57,6 +65,10 @@ describe('outbound mail tables', () => {
 
   const run = (orgId: string | null, sql: string, values: unknown[] = []) =>
     scoped(orgId, (c) => c.query(sql, values))
+
+  /** Run a statement as the migration owner, scoped to `orgId`: what an Organization purge uses. */
+  const runAsOwner = (orgId: string, sql: string, values: unknown[] = []) =>
+    scoped(orgId, (c) => c.query(sql, values), owner)
 
   /** The error a statement is refused with; fails the test when it succeeds. */
   async function refusal(promise: Promise<unknown>): Promise<{ code?: string; message: string }> {
@@ -210,16 +222,16 @@ describe('outbound mail tables', () => {
   beforeAll(async () => {
     await migrateUp(env.owner)
     outbound = new Pool({ connectionString: env.outbound, max: 6 })
+    owner = new Pool({ connectionString: env.owner, max: 2 })
     handle = createDb(env.outbound, { max: 1 })
   })
 
   afterAll(async () => {
     for (const orgId of orgs) {
       // Mailboxes take their limits, sends, events and health days along.
-      await run(orgId, 'delete from outbound.mailboxes')
-      await run(orgId, 'delete from outbound.mail_messages')
+      await runAsOwner(orgId, 'delete from outbound.mailboxes')
+      await runAsOwner(orgId, 'delete from outbound.mail_messages')
     }
-    const owner = new Pool({ connectionString: env.owner, max: 1 })
     await dropStaleTestObjects(owner, env.owner)
     await handle.close()
     await Promise.all([owner.end(), outbound.end()])
@@ -242,12 +254,14 @@ describe('outbound mail tables', () => {
         [a.orgId]
       )
       expect(read.rowCount).toBe(0)
-      const removed = await run(
-        b.orgId,
-        `delete from outbound.${table} where organization_id = $1`,
-        [a.orgId]
-      )
-      expect(removed.rowCount).toBe(0)
+      if (!DELETE_REVOKED.includes(table)) {
+        const removed = await run(
+          b.orgId,
+          `delete from outbound.${table} where organization_id = $1`,
+          [a.orgId]
+        )
+        expect(removed.rowCount).toBe(0)
+      }
       expect(await countOf(a.orgId, table)).toBe(1)
     })
   })
@@ -283,6 +297,13 @@ describe('outbound mail tables', () => {
     const b = await seed()
     expect((await refusal(addLimits(b.orgId, a.mailboxId))).code).toBe(FOREIGN_KEY_VIOLATION)
     expect((await refusal(addEvent(b.orgId, a.mailboxId))).code).toBe(FOREIGN_KEY_VIOLATION)
+  })
+
+  test.each(DELETE_REVOKED)('the service role cannot remove rows of %s', async (table) => {
+    const a = await seed()
+    const error = await refusal(run(a.orgId, `delete from outbound.${table}`))
+    expect(error.code).toBe(INSUFFICIENT_PRIVILEGE)
+    expect(await countOf(a.orgId, table)).toBe(1)
   })
 
   test('the service role cannot update a mail event', async () => {
@@ -532,9 +553,9 @@ describe('outbound mail tables', () => {
     })
   })
 
-  test('removing a Mailbox removes its limits, sends, events and health days', async () => {
+  test('an Organization purge by the owner removes a Mailbox with its limits, sends, events and health days', async () => {
     const a = await seed()
-    await run(a.orgId, 'delete from outbound.mailboxes where id = $1', [a.mailboxId])
+    await runAsOwner(a.orgId, 'delete from outbound.mailboxes where id = $1', [a.mailboxId])
     for (const table of TABLES) {
       expect(await countOf(a.orgId, table)).toBe(0)
     }

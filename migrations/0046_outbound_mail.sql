@@ -243,3 +243,9 @@ ALTER TABLE "outbound"."health_daily" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "health_daily_tenant_isolation" ON "outbound"."health_daily" AS PERMISSIVE FOR ALL TO PUBLIC USING ("organization_id" = NULLIF(current_setting('app.organization_id', true), '')) WITH CHECK ("organization_id" = NULLIF(current_setting('app.organization_id', true), ''));
 --> statement-breakpoint
 REVOKE UPDATE ON "outbound"."mail_events" FROM closeline_outbound;
+--> statement-breakpoint
+REVOKE DELETE ON "outbound"."mailboxes" FROM closeline_outbound;
+--> statement-breakpoint
+REVOKE DELETE ON "outbound"."mail_messages" FROM closeline_outbound;
+--> statement-breakpoint
+REVOKE DELETE ON "outbound"."mail_events" FROM closeline_outbound;
