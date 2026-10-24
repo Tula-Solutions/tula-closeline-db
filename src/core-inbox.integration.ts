@@ -495,6 +495,84 @@ describe('core inbox tables', () => {
     })
   })
 
+  describe('the hash of an edited approval', () => {
+    const HASH = 'a'.repeat(64)
+    const insertDecision = (a: Seeded, kind: string, hash: string | null) =>
+      run(
+        a.orgId,
+        'insert into core.approval_decisions (id, organization_id, conversation_id, draft_id, kind, decided_by_membership_id, edited_body_sha256) values ($1, $2, $3, $4, $5, $6, $7)',
+        [newId('dcs'), a.orgId, a.conversationId, a.draftId, kind, a.memberId, hash]
+      )
+
+    test('an edited approval stores the hash of the sent body and reads it back', async () => {
+      const a = await seed()
+      await insertDecision(a, 'edit_approve', HASH)
+      const rows = await run(
+        a.orgId,
+        "select edited_body_sha256 from core.approval_decisions where kind = 'edit_approve'"
+      )
+      expect(rows.rows.map((r) => r.edited_body_sha256)).toEqual([HASH])
+    })
+
+    test.each([
+      ['uppercase hex', 'A'.repeat(64)],
+      ['too short', 'a'.repeat(63)],
+      ['too long', 'a'.repeat(65)],
+      ['not hex', 'g'.repeat(64)],
+      ['empty', ''],
+      ['a trailing newline', `${'a'.repeat(64)}\n`],
+    ])('a bad hash is refused: %s', async (_label, hash) => {
+      const a = await seed()
+      expect((await refusal(insertDecision(a, 'edit_approve', hash))).code).toBe(CHECK_VIOLATION)
+    })
+
+    test('an edited approval without a hash is refused', async () => {
+      const a = await seed()
+      expect((await refusal(insertDecision(a, 'edit_approve', null))).code).toBe(CHECK_VIOLATION)
+    })
+
+    test.each(['approve', 'reject', 'takeover', 'hand_back', 'auto_release'])(
+      'a %s decision with a hash is refused',
+      async (kind) => {
+        const a = await seed()
+        const sql =
+          kind === 'takeover' || kind === 'hand_back'
+            ? 'insert into core.approval_decisions (id, organization_id, conversation_id, kind, decided_by_membership_id, edited_body_sha256) values ($1, $2, $3, $4, $5, $6)'
+            : 'insert into core.approval_decisions (id, organization_id, conversation_id, draft_id, kind, decided_by_membership_id, edited_body_sha256) values ($1, $2, $3, $7, $4, $5, $6)'
+        const member = kind === 'auto_release' ? null : a.memberId
+        const values: unknown[] = [newId('dcs'), a.orgId, a.conversationId, kind, member, HASH]
+        if (!(kind === 'takeover' || kind === 'hand_back')) {
+          values.push(a.draftId)
+        }
+        expect((await refusal(run(a.orgId, sql, values))).code).toBe(CHECK_VIOLATION)
+      }
+    )
+
+    test('the table stays insert and select only, hash included', async () => {
+      const a = await seed()
+      await insertDecision(a, 'edit_approve', HASH)
+      const update = await refusal(
+        run(
+          a.orgId,
+          "update core.approval_decisions set edited_body_sha256 = $1 where kind = 'edit_approve'",
+          ['b'.repeat(64)]
+        )
+      )
+      expect(update.code).toBe(INSUFFICIENT_PRIVILEGE)
+    })
+
+    test('a second Organization cannot read the hash', async () => {
+      const a = await seed()
+      const b = await seed()
+      await insertDecision(a, 'edit_approve', HASH)
+      const seen = await run(
+        b.orgId,
+        'select edited_body_sha256 from core.approval_decisions where edited_body_sha256 is not null'
+      )
+      expect(seen.rowCount).toBe(0)
+    })
+  })
+
   describe('policies and rules', () => {
     test('the modes carry exactly their own fields', async () => {
       const a = await seed()

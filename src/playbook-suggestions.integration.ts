@@ -3,6 +3,14 @@ import { createHash, randomBytes } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
 import { dropStaleTestObjects, integrationEnv, migrateUp } from './integration-support'
 import { QUOTA_LOCK } from './playbook-statements'
+import {
+  SUGGESTION_DECIDE,
+  SUGGESTION_GET,
+  SUGGESTION_INSERT,
+  SUGGESTION_LIST,
+  SUGGESTION_LIST_ACCEPTED,
+  SUGGESTION_LIST_BY_STATUS,
+} from './playbook-suggestion-statements'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 const env = integrationEnv()
@@ -163,5 +171,244 @@ describe('playbook suggestions and the Call origin', () => {
       })()
     )
     expect(bad.code).toBe(CHECK_VIOLATION)
+  })
+
+  describe('the learning switch', () => {
+    const setting = (org: string) =>
+      scoped(
+        org,
+        async (c) =>
+          (await c.query('select learn_from_agent_moments as v from playbook.index_settings')).rows
+      )
+
+    test('it defaults to on, and the service role can turn it off and on, vectors written or not', async () => {
+      const org = newId('org')
+      await scoped(org, (c) =>
+        c.query(
+          "insert into playbook.index_settings (organization_id, embedding_model, embedding_dimension) values ($1, 'm', 8)",
+          [org]
+        )
+      )
+      expect(await setting(org)).toEqual([{ v: true }])
+      await scoped(org, (c) =>
+        c.query('update playbook.index_settings set learn_from_agent_moments = false')
+      )
+      expect(await setting(org)).toEqual([{ v: false }])
+      await scoped(org, (c) =>
+        c.query('update playbook.index_settings set vectors_written_at = now()')
+      )
+      await scoped(org, (c) =>
+        c.query('update playbook.index_settings set learn_from_agent_moments = true')
+      )
+      expect(await setting(org)).toEqual([{ v: true }])
+      // The model is still final once vectors exist.
+      const model = await refusal(
+        scoped(org, (c) => c.query("update playbook.index_settings set embedding_model = 'other'"))
+      )
+      expect(model.code).toBe(CHECK_VIOLATION)
+      await owner.query('delete from playbook.index_settings where organization_id = $1', [org])
+    })
+
+    test('a second Organization neither reads nor changes it', async () => {
+      const a = newId('org')
+      const b = newId('org')
+      for (const org of [a, b]) {
+        await scoped(org, (c) =>
+          c.query(
+            "insert into playbook.index_settings (organization_id, embedding_model, embedding_dimension) values ($1, 'm', 8)",
+            [org]
+          )
+        )
+      }
+      await scoped(b, (c) =>
+        c.query('update playbook.index_settings set learn_from_agent_moments = false')
+      )
+      expect(await setting(a)).toEqual([{ v: true }])
+      expect(await setting(b)).toEqual([{ v: false }])
+      await owner.query('delete from playbook.index_settings where organization_id in ($1, $2)', [
+        a,
+        b,
+      ])
+    })
+  })
+
+  describe('the Suggestion statements', () => {
+    const MEMBER = () => newId('mem')
+    const propose = (org: string, text: string, kind = 'objection_answer', id = newId('sgs')) =>
+      scoped(org, (c) =>
+        c.query(SUGGESTION_INSERT, [
+          org,
+          id,
+          kind,
+          text,
+          fingerprint(kind + text),
+          newId('deal'),
+          JSON.stringify([{ callId: newId('call'), momentIndex: 1 }]),
+        ])
+      )
+    const cleanup = (...orgs: string[]) =>
+      owner.query('delete from playbook.suggestions where organization_id = any($1)', [orgs])
+
+    test('inserting the same proposal twice stores it once and the second returns no row', async () => {
+      const org = newId('org')
+      const first = await propose(org, 'Offer a pilot.')
+      const second = await propose(org, 'Offer a pilot.')
+      expect(first.rowCount).toBe(1)
+      expect(first.rows[0]).toMatchObject({
+        kind: 'objection_answer',
+        status: 'pending',
+        text: 'Offer a pilot.',
+      })
+      expect(first.rows[0].decided_at).toBeNull()
+      expect(second.rowCount).toBe(0)
+      expect(
+        await scoped(org, (c) => c.query(SUGGESTION_LIST, [org, 'infinity', '', 10]))
+      ).toMatchObject({ rowCount: 1 })
+      await cleanup(org)
+    })
+
+    test('a rejected proposal is not proposed again', async () => {
+      const org = newId('org')
+      const made = await propose(org, 'Cut the price.')
+      await scoped(org, (c) =>
+        c.query(SUGGESTION_DECIDE, [org, made.rows[0].id, 'rejected', MEMBER(), null])
+      )
+      expect((await propose(org, 'Cut the price.')).rowCount).toBe(0)
+      await cleanup(org)
+    })
+
+    test('concurrent inserts of one proposal store it once', async () => {
+      const org = newId('org')
+      const results = await Promise.all(Array.from({ length: 5 }, () => propose(org, 'Race me.')))
+      expect(results.filter((r) => r.rowCount === 1)).toHaveLength(1)
+      await cleanup(org)
+    })
+
+    test('a decision wins once: the second call, of two racing, gets no row', async () => {
+      const org = newId('org')
+      const made = await propose(org, 'Decide once.')
+      const id = made.rows[0].id
+      const member = MEMBER()
+      const results = await Promise.all([
+        scoped(org, (c) =>
+          c.query(SUGGESTION_DECIDE, [org, id, 'accepted', member, 'Edited words.'])
+        ),
+        scoped(org, (c) => c.query(SUGGESTION_DECIDE, [org, id, 'rejected', MEMBER(), null])),
+      ])
+      expect(results.map((r) => r.rowCount).sort()).toEqual([0, 1])
+      const won = results.find((r) => r.rowCount === 1)
+      const read = await scoped(org, (c) => c.query(SUGGESTION_GET, [org, id]))
+      expect(read.rows[0].status).toBe(won?.rows[0].status)
+      expect(read.rows[0].decided_by_membership_id).not.toBeNull()
+      expect(read.rows[0].decided_at).not.toBeNull()
+      const again = await scoped(org, (c) =>
+        c.query(SUGGESTION_DECIDE, [org, id, 'accepted', MEMBER(), null])
+      )
+      expect(again.rowCount).toBe(0)
+      await cleanup(org)
+    })
+
+    test('an acceptance may carry edited text and keeps the proposal otherwise', async () => {
+      const org = newId('org')
+      const a = await propose(org, 'Proposed A.')
+      const b = await propose(org, 'Proposed B.')
+      const edited = await scoped(org, (c) =>
+        c.query(SUGGESTION_DECIDE, [org, a.rows[0].id, 'accepted', MEMBER(), 'Edited A.'])
+      )
+      const kept = await scoped(org, (c) =>
+        c.query(SUGGESTION_DECIDE, [org, b.rows[0].id, 'accepted', MEMBER(), null])
+      )
+      expect(edited.rows[0].text).toBe('Edited A.')
+      expect(kept.rows[0].text).toBe('Proposed B.')
+      await cleanup(org)
+    })
+
+    test('lists page newest first by cursor, clamp the page size and filter by status', async () => {
+      const org = newId('org')
+      const ids: string[] = []
+      for (let i = 0; i < 5; i++) {
+        ids.push((await propose(org, `Suggestion ${i}`)).rows[0].id)
+      }
+      await scoped(org, (c) =>
+        c.query(SUGGESTION_DECIDE, [org, ids[1], 'accepted', MEMBER(), null])
+      )
+      await scoped(org, (c) =>
+        c.query(SUGGESTION_DECIDE, [org, ids[3], 'rejected', MEMBER(), null])
+      )
+      const page1 = await scoped(org, (c) => c.query(SUGGESTION_LIST, [org, 'infinity', '', 2]))
+      expect(page1.rowCount).toBe(2)
+      const last = page1.rows[1]
+      const page2 = await scoped(org, (c) =>
+        c.query(SUGGESTION_LIST, [org, last.cursor_at, last.id, 10])
+      )
+      expect(page2.rowCount).toBe(3)
+      expect([...page1.rows, ...page2.rows].map((r) => r.id).sort()).toEqual([...ids].sort())
+      const pending = await scoped(org, (c) =>
+        c.query(SUGGESTION_LIST_BY_STATUS, [org, 'infinity', '', 10, 'pending'])
+      )
+      expect(pending.rows.every((r) => r.status === 'pending')).toBe(true)
+      expect(pending.rowCount).toBe(3)
+      const accepted = await scoped(org, (c) =>
+        c.query(SUGGESTION_LIST_ACCEPTED, [org, 'infinity', '', 10])
+      )
+      expect(accepted.rows.map((r) => r.id)).toEqual([ids[1]])
+      // Null and absurd page sizes are clamped, never unbounded.
+      const nullSize = await scoped(org, (c) =>
+        c.query(SUGGESTION_LIST, [org, 'infinity', '', null])
+      )
+      expect(nullSize.rowCount).toBe(1)
+      const huge = await scoped(org, (c) =>
+        c.query(SUGGESTION_LIST, [org, 'infinity', '', 1_000_000])
+      )
+      expect(huge.rowCount).toBe(5)
+      const bad = await refusal(
+        scoped(org, (c) => c.query(SUGGESTION_LIST, [org, 'garbage', '', 10]))
+      )
+      expect(bad.code).toBe('22007')
+      await cleanup(org)
+    })
+
+    test('a second Organization sees, decides and inserts nothing of the first', async () => {
+      const a = newId('org')
+      const b = newId('org')
+      const made = await propose(a, 'Only for A.')
+      const id = made.rows[0].id
+      expect((await scoped(b, (c) => c.query(SUGGESTION_GET, [b, id]))).rowCount).toBe(0)
+      expect(
+        (await scoped(b, (c) => c.query(SUGGESTION_LIST, [b, 'infinity', '', 10]))).rowCount
+      ).toBe(0)
+      expect(
+        (await scoped(b, (c) => c.query(SUGGESTION_LIST_ACCEPTED, [b, 'infinity', '', 10])))
+          .rowCount
+      ).toBe(0)
+      // Naming A's id from B's scope, and A's Organization from B's scope, finds nothing.
+      expect(
+        (await scoped(b, (c) => c.query(SUGGESTION_DECIDE, [b, id, 'accepted', MEMBER(), null])))
+          .rowCount
+      ).toBe(0)
+      expect((await scoped(b, (c) => c.query(SUGGESTION_GET, [a, id]))).rowCount).toBe(0)
+      const crossInsert = await refusal(
+        propose(b, 'x').then(() =>
+          scoped(b, (c) =>
+            c.query(SUGGESTION_INSERT, [
+              a,
+              newId('sgs'),
+              'closing_move',
+              'x',
+              fingerprint('zz'),
+              newId('deal'),
+              '[]',
+            ])
+          )
+        )
+      )
+      expect(crossInsert.message).toContain('row-level security')
+      expect((await scoped(a, (c) => c.query(SUGGESTION_GET, [a, id]))).rows[0].status).toBe(
+        'pending'
+      )
+      // The same text in B is B's own Suggestion, not a conflict with A's.
+      expect((await propose(b, 'Only for A.')).rowCount).toBe(1)
+      await cleanup(a, b)
+    })
   })
 })

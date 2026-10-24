@@ -13640,7 +13640,9 @@ declare const draftSources: PgTableWithColumns_a5zn0g39<{
 * One decision about a Draft or a Conversation: an approval (with or without an edit), a
 * rejection, an automatic release, a takeover or a hand-back. Append-only for the service role
 * (INSERT and SELECT). Takeover and hand-back name the Conversation only; the others name a Draft.
-* An automatic release has no member; only a rejection carries a note.
+* An automatic release has no member; only a rejection carries a note. An edited approval, and
+* only that, carries `edited_body_sha256`: the lowercase hex SHA-256 of the body the member sent,
+* so the decision proves what was approved without storing the body again.
 *
 * Lists served: a Conversation's decisions, newest first (`approval_decisions_conversation_idx`);
 * a Draft's (`approval_decisions_draft_idx`).
@@ -13753,6 +13755,23 @@ declare const approvalDecisions: PgTableWithColumns_a5zn0g39<{
 		}, {}, {}>;
 		note: PgColumn_ffrhhp39<{
 			name: "note";
+			tableName: "approval_decisions";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		editedBodySha256: PgColumn_ffrhhp39<{
+			name: "edited_body_sha256";
 			tableName: "approval_decisions";
 			dataType: "string";
 			columnType: "PgText";
@@ -23983,6 +24002,9 @@ declare const ingestionJobs: PgTableWithColumns_a5zn0g52<{
 * (ADR 0010). Once `vectors_written_at` is set a trigger refuses any change of either, and the
 * service role cannot delete the row: changing the model is a deliberate re-index, done by an
 * operator, not a statement. Choice: refuse, rather than record that a re-index is needed.
+*
+* `learn_from_agent_moments` is the Organization's switch for indexing Moments of its Agents' own
+* Calls (default on). It may change at any time, vectors or not; a missing row means the default.
 */
 declare const indexSettings: PgTableWithColumns_a5zn0g52<{
 	name: "index_settings";
@@ -24048,6 +24070,23 @@ declare const indexSettings: PgTableWithColumns_a5zn0g52<{
 			driverParam: string;
 			notNull: false;
 			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		learnFromAgentMoments: PgColumn_ffrhhp52<{
+			name: "learn_from_agent_moments";
+			tableName: "index_settings";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;

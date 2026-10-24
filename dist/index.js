@@ -62,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-9e67ke0q.js";
+} from "./shared/chunk-yp021ka7.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -1352,6 +1352,57 @@ var CALL_STATEMENTS = {
   DEAL_RETAG_LOCK,
   DEAL_RETAG_DONE
 };
+// src/playbook-suggestion-statements.ts
+var COLUMNS = `id, kind, status, text, deal_record_id, moments, created_at, decided_at,
+  decided_by_membership_id`;
+var SUGGESTION_ROW_FIELDS = [
+  "id",
+  "kind",
+  "status",
+  "text",
+  "deal_record_id",
+  "moments",
+  "created_at",
+  "decided_at",
+  "decided_by_membership_id"
+];
+var SUGGESTION_INSERT = `insert into playbook.suggestions
+  (organization_id, id, kind, text, fingerprint, deal_record_id, moments)
+values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+on conflict (organization_id, fingerprint) do nothing
+returning ${COLUMNS}`;
+var SUGGESTION_GET = `select ${COLUMNS}
+from playbook.suggestions
+where organization_id = $1 and id = $2`;
+var SUGGESTION_LIST = `select ${COLUMNS}, created_at::text as cursor_at
+from playbook.suggestions
+where organization_id = $1 and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var SUGGESTION_LIST_BY_STATUS = `select ${COLUMNS}, created_at::text as cursor_at
+from playbook.suggestions
+where organization_id = $1 and status = $5::text and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var SUGGESTION_DECIDE = `update playbook.suggestions
+set status = $3::text, decided_by_membership_id = $4::text, decided_at = clock_timestamp(),
+  text = coalesce($5::text, text)
+where organization_id = $1 and id = $2 and status = 'pending'
+returning ${COLUMNS}`;
+var SUGGESTION_LIST_ACCEPTED = `select ${COLUMNS}, created_at::text as cursor_at
+from playbook.suggestions
+where organization_id = $1 and status = 'accepted' and (created_at, id) < ($2::timestamptz, $3::text)
+order by created_at desc, id desc
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var SUGGESTION_STATEMENTS = {
+  SUGGESTION_INSERT,
+  SUGGESTION_GET,
+  SUGGESTION_LIST,
+  SUGGESTION_LIST_BY_STATUS,
+  SUGGESTION_DECIDE,
+  SUGGESTION_LIST_ACCEPTED
+};
+
 // src/playbook-statements.ts
 var STEP_ORDER = `array[${INGESTION_STEPS2.map((step) => `'${step}'`).join(", ")}]`;
 var QUOTA_LOCK = `select pg_advisory_xact_lock(hashtextextended($1::text, 0)) is not null as locked`;
@@ -2167,7 +2218,8 @@ var PLAYBOOK_STATEMENTS = {
   RIGHTS_GET,
   RIGHTS_CONFIRM,
   ORGANIZATIONS_WITH_WORK,
-  ...CALL_STATEMENTS
+  ...CALL_STATEMENTS,
+  ...SUGGESTION_STATEMENTS
 };
 // src/voice-lookups.ts
 import { sql as sql6 } from "drizzle-orm";
@@ -2412,6 +2464,14 @@ export {
   RIGHTS_GET,
   RIGHTS_MAX_WORDING_VERSION2 as RIGHTS_MAX_WORDING_VERSION,
   SEARCH_ROLE,
+  SUGGESTION_DECIDE,
+  SUGGESTION_GET,
+  SUGGESTION_INSERT,
+  SUGGESTION_LIST,
+  SUGGESTION_LIST_ACCEPTED,
+  SUGGESTION_LIST_BY_STATUS,
+  SUGGESTION_ROW_FIELDS,
+  SUGGESTION_STATEMENTS,
   TENANT_SCHEMAS,
   VOICE_PURGE_SCAN_ROLE,
   WORK_KINDS2 as WORK_KINDS,

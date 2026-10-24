@@ -10,6 +10,7 @@ import {
   DOCUMENT_FAILURE_REASONS,
   DOCUMENT_STATES,
   INGESTION_STEPS,
+  indexSettings,
 } from './playbook-tables'
 
 const tables = Object.values<unknown>(schemas)
@@ -292,5 +293,26 @@ describe('the playbook schema', () => {
         'pg_advisory_xact_lock(hashtextextended(p_organization_id, 0))'
       )
     })
+  })
+})
+
+describe('the learning switch on index_settings', () => {
+  const migration = read('0047_approval_hash_agent_learning.sql')
+
+  test('learn_from_agent_moments is a required boolean that defaults to on', () => {
+    const column = getTableConfig(indexSettings).columns.find(
+      (c) => c.name === 'learn_from_agent_moments'
+    )
+    expect(column?.notNull).toBe(true)
+    expect(column?.default).toBe(true)
+    expect(migration).toContain(
+      'ADD COLUMN "learn_from_agent_moments" boolean DEFAULT true NOT NULL'
+    )
+  })
+
+  test('the service role may update the switch and nothing else new', () => {
+    expect(migration).toContain(
+      'GRANT UPDATE ("learn_from_agent_moments") ON "playbook"."index_settings" TO closeline_playbook;'
+    )
   })
 })

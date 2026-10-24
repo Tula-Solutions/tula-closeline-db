@@ -13,6 +13,7 @@ import {
   PLAYBOOK_MAX_BATCH,
   PLAYBOOK_MIN_LEASE_MS,
 } from './playbook-sql'
+import { SUGGESTION_STATEMENTS } from './playbook-suggestion-statements'
 import {
   DEAL_IMPORT_APPLY_BATCH,
   DEAL_IMPORT_MAX_ATTEMPTS,
@@ -1819,4 +1820,5 @@ export const PLAYBOOK_STATEMENTS = {
   RIGHTS_CONFIRM,
   ORGANIZATIONS_WITH_WORK,
   ...CALL_STATEMENTS,
+  ...SUGGESTION_STATEMENTS,
 } as const
