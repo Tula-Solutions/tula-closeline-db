@@ -398,6 +398,48 @@ describe('voice tables', () => {
       )
     })
 
+    test('an end reason is only for an ended Call and must be a known one', async () => {
+      const a = await seed()
+      const set = (reason: string, id = a.callId) =>
+        run(a.orgId, 'update voice.calls set end_reason = $2 where id = $1', [id, reason])
+      expect((await refusal(set('cost_cap'))).code).toBe(CHECK_VIOLATION)
+      const failed = await addCall(a.orgId, a.lineId)
+      await run(
+        a.orgId,
+        "update voice.calls set state = 'failed', failure_reason = 'timeout', ended_at = now() where id = $1",
+        [failed]
+      )
+      expect((await refusal(set('cost_cap', failed))).code).toBe(CHECK_VIOLATION)
+      await run(
+        a.orgId,
+        "update voice.calls set state = 'ended', answered_at = now(), ended_at = now(), disclosure_wording_version = 1, disclosure_played_at = now(), duration_seconds = 5 where id = $1",
+        [a.callId]
+      )
+      expect((await refusal(set('bored'))).code).toBe(CHECK_VIOLATION)
+      await set('duration_cap')
+    })
+
+    test('the Agent cost defaults to 0 and is never negative', async () => {
+      const a = await seed()
+      const read = async () =>
+        (
+          await scoped(a.orgId, (c) =>
+            c.query('select agent_cost_micro_cents as n from voice.calls where id = $1', [a.callId])
+          )
+        ).rows[0].n
+      expect(Number(await read())).toBe(0)
+      await run(
+        a.orgId,
+        'update voice.calls set agent_cost_micro_cents = 5000000000 where id = $1',
+        [a.callId]
+      )
+      expect(Number(await read())).toBe(5_000_000_000)
+      const error = await refusal(
+        run(a.orgId, 'update voice.calls set agent_cost_micro_cents = -1 where id = $1', [a.callId])
+      )
+      expect(error.code).toBe(CHECK_VIOLATION)
+    })
+
     test('an idempotency key is one Call per Organization, and needs its fingerprint', async () => {
       const a = await seed()
       const b = await seed()
