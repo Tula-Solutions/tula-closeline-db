@@ -1,0 +1,2 @@
+ALTER TABLE "core"."prospect_imports" DROP CONSTRAINT "prospect_imports_failure_reason_known";--> statement-breakpoint
+ALTER TABLE "core"."prospect_imports" ADD CONSTRAINT "prospect_imports_failure_reason_known" CHECK ("core"."prospect_imports"."failure_reason" in ('too_many_rows', 'unreadable', 'processing_failed'));

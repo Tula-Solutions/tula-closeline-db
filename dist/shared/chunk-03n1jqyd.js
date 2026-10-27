@@ -1970,7 +1970,11 @@ var MAX_PROSPECT_TAGS2 = 20;
 var MAX_PROSPECT_IMPORT_BYTES2 = 10 * 1024 * 1024;
 var MAX_PROSPECT_IMPORT_ROWS2 = 50000;
 var PROSPECT_IMPORT_STATES2 = ["uploaded", "processing", "completed", "failed"];
-var PROSPECT_IMPORT_FAILURE_REASONS2 = ["too_many_rows", "unreadable"];
+var PROSPECT_IMPORT_FAILURE_REASONS2 = [
+  "too_many_rows",
+  "unreadable",
+  "processing_failed"
+];
 var PROSPECT_IMPORT_ROW_RESULTS2 = ["created", "updated", "skipped", "rejected"];
 var PROSPECT_IMPORT_SKIP_REASONS2 = ["no_change", "manual_values_kept"];
 var PROSPECT_IMPORT_REJECT_REASONS2 = [

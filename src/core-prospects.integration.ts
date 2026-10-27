@@ -760,6 +760,14 @@ describe('core prospect tables', () => {
       ).toBe(CHECK_VIOLATION)
     })
 
+    test('a failed import accepts processing_failed and refuses an unknown reason', async () => {
+      const a = await seed()
+      await insertImport(a, 'state, failure_reason', "'failed', 'processing_failed'")
+      expect(
+        (await refusal(insertImport(a, 'state, failure_reason', "'failed', 'no_such_reason'"))).code
+      ).toBe(CHECK_VIOLATION)
+    })
+
     test.each([
       [10485761, hex(3)],
       [0, hex(3)],
