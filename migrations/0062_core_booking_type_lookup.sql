@@ -11,8 +11,9 @@ CREATE TABLE "core"."booking_type_directory" (
 -- Token lookup for the public booking routes. They receive only a token, so no Organization is set
 -- and row-level security hides core.booking_types. The directory holds one row per ACTIVE Booking
 -- Type that has a public link, keyed by the token's SHA-256 hash; no service role can touch it.
--- Retiring a type, clearing or rotating its hash, or deleting it removes the row. Types that
--- already have a hash are seeded at the end of this block.
+-- Retiring a type, clearing or rotating its hash, or deleting it removes the row. No backfill: booking_types is
+-- forced under row-level security, so a seed here would read zero rows; core's public routes
+-- (#219) do not exist yet, so no link is live and the trigger fills the directory from here on.
 REVOKE ALL ON "core"."booking_type_directory" FROM closeline_core;
 --> statement-breakpoint
 CREATE FUNCTION "core"."sync_booking_type_directory"() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
@@ -39,10 +40,6 @@ CREATE TRIGGER "booking_types_no_truncate" BEFORE TRUNCATE ON "core"."booking_ty
 --> statement-breakpoint
 CREATE TRIGGER "booking_type_directory_no_truncate" BEFORE TRUNCATE ON "core"."booking_type_directory"
   FOR EACH STATEMENT EXECUTE FUNCTION "core"."refuse_truncate"();
---> statement-breakpoint
-INSERT INTO "core"."booking_type_directory" ("token_hash", "organization_id", "booking_type_id")
-  SELECT "public_token_hash", "organization_id", "id" FROM "core"."booking_types"
-   WHERE "public_token_hash" IS NOT NULL AND "active";
 --> statement-breakpoint
 -- booking_type_for_token: the Organization and id of the active Booking Type a token hash opens,
 -- only in an active Organization. A retired type, an unknown, cleared or rotated hash and a type
