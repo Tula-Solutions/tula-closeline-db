@@ -763,7 +763,8 @@ describe('voice agent tables', () => {
     test('the Rep is null exactly when no Rep is left', async () => {
       const a = await seed()
       await run(a.orgId, 'delete from voice.handoffs')
-      const now = new Date().toISOString()
+      // an hour ahead, so a skewed database clock cannot put requested_at after it
+      const now = new Date(Date.now() + 3_600_000).toISOString()
       const missing = await refusal(addHandoff(a.orgId, { callId: a.callId, rep: null }))
       expect(missing.code).toBe(CHECK_VIOLATION)
       const extra = await refusal(
@@ -776,7 +777,8 @@ describe('voice agent tables', () => {
     test('an answered or completed Handoff says when, and the times do not run backwards', async () => {
       const a = await seed()
       await run(a.orgId, 'delete from voice.handoffs')
-      const now = new Date().toISOString()
+      // an hour ahead, so a skewed database clock cannot put requested_at after it
+      const now = new Date(Date.now() + 3_600_000).toISOString()
       const callId = a.callId
       expect((await refusal(addHandoff(a.orgId, { callId, state: 'accepted' }))).code).toBe(
         CHECK_VIOLATION
