@@ -98,8 +98,19 @@ const INBOX_TABLES = [
   'messages',
 ]
 
+const CALENDAR_TABLES = [
+  'booking_types',
+  'bookings',
+  'busy_blocks',
+  'calendar_connections',
+  'routing_decisions',
+  'routing_rules',
+  'routing_state',
+  'working_hours',
+]
+
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table, the demo rate counter, the outbox and the seven inbox tables, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table, the demo rate counter, the outbox, the seven inbox tables and the eight calendar tables, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
       [
         ...NO_ACCESS,
@@ -115,6 +126,8 @@ describe('the core schema', () => {
         'outbox',
         // The seven inbox tables (0044); core-inbox.test.ts pins their row-level security.
         ...INBOX_TABLES,
+        // The calendar, routing and Booking tables (0055); core-calendars.test.ts pins them.
+        ...CALENDAR_TABLES,
       ].sort()
     )
   })
