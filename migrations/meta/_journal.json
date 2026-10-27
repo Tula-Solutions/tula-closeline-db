@@ -386,6 +386,13 @@
       "when": 1793113236236,
       "tag": "0054_outbound_mailbox_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793116252939,
+      "tag": "0055_core_calendars",
+      "breakpoints": true
     }
   ]
 }
