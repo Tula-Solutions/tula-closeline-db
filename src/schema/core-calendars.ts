@@ -235,7 +235,7 @@ export const routingRules = coreSchema.table(
   },
   (t) => [
     primaryKey({ name: 'routing_rules_pkey', columns: [t.organizationId, t.id] }),
-    check('routing_rules_id_shape', idShape('id', 'rul')),
+    check('routing_rules_id_shape', idShape('id', 'rrl')),
     check('routing_rules_organization_id_shape', orgShape),
     check('routing_rules_organization_not_global', notGlobal),
     check(

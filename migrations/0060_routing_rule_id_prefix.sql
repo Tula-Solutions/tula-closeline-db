@@ -1,0 +1,2 @@
+ALTER TABLE "core"."routing_rules" DROP CONSTRAINT "routing_rules_id_shape";--> statement-breakpoint
+ALTER TABLE "core"."routing_rules" ADD CONSTRAINT "routing_rules_id_shape" CHECK ("id" ~ '^rrl_[0-9a-f]{32}$');

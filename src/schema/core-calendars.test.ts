@@ -141,3 +141,14 @@ describe('the calendar, routing and Booking tables', () => {
     expect(names.filter((n) => /token/.test(n))).toEqual(['tokens_ciphertext'])
   })
 })
+
+describe('routing_rules id shape', () => {
+  test("is the contract's rrl_ prefix, not rul_", () => {
+    const check = getTableConfig(routingRules).checks.find(
+      (c) => c.name === 'routing_rules_id_shape'
+    )
+    const text = JSON.stringify(check?.value.queryChunks)
+    expect(text).toContain('rrl')
+    expect(text).not.toContain('rul')
+  })
+})
