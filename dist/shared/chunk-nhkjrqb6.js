@@ -2437,7 +2437,7 @@ var routingRules2 = coreSchema2.table("routing_rules", {
   updatedAt: updatedAt3()
 }, (t) => [
   primaryKey6({ name: "routing_rules_pkey", columns: [t.organizationId, t.id] }),
-  check16("routing_rules_id_shape", idShape4("id", "rul")),
+  check16("routing_rules_id_shape", idShape4("id", "rrl")),
   check16("routing_rules_organization_id_shape", orgShape3),
   check16("routing_rules_organization_not_global", notGlobal3),
   check16("routing_rules_position_range", sql21`${t.position} between 0 and ${sql21.raw(String(MAX_ROUTING_RULES2 * 100))}`),

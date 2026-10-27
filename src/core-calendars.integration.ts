@@ -157,7 +157,7 @@ describe('core calendar, routing and Booking tables', () => {
       )
       await c.query(
         "insert into core.routing_rules (id, organization_id, position, name, target_kind, target_membership_id) values ($1, $2, 0, 'Default', 'rep', $3)",
-        [newId('rul'), s.orgId, s.repId]
+        [newId('rrl'), s.orgId, s.repId]
       )
       await c.query(
         'insert into core.routing_state (organization_id, target_key, cursor) values ($1, $2, 1)',
@@ -373,7 +373,7 @@ describe('core calendar, routing and Booking tables', () => {
         run(
           s.orgId,
           `insert into core.routing_rules (id, organization_id, position, name, target_kind, ${columns}) values ($1, $2, 1, 'r', $3, ${values.map((_, n) => `$${n + 4}`).join(', ')})`,
-          [newId('rul'), s.orgId, kind, ...values]
+          [newId('rrl'), s.orgId, kind, ...values]
         )
       await insert('team', 'target_team_id', [s.teamId])
       await insert('pool', 'pool_name, pool_membership_ids', ['EMEA', [s.repId]])
@@ -392,6 +392,18 @@ describe('core calendar, routing and Booking tables', () => {
       ).toBe(CHECK_VIOLATION)
     })
 
+    test('only the contract rrl_ id prefix is accepted', async () => {
+      const s = await seed()
+      const insert = (id: string) =>
+        run(
+          s.orgId,
+          "insert into core.routing_rules (id, organization_id, position, name, target_kind, target_membership_id) values ($1, $2, 1, 'r', 'rep', $3)",
+          [id, s.orgId, s.repId]
+        )
+      await insert(newId('rrl'))
+      expect((await refusal(insert(newId('rul')))).code).toBe(CHECK_VIOLATION)
+    })
+
     test("a rule cannot target another Organization's Team", async () => {
       const a = await seed()
       const b = await seed()
@@ -399,7 +411,7 @@ describe('core calendar, routing and Booking tables', () => {
         run(
           b.orgId,
           "insert into core.routing_rules (id, organization_id, position, name, target_kind, target_team_id) values ($1, $2, 1, 'r', 'team', $3)",
-          [newId('rul'), b.orgId, a.teamId]
+          [newId('rrl'), b.orgId, a.teamId]
         )
       )
       expect(error.code).toBe(FOREIGN_KEY_VIOLATION)
