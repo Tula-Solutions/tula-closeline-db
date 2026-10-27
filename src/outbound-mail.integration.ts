@@ -373,6 +373,20 @@ describe('outbound mail tables', () => {
       expect((await consume(orgId, expired)).rowCount).toBe(0)
     })
 
+    test('another user cannot consume the link', async () => {
+      const orgId = newOrg()
+      const hash = hex64()
+      await addAttempt(orgId, { stateHash: hash })
+      const other = await run(
+        orgId,
+        `update outbound.mailbox_connect_attempts set consumed_at = now()
+         where state_hash = $1 and user_id = $2 and consumed_at is null and expires_at > now()`,
+        [hash, newId('usr')]
+      )
+      expect(other.rowCount).toBe(0)
+      expect((await consume(orgId, hash)).rowCount).toBe(1)
+    })
+
     test('another Organization cannot consume the link', async () => {
       const a = newOrg()
       const hash = hex64()
