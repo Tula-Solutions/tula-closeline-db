@@ -22288,6 +22288,241 @@ declare const healthDaily: PgTableWithColumns_a5zn0g45<{
 	};
 	dialect: "pg";
 }>;
+/**
+* One Mailbox connect link, usable once. The service stores the SHA-256 of the signed `state`
+* (`state_hash`, 64 lowercase hex characters, never the state itself) when it starts a connection
+* for `user_id`, and consumes it on the provider callback with one atomic
+* `update … set consumed_at = now() where state_hash = $1 and user_id = $2 and consumed_at is null
+* and expires_at > now()`; no row updated means the link is spent, expired or foreign. Starting
+* twice under one Idempotency-Key inserts the same hash once (`on conflict do nothing`).
+*
+* Swept: expired rows are deleted per Organization by `(organization_id, expires_at)`
+* (`mailbox_connect_attempts_expiry_idx`), a bounded batch at a time.
+*/
+declare const mailboxConnectAttempts: PgTableWithColumns_a5zn0g45<{
+	name: "mailbox_connect_attempts";
+	schema: "outbound";
+	columns: {
+		id: PgColumn_ffrhhp45<{
+			name: "id";
+			tableName: "mailbox_connect_attempts";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp45<{
+			name: "organization_id";
+			tableName: "mailbox_connect_attempts";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		userId: PgColumn_ffrhhp45<{
+			name: "user_id";
+			tableName: "mailbox_connect_attempts";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		stateHash: PgColumn_ffrhhp45<{
+			name: "state_hash";
+			tableName: "mailbox_connect_attempts";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "mailbox_connect_attempts";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		expiresAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "mailbox_connect_attempts";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		consumedAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "mailbox_connect_attempts";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+/**
+* One test email sent from a Mailbox, kept so the test-send route is idempotent and rate-capped.
+* `key_hash` is the SHA-256 (64 hex characters) of the caller's Idempotency-Key, so a retry finds
+* the first send instead of sending again (the primary key). The per-Mailbox cap counts rows by
+* `sent_at` (`mailbox_test_sends_recent_idx`). Holds ids and hashes only, never a body or address.
+*/
+declare const mailboxTestSends: PgTableWithColumns_a5zn0g45<{
+	name: "mailbox_test_sends";
+	schema: "outbound";
+	columns: {
+		organizationId: PgColumn_ffrhhp45<{
+			name: "organization_id";
+			tableName: "mailbox_test_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		mailboxId: PgColumn_ffrhhp45<{
+			name: "mailbox_id";
+			tableName: "mailbox_test_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		keyHash: PgColumn_ffrhhp45<{
+			name: "key_hash";
+			tableName: "mailbox_test_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		providerMessageId: PgColumn_ffrhhp45<{
+			name: "provider_message_id";
+			tableName: "mailbox_test_sends";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		sentAt: PgColumn_ffrhhp45<{
+			name: string;
+			tableName: "mailbox_test_sends";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g46 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp46 } from "drizzle-orm/pg-core";
 import { Column as Column_xh1aba8 } from "drizzle-orm";
@@ -31578,4 +31813,4 @@ declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g59<{
 	};
 	dialect: "pg";
 }>;
-export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, AGENT_KINDS, AGENT_SETTING_CHANNELS, AGENT_TOOLS, AGENT_TURN_ROLES, AGENT_VOICE_STYLES, ANGLE_ORIGINS, API_KEY_KINDS, API_KEY_ROLE_CEILINGS, API_KEY_SCOPES, APPROVAL_MODES, ASSESSMENT_JUDGE_SOURCES, ASSESSMENT_SUBJECT_KINDS, ASSESSMENT_VERDICTS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, ATTEMPT_FAILURES, ATTEMPT_OUTCOMES, AUDIT_ACTOR_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BRIEF_ENTRY_ROLES, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_ORIGINS, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CAMPAIGN_APPROVAL_MODES, CAMPAIGN_STATES, CHAT_STATES, CHAT_TOKEN_HASH_BYTES, CITATION_KINDS, CITATION_PROSPECT_FIELDS, CLASSIFICATION_DECIDERS, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CONTROL_LEVELS, CONVERSATION_CONTROLLERS, CONVERSATION_OUTCOME_LABELS, CONVERSATION_STATES, CREDENTIAL_TYPES, CRM_CONNECTION_STATES, CRM_DIRECTIONS, CRM_FIELD_KEYS, CRM_MAPPING_KINDS, CRM_OBJECT_KINDS, CRM_PROVIDERS, CRM_REF_STATES, CRM_RUN_ERROR_CODES, CRM_RUN_STATES, CRM_RUN_TRIGGERS, CRM_SCOPE_LEVELS, CRM_SKIP_REASON_COUNT, CRM_STAGE_OUTCOMES, CRM_WEBHOOK_WINDOW_SECONDS, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DECISION_KINDS, DEFAULT_CHANNEL, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DRAFT_AUTHORS, DRAFT_CHANNELS, DRAFT_CHECKS, DRAFT_CHECK_RESULTS, DRAFT_HOLD_REASONS, DRAFT_SOURCE_KINDS, DRAFT_STATUSES, DRAFT_TEXT_SOURCES, DemoRateCounter, DemoRequest, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, ENROLLMENT_EVENT_KINDS, ENROLLMENT_STATES, ENROLLMENT_STOP_REASONS, ENVIRONMENT_KINDS, ESCALATION_TARGETS, ESCALATION_TRIGGERS, EVENT_RETENTION_FLOOR, EXPORT_ACTIVE_STATES, EXPORT_FAILURE_REASONS, EXPORT_FORMATS, EXPORT_KINDS, EXPORT_PART_FAILURE_REASONS, EXPORT_PART_STATES, EXPORT_SERVICES, EXPORT_STATES, Environment, EnvironmentSettingsRow, Event, FIELD_GROUPS, FIELD_HISTORY_STATES, FINAL_RUN_STATUSES, FINDING_CATEGORIES, FINDING_FEEDBACKS, FINDING_SEVERITIES, FIT_FIELDS, FIT_OPERATORS, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HANDOFF_CHANNELS, HANDOFF_REASONS, HANDOFF_RESULTS, HANDOFF_STATES, HEALTH_COMPONENT_KINDS, HEALTH_EFFECTS, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INBOX_CHANNELS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INQUIRY_CALLBACK_STATES, INQUIRY_SKIP_REASONS, INQUIRY_SOURCES, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LOGGED_DENIAL_CODES, MAILBOX_KINDS, MAILBOX_PROVIDERS, MAILBOX_STATES, MAILBOX_STATE_REASONS, MAIL_EVENT_KINDS, MAX_AGENT_CALL_COST_USD_CENTS, MAX_AGENT_CALL_SECONDS, MAX_AGENT_CONCURRENCY, MAX_AGENT_GREETING_LENGTH, MAX_AGENT_HOURS_DAYS, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH, MAX_AGENT_INSTRUCTION_LENGTH, MAX_ANGLE_LENGTH, MAX_ANSWER_LENGTH, MAX_API_KEY_NAME_LENGTH, MAX_ASSESSED_NUMBER, MAX_ATTEMPTS_PER_RUN, MAX_ATTEMPT_DURATION_MS, MAX_ATTEMPT_EPOCH, MAX_AUDIT_METADATA_BYTES, MAX_BANNED_PHRASES, MAX_BRANCH_ARMS, MAX_BRIEF_STATEMENTS, MAX_BRIEF_STATEMENT_LENGTH, MAX_CALLBACK_ATTEMPTS, MAX_CALLER_LENGTH, MAX_CALL_DURATION_SECONDS, MAX_CAMPAIGN_NAME_LENGTH, MAX_CAMPAIGN_VERSION, MAX_CHECK_COUNT, MAX_CITATION_DOCUMENT_PAGE, MAX_CITATION_URL_LENGTH, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_COPILOT_QUOTE_LENGTH, MAX_CREDENTIAL_CIPHERTEXT_BYTES, MAX_CREDENTIAL_KEY_ID_LENGTH, MAX_CRM_CURSOR_LENGTH, MAX_CRM_EXTERNAL_ID_LENGTH, MAX_CRM_KEY_ID_LENGTH, MAX_CRM_LABEL_LENGTH, MAX_CRM_LOCAL_ID_LENGTH, MAX_CRM_RUN_COUNT, MAX_CRM_RUN_FAILURES, MAX_CRM_SEALED_TOKEN_BYTES, MAX_CRM_WRITE_KEY_LENGTH, MAX_DAILY_CAP, MAX_DECISION_NOTE_LENGTH, MAX_DOCUMENT_PAGES, MAX_DRAFT_BODY_LENGTH, MAX_DRAFT_CHECKS, MAX_DRAFT_CITATIONS, MAX_DRAFT_GOAL_LENGTH, MAX_DRAFT_REVISION, MAX_DRAFT_SUBJECT_LENGTH, MAX_DROPPED_COUNT, MAX_ESCALATION_RULES, MAX_EVIDENCE_COUNT, MAX_EVIDENCE_REF_LENGTH, MAX_EXCEPT_LABELS, MAX_EXPORT_PART_BYTES, MAX_EXPORT_PART_FILES, MAX_EXPORT_PREFIX_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FINDING_EXPLANATION_LENGTH, MAX_FINDING_SPAN_OFFSET, MAX_FIT_CONDITION_BYTES, MAX_FIT_NAME_LENGTH, MAX_FIT_VALUES, MAX_FIT_WEIGHT, MAX_FORM_TOKEN_LENGTH, MAX_HANDOFF_ATTEMPTS, MAX_HEALTH_COMPONENTS, MAX_HEALTH_COUNT, MAX_LINE_LABEL_LENGTH, MAX_MAILBOX_NAME_LENGTH, MAX_MAILBOX_TEAMS, MAX_MAIL_PROVIDER_MESSAGE_ID_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_MESSAGE_BODY_LENGTH, MAX_MICRO_DOLLARS, MAX_MIN_GAP_SECONDS, MAX_MODEL_NAME_LENGTH, MAX_PENDING_DRAFT_COUNT, MAX_PLAY_CITATIONS, MAX_PLAY_EVIDENCE, MAX_PLAY_STEPS, MAX_PREFERRED_WORDS, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_COMPANY_TECHNOLOGIES, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH, MAX_PROSPECT_COMPANY_TEXT_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH, MAX_PROVIDERS, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_PROVIDER_KEY_LENGTH, MAX_PROVIDER_MESSAGE_ID_LENGTH, MAX_PROVIDER_REFERENCE_LENGTH, MAX_QUALIFICATION_QUESTIONS, MAX_QUALIFICATION_SUMMARY_LENGTH, MAX_QUESTION_CHOICES, MAX_QUESTION_PROMPT_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_RESERVATION_HOLD_KEY_LENGTH, MAX_ROLLUP_COUNT, MAX_ROLLUP_GROUP_KEY_LENGTH, MAX_RUN_FIELDS, MAX_RUN_REQUEST_ID_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SENDS_PER_DAY, MAX_SENDS_PER_HOUR, MAX_SEQUENCE_STEP, MAX_SEQUENCE_STEPS, MAX_SIGNAL_DETAIL_BYTES, MAX_SIGN_OFF_LENGTH, MAX_SKIP_CONDITIONS, MAX_SOURCE_DEALS, MAX_SOURCE_KEY_LENGTH, MAX_SOURCE_REF_LENGTH, MAX_SOURCE_URL_LENGTH, MAX_STEP_HOURS, MAX_STEP_KEY_LENGTH, MAX_STRATEGY_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUGGESTION_MOMENTS, MAX_SUGGESTION_TEXT_LENGTH, MAX_SUMMARY_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_TASK_INSTRUCTION_LENGTH, MAX_TOKEN_CIPHERTEXT_BYTES, MAX_TONE_LENGTH, MAX_TOUCH_SOURCES, MAX_TURN_SOURCES, MAX_TURN_TEXT_LENGTH, MAX_TWILIO_FINGERPRINT_LENGTH, MAX_TWILIO_PLACEMENT_KEY_LENGTH, MAX_TWILIO_PROVIDER_ID_LENGTH, MAX_TWILIO_RING_IDENTITIES, MAX_VARIANT_ANGLE_LENGTH, MAX_VARIANT_LABEL_LENGTH, MAX_VARIANT_WEIGHT, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_VOICE_LENGTH_CHARACTERS, MAX_VOICE_TERM_LENGTH, MAX_VOICE_VERSION, MAX_WON_DEAL_COUNT, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MESSAGE_AUTHOR_KINDS, MESSAGE_DIRECTIONS, MIN_AGENT_IDEMPOTENCY_KEY_LENGTH, MIN_FORM_TOKEN_LENGTH, MIN_QUESTION_CHOICES, MIN_VOICE_LENGTH_CHARACTERS, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_AGENT_KIND, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, OUTBOUND_LANGUAGES, OUTBOUND_WORK_KINDS, OUTBOX_DEDUPE_KEY_MAX_LENGTH, OUTBOX_ERROR_CODE_MAX_LENGTH, OUTBOX_MAX_ATTEMPTS, OUTBOX_MAX_BATCH, OUTBOX_MAX_LEASE_MS, OUTBOX_MAX_RETRY_DELAY_MS, OUTBOX_MIN_LEASE_MS, OUTBOX_PAYLOAD_MAX_BYTES, OUTBOX_TOPIC_MAX_LENGTH, OutboxRow, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PLAY_CITATION_KINDS, PLAY_INTENTS, PLAY_SOURCES, PLAY_STATUSES, PROMOTION_SOURCES, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, QUALIFICATION_QUESTION_KINDS, QualificationJsonValue, REPLY_LABELS, RIGHTS_MAX_WORDING_VERSION, ROLLUP_GROUP_KINDS, ROLLUP_METRICS, RUN_STATUSES, RefreshToken, SEND_CHECKS, SEND_DEFERRING_REASONS, SEND_REFUSAL_REASONS, SEND_STATES, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNAL_KINDS, SIGNAL_SOURCE_TYPES, SIGNING_KEY_STATUSES, SKIPPED_ATTEMPT_OUTCOMES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KINDS, SOURCE_KIND_PATTERN, SOURCE_OUTCOMES, SOURCE_PERFORMANCE_FLAGS, STEP_KINDS, STEP_TASKS, STOP_REASONS, SUGGESTION_FINGERPRINT_BYTES, SUGGESTION_KINDS, SUGGESTION_STATUSES, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, StoredSkipCondition, StoredWorkingDay, TOUCH_AGENT_KINDS, TOUCH_CHANNELS, TOUCH_KINDS, TWILIO_DIRECTORY_KINDS, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WEEKDAYS, WINDOW_ZONES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, agentInstructionPointers, agentInstructionVersions, agentSettings, analyticsEvents, apiKeyUsage, apiKeys, approvalDecisions, approvalPolicies, assessmentFindings, assessments, attemptCounters, auditEvents, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consentFormDirectory, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, conversationSummaries, conversations, coreApiKeys, coreSchema, credentials, crmConnections, crmExternalRefs, crmMappings, crmSyncRuns, crmWebhookReceipts, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, draftSources, drafts, enrichmentAttempts, enrichmentReservations, enrichmentRuns, enrichmentSpend, environmentSettings, environments, escalationRules2 as escalationRules, events, exportJobs, exportParts, fitCriteria, flowAttempts, healthDaily, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, mailEvents, mailMessages, mailboxLimits, mailboxes, membershipDirectory, memberships, messages, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, outboundBrandVoices, outboundBriefStatements, outboundBriefs, outboundCampaigns, outboundDraftChecks, outboundDraftCitations, outboundDrafts, outboundEnrollmentEvents, outboundEnrollments, outboundModelUsage, outboundPlayCitations, outboundPlays, outboundSchema, outboundSendDecisions, outboundSequences, outboundSteps, outboundVariants, outboundWorkHints, outbox, passkeyChallenges, passkeys, passwordHistory, playbookEmbedUsage, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, providerSettings, refreshTokens, repChangeAllowed, rightsConfirmations, rollupDaily, sessions, signals, signingKeys, smsCodeCounts, sourcePerformance, suggestions, suppressionEntries, teamMembers, teams, touches, userFactors, users, verificationTokens, voiceAgentSettings, voiceAgentTurnSources, voiceAgentTurns, voiceCallEvents, voiceCalls, voiceChats, voiceHandoffs, voiceIdempotencyKeys, voiceInquiries, voiceLineDirectory, voiceLines, voiceQualificationAnswers, voiceQualificationQuestions, voiceRecordings, voiceSchema, voiceTwilioCalls, voiceTwilioDirectory, voiceTwilioPlacements, voiceTwilioRecordings, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };
+export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, AGENT_KINDS, AGENT_SETTING_CHANNELS, AGENT_TOOLS, AGENT_TURN_ROLES, AGENT_VOICE_STYLES, ANGLE_ORIGINS, API_KEY_KINDS, API_KEY_ROLE_CEILINGS, API_KEY_SCOPES, APPROVAL_MODES, ASSESSMENT_JUDGE_SOURCES, ASSESSMENT_SUBJECT_KINDS, ASSESSMENT_VERDICTS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, ATTEMPT_FAILURES, ATTEMPT_OUTCOMES, AUDIT_ACTOR_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BRIEF_ENTRY_ROLES, BackupCode, CALL_CHANNELS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_ORIGINS, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_VENDOR_ID_PATTERN, CAMPAIGN_APPROVAL_MODES, CAMPAIGN_STATES, CHAT_STATES, CHAT_TOKEN_HASH_BYTES, CITATION_KINDS, CITATION_PROSPECT_FIELDS, CLASSIFICATION_DECIDERS, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CONTROL_LEVELS, CONVERSATION_CONTROLLERS, CONVERSATION_OUTCOME_LABELS, CONVERSATION_STATES, CREDENTIAL_TYPES, CRM_CONNECTION_STATES, CRM_DIRECTIONS, CRM_FIELD_KEYS, CRM_MAPPING_KINDS, CRM_OBJECT_KINDS, CRM_PROVIDERS, CRM_REF_STATES, CRM_RUN_ERROR_CODES, CRM_RUN_STATES, CRM_RUN_TRIGGERS, CRM_SCOPE_LEVELS, CRM_SKIP_REASON_COUNT, CRM_STAGE_OUTCOMES, CRM_WEBHOOK_WINDOW_SECONDS, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DECISION_KINDS, DEFAULT_CHANNEL, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DRAFT_AUTHORS, DRAFT_CHANNELS, DRAFT_CHECKS, DRAFT_CHECK_RESULTS, DRAFT_HOLD_REASONS, DRAFT_SOURCE_KINDS, DRAFT_STATUSES, DRAFT_TEXT_SOURCES, DemoRateCounter, DemoRequest, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, ENROLLMENT_EVENT_KINDS, ENROLLMENT_STATES, ENROLLMENT_STOP_REASONS, ENVIRONMENT_KINDS, ESCALATION_TARGETS, ESCALATION_TRIGGERS, EVENT_RETENTION_FLOOR, EXPORT_ACTIVE_STATES, EXPORT_FAILURE_REASONS, EXPORT_FORMATS, EXPORT_KINDS, EXPORT_PART_FAILURE_REASONS, EXPORT_PART_STATES, EXPORT_SERVICES, EXPORT_STATES, Environment, EnvironmentSettingsRow, Event, FIELD_GROUPS, FIELD_HISTORY_STATES, FINAL_RUN_STATUSES, FINDING_CATEGORIES, FINDING_FEEDBACKS, FINDING_SEVERITIES, FIT_FIELDS, FIT_OPERATORS, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HANDOFF_CHANNELS, HANDOFF_REASONS, HANDOFF_RESULTS, HANDOFF_STATES, HEALTH_COMPONENT_KINDS, HEALTH_EFFECTS, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INBOX_CHANNELS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INQUIRY_CALLBACK_STATES, INQUIRY_SKIP_REASONS, INQUIRY_SOURCES, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LOGGED_DENIAL_CODES, MAILBOX_KINDS, MAILBOX_PROVIDERS, MAILBOX_STATES, MAILBOX_STATE_REASONS, MAIL_EVENT_KINDS, MAX_AGENT_CALL_COST_USD_CENTS, MAX_AGENT_CALL_SECONDS, MAX_AGENT_CONCURRENCY, MAX_AGENT_GREETING_LENGTH, MAX_AGENT_HOURS_DAYS, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH, MAX_AGENT_INSTRUCTION_LENGTH, MAX_ANGLE_LENGTH, MAX_ANSWER_LENGTH, MAX_API_KEY_NAME_LENGTH, MAX_ASSESSED_NUMBER, MAX_ATTEMPTS_PER_RUN, MAX_ATTEMPT_DURATION_MS, MAX_ATTEMPT_EPOCH, MAX_AUDIT_METADATA_BYTES, MAX_BANNED_PHRASES, MAX_BRANCH_ARMS, MAX_BRIEF_STATEMENTS, MAX_BRIEF_STATEMENT_LENGTH, MAX_CALLBACK_ATTEMPTS, MAX_CALLER_LENGTH, MAX_CALL_DURATION_SECONDS, MAX_CAMPAIGN_NAME_LENGTH, MAX_CAMPAIGN_VERSION, MAX_CHECK_COUNT, MAX_CITATION_DOCUMENT_PAGE, MAX_CITATION_URL_LENGTH, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_COPILOT_QUOTE_LENGTH, MAX_CREDENTIAL_CIPHERTEXT_BYTES, MAX_CREDENTIAL_KEY_ID_LENGTH, MAX_CRM_CURSOR_LENGTH, MAX_CRM_EXTERNAL_ID_LENGTH, MAX_CRM_KEY_ID_LENGTH, MAX_CRM_LABEL_LENGTH, MAX_CRM_LOCAL_ID_LENGTH, MAX_CRM_RUN_COUNT, MAX_CRM_RUN_FAILURES, MAX_CRM_SEALED_TOKEN_BYTES, MAX_CRM_WRITE_KEY_LENGTH, MAX_DAILY_CAP, MAX_DECISION_NOTE_LENGTH, MAX_DOCUMENT_PAGES, MAX_DRAFT_BODY_LENGTH, MAX_DRAFT_CHECKS, MAX_DRAFT_CITATIONS, MAX_DRAFT_GOAL_LENGTH, MAX_DRAFT_REVISION, MAX_DRAFT_SUBJECT_LENGTH, MAX_DROPPED_COUNT, MAX_ESCALATION_RULES, MAX_EVIDENCE_COUNT, MAX_EVIDENCE_REF_LENGTH, MAX_EXCEPT_LABELS, MAX_EXPORT_PART_BYTES, MAX_EXPORT_PART_FILES, MAX_EXPORT_PREFIX_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FINDING_EXPLANATION_LENGTH, MAX_FINDING_SPAN_OFFSET, MAX_FIT_CONDITION_BYTES, MAX_FIT_NAME_LENGTH, MAX_FIT_VALUES, MAX_FIT_WEIGHT, MAX_FORM_TOKEN_LENGTH, MAX_HANDOFF_ATTEMPTS, MAX_HEALTH_COMPONENTS, MAX_HEALTH_COUNT, MAX_LINE_LABEL_LENGTH, MAX_MAILBOX_NAME_LENGTH, MAX_MAILBOX_TEAMS, MAX_MAIL_PROVIDER_MESSAGE_ID_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_MESSAGE_BODY_LENGTH, MAX_MICRO_DOLLARS, MAX_MIN_GAP_SECONDS, MAX_MODEL_NAME_LENGTH, MAX_PENDING_DRAFT_COUNT, MAX_PLAY_CITATIONS, MAX_PLAY_EVIDENCE, MAX_PLAY_STEPS, MAX_PREFERRED_WORDS, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_COMPANY_TECHNOLOGIES, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH, MAX_PROSPECT_COMPANY_TEXT_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH, MAX_PROVIDERS, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_PROVIDER_KEY_LENGTH, MAX_PROVIDER_MESSAGE_ID_LENGTH, MAX_PROVIDER_REFERENCE_LENGTH, MAX_QUALIFICATION_QUESTIONS, MAX_QUALIFICATION_SUMMARY_LENGTH, MAX_QUESTION_CHOICES, MAX_QUESTION_PROMPT_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_RESERVATION_HOLD_KEY_LENGTH, MAX_ROLLUP_COUNT, MAX_ROLLUP_GROUP_KEY_LENGTH, MAX_RUN_FIELDS, MAX_RUN_REQUEST_ID_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SENDS_PER_DAY, MAX_SENDS_PER_HOUR, MAX_SEQUENCE_STEP, MAX_SEQUENCE_STEPS, MAX_SIGNAL_DETAIL_BYTES, MAX_SIGN_OFF_LENGTH, MAX_SKIP_CONDITIONS, MAX_SOURCE_DEALS, MAX_SOURCE_KEY_LENGTH, MAX_SOURCE_REF_LENGTH, MAX_SOURCE_URL_LENGTH, MAX_STEP_HOURS, MAX_STEP_KEY_LENGTH, MAX_STRATEGY_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUGGESTION_MOMENTS, MAX_SUGGESTION_TEXT_LENGTH, MAX_SUMMARY_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_TASK_INSTRUCTION_LENGTH, MAX_TOKEN_CIPHERTEXT_BYTES, MAX_TONE_LENGTH, MAX_TOUCH_SOURCES, MAX_TURN_SOURCES, MAX_TURN_TEXT_LENGTH, MAX_TWILIO_FINGERPRINT_LENGTH, MAX_TWILIO_PLACEMENT_KEY_LENGTH, MAX_TWILIO_PROVIDER_ID_LENGTH, MAX_TWILIO_RING_IDENTITIES, MAX_VARIANT_ANGLE_LENGTH, MAX_VARIANT_LABEL_LENGTH, MAX_VARIANT_WEIGHT, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_VOICE_LENGTH_CHARACTERS, MAX_VOICE_TERM_LENGTH, MAX_VOICE_VERSION, MAX_WON_DEAL_COUNT, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MESSAGE_AUTHOR_KINDS, MESSAGE_DIRECTIONS, MIN_AGENT_IDEMPOTENCY_KEY_LENGTH, MIN_FORM_TOKEN_LENGTH, MIN_QUESTION_CHOICES, MIN_VOICE_LENGTH_CHARACTERS, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_AGENT_KIND, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, OUTBOUND_LANGUAGES, OUTBOUND_WORK_KINDS, OUTBOX_DEDUPE_KEY_MAX_LENGTH, OUTBOX_ERROR_CODE_MAX_LENGTH, OUTBOX_MAX_ATTEMPTS, OUTBOX_MAX_BATCH, OUTBOX_MAX_LEASE_MS, OUTBOX_MAX_RETRY_DELAY_MS, OUTBOX_MIN_LEASE_MS, OUTBOX_PAYLOAD_MAX_BYTES, OUTBOX_TOPIC_MAX_LENGTH, OutboxRow, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PLAY_CITATION_KINDS, PLAY_INTENTS, PLAY_SOURCES, PLAY_STATUSES, PROMOTION_SOURCES, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, QUALIFICATION_QUESTION_KINDS, QualificationJsonValue, REPLY_LABELS, RIGHTS_MAX_WORDING_VERSION, ROLLUP_GROUP_KINDS, ROLLUP_METRICS, RUN_STATUSES, RefreshToken, SEND_CHECKS, SEND_DEFERRING_REASONS, SEND_REFUSAL_REASONS, SEND_STATES, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNAL_KINDS, SIGNAL_SOURCE_TYPES, SIGNING_KEY_STATUSES, SKIPPED_ATTEMPT_OUTCOMES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KINDS, SOURCE_KIND_PATTERN, SOURCE_OUTCOMES, SOURCE_PERFORMANCE_FLAGS, STEP_KINDS, STEP_TASKS, STOP_REASONS, SUGGESTION_FINGERPRINT_BYTES, SUGGESTION_KINDS, SUGGESTION_STATUSES, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, StoredSkipCondition, StoredWorkingDay, TOUCH_AGENT_KINDS, TOUCH_CHANNELS, TOUCH_KINDS, TWILIO_DIRECTORY_KINDS, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WEEKDAYS, WINDOW_ZONES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, agentInstructionPointers, agentInstructionVersions, agentSettings, analyticsEvents, apiKeyUsage, apiKeys, approvalDecisions, approvalPolicies, assessmentFindings, assessments, attemptCounters, auditEvents, auditLogs, authSchema, backupCodes, callJobs, callReuploadRequeues, callVendorSends, calls, consentFormDirectory, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, conversationSummaries, conversations, coreApiKeys, coreSchema, credentials, crmConnections, crmExternalRefs, crmMappings, crmSyncRuns, crmWebhookReceipts, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, draftSources, drafts, enrichmentAttempts, enrichmentReservations, enrichmentRuns, enrichmentSpend, environmentSettings, environments, escalationRules2 as escalationRules, events, exportJobs, exportParts, fitCriteria, flowAttempts, healthDaily, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, mailEvents, mailMessages, mailboxConnectAttempts, mailboxLimits, mailboxTestSends, mailboxes, membershipDirectory, memberships, messages, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, outboundBrandVoices, outboundBriefStatements, outboundBriefs, outboundCampaigns, outboundDraftChecks, outboundDraftCitations, outboundDrafts, outboundEnrollmentEvents, outboundEnrollments, outboundModelUsage, outboundPlayCitations, outboundPlays, outboundSchema, outboundSendDecisions, outboundSequences, outboundSteps, outboundVariants, outboundWorkHints, outbox, passkeyChallenges, passkeys, passwordHistory, playbookEmbedUsage, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, providerSettings, refreshTokens, repChangeAllowed, rightsConfirmations, rollupDaily, sessions, signals, signingKeys, smsCodeCounts, sourcePerformance, suggestions, suppressionEntries, teamMembers, teams, touches, userFactors, users, verificationTokens, voiceAgentSettings, voiceAgentTurnSources, voiceAgentTurns, voiceCallEvents, voiceCalls, voiceChats, voiceHandoffs, voiceIdempotencyKeys, voiceInquiries, voiceLineDirectory, voiceLines, voiceQualificationAnswers, voiceQualificationQuestions, voiceRecordings, voiceSchema, voiceTwilioCalls, voiceTwilioDirectory, voiceTwilioPlacements, voiceTwilioRecordings, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workspaces };

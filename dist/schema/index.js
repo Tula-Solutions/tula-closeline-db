@@ -311,6 +311,8 @@ import {
   mailMessages2,
   mailEvents2,
   healthDaily2,
+  mailboxConnectAttempts2,
+  mailboxTestSends2,
   DRAFT_CHANNELS2,
   OUTBOUND_LANGUAGES2,
   DRAFT_CHECKS2,
@@ -580,7 +582,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-03n1jqyd.js";
+} from "../shared/chunk-h06kzydj.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -1075,7 +1077,9 @@ export {
   invitations2 as invitations,
   mailEvents2 as mailEvents,
   mailMessages2 as mailMessages,
+  mailboxConnectAttempts2 as mailboxConnectAttempts,
   mailboxLimits2 as mailboxLimits,
+  mailboxTestSends2 as mailboxTestSends,
   mailboxes2 as mailboxes,
   membershipDirectory2 as membershipDirectory,
   memberships2 as memberships,
