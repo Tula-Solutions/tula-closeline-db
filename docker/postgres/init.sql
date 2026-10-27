@@ -58,7 +58,8 @@ GRANT closeline_core_outbox_drain TO closeline_owner WITH SET TRUE, INHERIT FALS
 -- closeline_voice_purge_scan  owns voice.twilio_orgs_with_expired (migration 0042), which lists the
 --                  Organizations that hold expired Twilio rows for the purge. Same shape as the
 --                  roles above; it reads two columns (organization_id, expires_at) of each of
---                  voice.twilio_calls and voice.twilio_placements and nothing else.
+--                  voice.twilio_calls and voice.twilio_placements, plus four columns of voice.calls
+--                  for voice.orgs_with_stale_ringing (migration 0058), and nothing else.
 CREATE ROLE closeline_voice_purge_scan NOLOGIN
   NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT BYPASSRLS;
 GRANT closeline_voice_purge_scan TO closeline_owner WITH SET TRUE, INHERIT FALSE;

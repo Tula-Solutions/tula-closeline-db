@@ -6453,6 +6453,7 @@ var voiceCalls2 = voiceSchema2.table("calls", {
   index45("calls_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
   index45("calls_rep_list_idx").on(t.organizationId, t.repMembershipId, t.createdAt.desc(), t.id.desc()).where(sql42`${t.repMembershipId} is not null`),
   index45("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt.desc(), t.id.desc()),
+  index45("calls_stale_ringing_idx").on(t.createdAt, t.organizationId).where(sql42`${t.state} = 'ringing' and ${t.direction} = 'inbound'`),
   index45("calls_prospect_list_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()).where(sql42`${t.prospectId} is not null`),
   index45("calls_line_list_idx").on(t.organizationId, t.lineId, t.createdAt.desc(), t.id.desc())
 ]);

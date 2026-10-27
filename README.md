@@ -3752,6 +3752,18 @@ GRANT closeline_voice_purge_scan TO closeline_owner WITH SET TRUE, INHERIT FALSE
 The migration fails naming the role if it is missing or wrongly configured. Locally
 `docker/postgres/init.sql` does this; a volume created before v0.45.0 lacks the role, so recreate it.
 
+## Organizations with stale ringing Calls (v0.60.0, migration `0058`)
+
+`voice.orgs_with_stale_ringing(p_before timestamptz, p_after text, p_limit integer)` returns the
+distinct `organization_id`s with a Call in `state = 'ringing'`, `direction = 'inbound'` and
+`created_at < p_before`, ascending and strictly after `p_after`, so voice can mark them `missed`
+per Organization. Same rules as `twilio_orgs_with_expired`: `p_limit` cut to 500, null or under one
+gives no row, ids only, EXECUTE for `closeline_voice` alone. It is owned by the existing
+`closeline_voice_purge_scan` role, which gains SELECT on four columns of `voice.calls`
+(`organization_id`, `state`, `direction`, `created_at`); no new role. The partial index
+`calls_stale_ringing_idx (created_at, organization_id) WHERE state = 'ringing' AND direction =
+'inbound'` keeps the lookup off the full table.
+
 ## Suggestions, the approval hash and the learning switch (v0.50.0, migration `0047`)
 
 Three additions for the approval queue (hub issue 285) and Agent-origin learning (hub issue 312).
