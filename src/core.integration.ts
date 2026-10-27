@@ -261,6 +261,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       expect([...NON_TENANT_TABLES].sort()).toEqual(
         [
           ...NO_ACCESS_TABLES.map((name) => `core.${name}`),
+          'core.booking_type_directory',
           'core.consent_form_directory',
           'core.demo_rate_counter',
           'core.demo_request',
@@ -277,7 +278,13 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           .map((g) => g.table)
           .sort()
       ).toEqual(
-        [...NO_ACCESS_TABLES, 'consent_form_directory', 'demo_rate_counter', 'demo_request'].sort()
+        [
+          ...NO_ACCESS_TABLES,
+          'booking_type_directory',
+          'consent_form_directory',
+          'demo_rate_counter',
+          'demo_request',
+        ].sort()
       )
     })
 
@@ -1915,6 +1922,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       api_key_for_hash: [true, false, true],
       audit_events_extend_chain: [false, true, false],
+      booking_type_for_token: [true, false, true],
       claim_demo_notices: [true, false, true],
       consent_channels_valid: [false, false, true],
       consent_form_for_token: [true, false, true],
@@ -1951,6 +1959,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       settle_demo_notice: [true, false, true],
       start_organization: [false, true, false],
       submit_demo_request: [true, false, true],
+      sync_booking_type_directory: [true, true, false],
       sync_consent_form_directory: [true, true, false],
       sync_invitation_directory: [true, true, false],
       sync_membership_directory: [true, true, false],
@@ -2044,6 +2053,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         organization_of_user: 's',
         invitation_for_token: 's',
         consent_form_for_token: 's',
+        booking_type_for_token: 's',
         crm_connection_for_account: 's',
         api_key_for_hash: 's',
         consent_channels_valid: 'i',

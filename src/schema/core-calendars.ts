@@ -209,6 +209,28 @@ export const bookingTypes = coreSchema.table(
 )
 
 /**
+ * The directory behind `core.booking_type_for_token(token_hash)`: one row per active Booking Type
+ * that has a public link, keyed by the SHA-256 hex of its token. The public booking routes receive
+ * only a token, so no Organization is set and row-level security hides `booking_types`. It is not
+ * under row-level security; no service role holds any privilege on it. The trigger
+ * `booking_type_sync_directory` on `booking_types` keeps it, and the function (joined to
+ * `organization_state`, so only an `active` Organization answers) is the only way in.
+ */
+export const bookingTypeDirectory = coreSchema.table(
+  'booking_type_directory',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    organizationId: text('organization_id').notNull(),
+    bookingTypeId: text('booking_type_id').notNull(),
+  },
+  (t) => [
+    check('booking_type_directory_token_hash_shape', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check('booking_type_directory_organization_id_shape', orgShape),
+    check('booking_type_directory_booking_type_id_shape', idShape('booking_type_id', 'bkt')),
+  ]
+)
+
+/**
  * An ordered Routing Rule: `position` orders the rules (ties broken by id), `conditions` is a JSON
  * object core validates (country, region, company size band, named-account owner, source, Booking
  * Type), and the target is exactly one of a Rep (`target_membership_id`), a Team

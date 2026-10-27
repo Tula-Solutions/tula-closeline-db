@@ -98,6 +98,8 @@ export const CONTROL_PLANE_TABLES: readonly string[] = Object.keys(CONTROL_PLANE
  * reached only through a `SECURITY DEFINER` function.
  */
 export const NON_TENANT_TABLE_REASONS: Readonly<Record<string, string>> = {
+  'core.booking_type_directory':
+    'asked before the Organization is known (the public booking routes receive only a token); holds the SHA-256 hash of a public link, the Organization id and the Booking Type id for active types only, is written only by a SECURITY DEFINER trigger on core.booking_types, and no service role holds any privilege on it: core.booking_type_for_token is the only way in',
   'core.consent_form_directory':
     'asked before the Organization is known (the public hosted consent form receives only a token); holds token, Organization id, form id, wording id and state for published and closed forms only, is written only by a SECURITY DEFINER trigger on core.consent_form, and no service role holds any privilege on it: core.consent_form_for_token is the only way in',
   'core.demo_rate_counter':
