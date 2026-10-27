@@ -82,6 +82,7 @@ const ANALYTICS_TABLES = [
   'touches',
 ]
 const NO_ACCESS = [
+  'booking_type_directory',
   'consent_form_directory',
   'invitation_directory',
   'membership_directory',

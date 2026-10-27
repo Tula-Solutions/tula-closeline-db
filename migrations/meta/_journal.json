@@ -435,6 +435,13 @@
       "when": 1793134518370,
       "tag": "0061_booking_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793136909344,
+      "tag": "0062_core_booking_type_lookup",
+      "breakpoints": true
     }
   ]
 }

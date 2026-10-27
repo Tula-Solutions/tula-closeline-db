@@ -62,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-ww7pbtsm.js";
+} from "./shared/chunk-n9zwk21k.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -527,6 +527,7 @@ var CONTROL_PLANE_TABLE_REASONS = {
 };
 var CONTROL_PLANE_TABLES = Object.keys(CONTROL_PLANE_TABLE_REASONS);
 var NON_TENANT_TABLE_REASONS = {
+  "core.booking_type_directory": "asked before the Organization is known (the public booking routes receive only a token); holds the SHA-256 hash of a public link, the Organization id and the Booking Type id for active types only, is written only by a SECURITY DEFINER trigger on core.booking_types, and no service role holds any privilege on it: core.booking_type_for_token is the only way in",
   "core.consent_form_directory": "asked before the Organization is known (the public hosted consent form receives only a token); holds token, Organization id, form id, wording id and state for published and closed forms only, is written only by a SECURITY DEFINER trigger on core.consent_form, and no service role holds any privilege on it: core.consent_form_for_token is the only way in",
   "core.demo_rate_counter": "a per-address request counter for the public demo-request route, held by Closeline itself and not by any Organization, so it has no organization_id; it holds only an HMAC of an address, a window and a count, is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read it",
   "core.demo_request": "a Visitor's Demo Request, held by Closeline itself and not by any Organization, so it has no organization_id; it is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read a Visitor's name, email or message",

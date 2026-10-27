@@ -395,6 +395,111 @@ describe('core calendar, routing and Booking tables', () => {
     })
   })
 
+  describe('booking_type_for_token', () => {
+    const lookup = async (tokenHash: string | null) =>
+      (await run(null, 'select * from core.booking_type_for_token($1)', [tokenHash])).rows
+    const update = (s: Seeded, set: string, values: unknown[] = []) =>
+      run(s.orgId, `update core.booking_types set ${set} where id = $1`, [s.typeId, ...values])
+    const publish = async (s: Seeded) => {
+      const token = hash(newId('tok'))
+      await update(s, 'public_token_hash = $2', [token])
+      return token
+    }
+
+    test('answers with the Organization and id of an active type, with no scope set', async () => {
+      const a = await seed()
+      const token = await publish(a)
+      expect(await lookup(token)).toEqual([{ organization_id: a.orgId, booking_type_id: a.typeId }])
+    })
+
+    test('a retired type, an unknown hash and a malformed one give no row; reactivating restores it', async () => {
+      const a = await seed()
+      const token = await publish(a)
+      await update(a, 'active = false')
+      expect(await lookup(token)).toEqual([])
+      expect(await lookup(hash(newId('tok')))).toEqual([])
+      expect(await lookup(null)).toEqual([])
+      expect(await lookup(token.toUpperCase())).toEqual([])
+      await update(a, 'active = true')
+      expect(await lookup(token)).toHaveLength(1)
+    })
+
+    test('after the hash changes or is cleared, the old hash gives no row', async () => {
+      const a = await seed()
+      const old = await publish(a)
+      const next = await publish(a)
+      expect(await lookup(old)).toEqual([])
+      expect(await lookup(next)).toEqual([{ organization_id: a.orgId, booking_type_id: a.typeId }])
+      await update(a, 'public_token_hash = null')
+      expect(await lookup(next)).toEqual([])
+    })
+
+    test('a removed type, and a type of a removed Organization, give no row', async () => {
+      const a = await seed()
+      const b = await seed()
+      const token = await publish(a)
+      const other = await publish(b)
+      await run(a.orgId, 'delete from core.bookings where organization_id = $1', [a.orgId])
+      await run(a.orgId, 'delete from core.booking_types where id = $1', [a.typeId])
+      expect(await lookup(token)).toEqual([])
+      // Row-level security is forced on the owner too, so the removal runs scoped to the Organization.
+      const c = await owner.connect()
+      try {
+        await c.query('begin')
+        await c.query('select set_config($1, $2, true)', [SETTING, b.orgId])
+        await c.query('delete from core.organizations where organization_id = $1', [b.orgId])
+        await c.query('commit')
+      } finally {
+        c.release()
+      }
+      expect(await lookup(other)).toEqual([])
+    })
+
+    test('a suspended Organization gives no row', async () => {
+      const a = await seed()
+      const token = await publish(a)
+      await owner.query(
+        "update core.organization_state set status = 'suspended' where organization_id = $1",
+        [a.orgId]
+      )
+      expect(await lookup(token)).toEqual([])
+    })
+
+    test('only closeline_core may execute it, and it returns exactly two columns', async () => {
+      const privileges = await owner.query<{ role: string; ok: boolean }>(
+        `select r as role, has_function_privilege(r, 'core.booking_type_for_token(text)', 'EXECUTE') as ok
+           from unnest(array['closeline_core', 'closeline_auth', 'closeline_playbook', 'closeline_voice', 'public']) r
+          order by 1`
+      )
+      expect(privileges.rows.filter((r) => r.ok).map((r) => r.role)).toEqual(['closeline_core'])
+      const result = await run(null, 'select * from core.booking_type_for_token($1)', [
+        hash('none'),
+      ])
+      expect(result.fields.map((f) => f.name)).toEqual(['organization_id', 'booking_type_id'])
+    })
+
+    test('closeline_core cannot touch the directory, and nothing can bulk-empty it or the types', async () => {
+      const a = await seed()
+      await publish(a)
+      for (const statement of [
+        'select * from core.booking_type_directory',
+        "insert into core.booking_type_directory values ('x', 'y', 'z')",
+        'delete from core.booking_type_directory',
+        'truncate core.booking_type_directory',
+      ]) {
+        for (const setting of [null, a.orgId]) {
+          expect((await refusal(run(setting, statement))).message).toContain(
+            'permission denied for table'
+          )
+        }
+      }
+      const emptied = await refusal(owner.query('truncate core.booking_type_directory'))
+      expect(emptied.message).toContain('core.truncate_refused')
+      const guarded = await refusal(owner.query('truncate core.booking_types cascade'))
+      expect(guarded.message).toContain('core.truncate_refused')
+    })
+  })
+
   describe('routing_rules', () => {
     test('exactly the target of its kind is set, and a pool has 1 to 20 members', async () => {
       const s = await seed()
