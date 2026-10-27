@@ -1,0 +1,2 @@
+ALTER TABLE "auth"."refresh_tokens" ADD COLUMN "sealed_next_token" "bytea";--> statement-breakpoint
+ALTER TABLE "auth"."refresh_tokens" ADD CONSTRAINT "refresh_tokens_sealed_next_token_length" CHECK (octet_length("auth"."refresh_tokens"."sealed_next_token") between 1 and 256);

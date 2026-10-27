@@ -3,6 +3,7 @@ import { is } from 'drizzle-orm'
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core'
 import { CONTROL_PLANE_TABLES, ENVIRONMENT_SCOPED_TABLES } from '../../isolation'
 import * as schemas from '../index'
+import { REFRESH_SEALED_NEXT_TOKEN_MAX_BYTES } from './refresh-tokens'
 import { TENANT_PREDICATE, TENANT_SETTING } from './tenant-columns'
 
 const authTables = Object.values<unknown>(schemas)
@@ -50,6 +51,15 @@ describe('the auth schema', () => {
         'workspaces',
       ].sort()
     )
+  })
+
+  test('refresh_tokens has a nullable bytea sealed_next_token bounded by a check', () => {
+    const config = authTables.find((c) => c.name === 'refresh_tokens')
+    const column = config?.columns.find((c) => c.name === 'sealed_next_token')
+    expect(column?.getSQLType()).toBe('bytea')
+    expect(column?.notNull).toBe(false)
+    expect(config?.checks.map((c) => c.name)).toContain('refresh_tokens_sealed_next_token_length')
+    expect(REFRESH_SEALED_NEXT_TOKEN_MAX_BYTES).toBe(256)
   })
 
   test('no auth table carries organization_id: users are global within a Region', () => {
