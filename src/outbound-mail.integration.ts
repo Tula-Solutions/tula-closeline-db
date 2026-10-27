@@ -18,7 +18,15 @@ const newId = (prefix: string): string => `${prefix}_${randomBytes(16).toString(
 /** Tables whose rows the outbound role cannot remove: disconnecting keeps the Mailbox and its history. */
 const DELETE_REVOKED = ['mailboxes', 'mail_messages', 'mail_events']
 
-const TABLES = ['mailboxes', 'mailbox_limits', 'mail_messages', 'mail_events', 'health_daily']
+const TABLES = [
+  'mailboxes',
+  'mailbox_limits',
+  'mail_messages',
+  'mail_events',
+  'health_daily',
+  'mailbox_connect_attempts',
+  'mailbox_test_sends',
+]
 
 /** One harmless update per table that allows updates, to prove a second Organization updates nothing. */
 const UPDATES = {
@@ -26,6 +34,7 @@ const UPDATES = {
   mailbox_limits: 'per_day = 5',
   mail_messages: "provider_thread_id = 'x'",
   health_daily: 'sent = 1',
+  mailbox_connect_attempts: "state_hash = repeat('b', 64)",
 } as const
 
 interface Seeded {
@@ -208,6 +217,24 @@ describe('outbound mail tables', () => {
       [orgId, mailboxId, day]
     )
 
+  const hex64 = () => randomBytes(32).toString('hex')
+
+  const addAttempt = (orgId: string, options: { stateHash?: string; ttl?: string } = {}) =>
+    run(
+      orgId,
+      `insert into outbound.mailbox_connect_attempts (id, organization_id, user_id, state_hash, expires_at)
+       values ($1, $2, $3, $4, now() + $5::interval)`,
+      [newId('mca'), orgId, newId('usr'), options.stateHash ?? hex64(), options.ttl ?? '10 minutes']
+    )
+
+  const addTestSend = (orgId: string, mailboxId: string, keyHash = hex64()) =>
+    run(
+      orgId,
+      `insert into outbound.mailbox_test_sends (organization_id, mailbox_id, key_hash, provider_message_id)
+       values ($1, $2, $3, '<test@mail>')`,
+      [orgId, mailboxId, keyHash]
+    )
+
   /** Create an Organization with one row in every table of the mail schema. */
   async function seed(): Promise<Seeded> {
     const orgId = newOrg()
@@ -216,6 +243,8 @@ describe('outbound mail tables', () => {
     const sendId = await addSend(orgId, mailboxId)
     await addEvent(orgId, mailboxId, { sendId })
     await addHealth(orgId, mailboxId)
+    await addAttempt(orgId)
+    await addTestSend(orgId, mailboxId)
     return { orgId, mailboxId, sendId }
   }
 
@@ -317,6 +346,98 @@ describe('outbound mail tables', () => {
     )
     expect(error.code).toBe(INSUFFICIENT_PRIVILEGE)
     expect(await countOf(a.orgId, 'mail_events')).toBe(1)
+  })
+
+  describe('mailbox_connect_attempts', () => {
+    const consume = (orgId: string, stateHash: string) =>
+      run(
+        orgId,
+        `update outbound.mailbox_connect_attempts set consumed_at = now()
+         where state_hash = $1 and consumed_at is null and expires_at > now()`,
+        [stateHash]
+      )
+
+    test('a link is consumed once, and only inside its window', async () => {
+      const orgId = newOrg()
+      const live = hex64()
+      await addAttempt(orgId, { stateHash: live })
+      expect((await consume(orgId, live)).rowCount).toBe(1)
+      expect((await consume(orgId, live)).rowCount).toBe(0)
+      const expired = hex64()
+      await run(
+        orgId,
+        `insert into outbound.mailbox_connect_attempts (id, organization_id, user_id, state_hash, created_at, expires_at)
+         values ($1, $2, $3, $4, now() - interval '2 minutes', now() - interval '1 minute')`,
+        [newId('mca'), orgId, newId('usr'), expired]
+      )
+      expect((await consume(orgId, expired)).rowCount).toBe(0)
+    })
+
+    test('another user cannot consume the link', async () => {
+      const orgId = newOrg()
+      const hash = hex64()
+      await addAttempt(orgId, { stateHash: hash })
+      const other = await run(
+        orgId,
+        `update outbound.mailbox_connect_attempts set consumed_at = now()
+         where state_hash = $1 and user_id = $2 and consumed_at is null and expires_at > now()`,
+        [hash, newId('usr')]
+      )
+      expect(other.rowCount).toBe(0)
+      expect((await consume(orgId, hash)).rowCount).toBe(1)
+    })
+
+    test('another Organization cannot consume the link', async () => {
+      const a = newOrg()
+      const hash = hex64()
+      await addAttempt(a, { stateHash: hash })
+      expect((await consume(newOrg(), hash)).rowCount).toBe(0)
+      expect((await consume(a, hash)).rowCount).toBe(1)
+    })
+
+    test('one hash per Organization, and a raw state is refused', async () => {
+      const orgId = newOrg()
+      const hash = hex64()
+      await addAttempt(orgId, { stateHash: hash })
+      expect((await refusal(addAttempt(orgId, { stateHash: hash }))).code).toBe(UNIQUE_VIOLATION)
+      expect((await refusal(addAttempt(orgId, { stateHash: 'AbC_-state' }))).code).toBe(
+        CHECK_VIOLATION
+      )
+    })
+
+    test('the service role sweeps expired rows', async () => {
+      const orgId = newOrg()
+      await run(
+        orgId,
+        `insert into outbound.mailbox_connect_attempts (id, organization_id, user_id, state_hash, created_at, expires_at)
+         values ($1, $2, $3, $4, now() - interval '2 minutes', now() - interval '1 minute')`,
+        [newId('mca'), orgId, newId('usr'), hex64()]
+      )
+      await addAttempt(orgId)
+      const swept = await run(
+        orgId,
+        'delete from outbound.mailbox_connect_attempts where expires_at < now()'
+      )
+      expect(swept.rowCount).toBe(1)
+      expect(await countOf(orgId, 'mailbox_connect_attempts')).toBe(1)
+    })
+  })
+
+  describe('mailbox_test_sends', () => {
+    test('one send per Mailbox and key, and a Mailbox of another Organization is refused', async () => {
+      const a = await seed()
+      const b = await seed()
+      const key = hex64()
+      await addTestSend(a.orgId, a.mailboxId, key)
+      expect((await refusal(addTestSend(a.orgId, a.mailboxId, key))).code).toBe(UNIQUE_VIOLATION)
+      expect((await refusal(addTestSend(b.orgId, a.mailboxId))).code).toBe(FOREIGN_KEY_VIOLATION)
+    })
+
+    test('removing the Mailbox takes its test sends along', async () => {
+      const a = await seed()
+      await runAsOwner(a.orgId, 'delete from outbound.mailboxes')
+      expect(await countOf(a.orgId, 'mailbox_test_sends')).toBe(0)
+    })
   })
 
   describe('mailboxes', () => {
@@ -556,6 +677,8 @@ describe('outbound mail tables', () => {
   test('an Organization purge by the owner removes a Mailbox with its limits, sends, events and health days', async () => {
     const a = await seed()
     await runAsOwner(a.orgId, 'delete from outbound.mailboxes where id = $1', [a.mailboxId])
+    // Connect attempts belong to no Mailbox yet, so the purge removes them by Organization.
+    await runAsOwner(a.orgId, 'delete from outbound.mailbox_connect_attempts')
     for (const table of TABLES) {
       expect(await countOf(a.orgId, table)).toBe(0)
     }

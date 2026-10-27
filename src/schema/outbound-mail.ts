@@ -608,3 +608,79 @@ export const healthDaily = outboundSchema.table(
     }).onDelete('cascade'),
   ]
 )
+
+/**
+ * One Mailbox connect link, usable once. The service stores the SHA-256 of the signed `state`
+ * (`state_hash`, 64 lowercase hex characters, never the state itself) when it starts a connection
+ * for `user_id`, and consumes it on the provider callback with one atomic
+ * `update … set consumed_at = now() where state_hash = $1 and user_id = $2 and consumed_at is null
+ * and expires_at > now()`; no row updated means the link is spent, expired or foreign. Starting
+ * twice under one Idempotency-Key inserts the same hash once (`on conflict do nothing`).
+ *
+ * Swept: expired rows are deleted per Organization by `(organization_id, expires_at)`
+ * (`mailbox_connect_attempts_expiry_idx`), a bounded batch at a time.
+ */
+export const mailboxConnectAttempts = outboundSchema.table(
+  'mailbox_connect_attempts',
+  {
+    id: text('id').notNull(),
+    organizationId: text('organization_id').notNull(),
+    userId: text('user_id').notNull(),
+    stateHash: text('state_hash').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    expiresAt: ts('expires_at').notNull(),
+    consumedAt: ts('consumed_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'mailbox_connect_attempts_pkey', columns: [t.organizationId, t.id] }),
+    check('mailbox_connect_attempts_id_shape', idShape('id', 'mca')),
+    check('mailbox_connect_attempts_organization_id_shape', orgShape),
+    check('mailbox_connect_attempts_organization_not_global', notGlobal),
+    check('mailbox_connect_attempts_user_id_shape', idShape('user_id', 'usr')),
+    check('mailbox_connect_attempts_state_hash_shape', sql`${t.stateHash} ~ '^[0-9a-f]{64}$'`),
+    check('mailbox_connect_attempts_expires_after_created', sql`${t.expiresAt} > ${t.createdAt}`),
+    check(
+      'mailbox_connect_attempts_consumed_after_created',
+      sql`${t.consumedAt} is null or ${t.consumedAt} >= ${t.createdAt}`
+    ),
+    uniqueIndex('mailbox_connect_attempts_state_key').on(t.organizationId, t.stateHash),
+    index('mailbox_connect_attempts_expiry_idx').on(t.organizationId, t.expiresAt),
+  ]
+)
+
+/**
+ * One test email sent from a Mailbox, kept so the test-send route is idempotent and rate-capped.
+ * `key_hash` is the SHA-256 (64 hex characters) of the caller's Idempotency-Key, so a retry finds
+ * the first send instead of sending again (the primary key). The per-Mailbox cap counts rows by
+ * `sent_at` (`mailbox_test_sends_recent_idx`). Holds ids and hashes only, never a body or address.
+ */
+export const mailboxTestSends = outboundSchema.table(
+  'mailbox_test_sends',
+  {
+    organizationId: text('organization_id').notNull(),
+    mailboxId: text('mailbox_id').notNull(),
+    keyHash: text('key_hash').notNull(),
+    providerMessageId: text('provider_message_id').notNull(),
+    sentAt: ts('sent_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'mailbox_test_sends_pkey',
+      columns: [t.organizationId, t.mailboxId, t.keyHash],
+    }),
+    check('mailbox_test_sends_organization_id_shape', orgShape),
+    check('mailbox_test_sends_organization_not_global', notGlobal),
+    check('mailbox_test_sends_mailbox_id_shape', idShape('mailbox_id', 'mbx')),
+    check('mailbox_test_sends_key_hash_shape', sql`${t.keyHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      'mailbox_test_sends_provider_message_id_shape',
+      sql`${t.providerMessageId} ~ ${sql.raw(`'${PROVIDER_MESSAGE_ID}'`)}`
+    ),
+    foreignKey({
+      name: 'mailbox_test_sends_mailbox_fk',
+      columns: [t.organizationId, t.mailboxId],
+      foreignColumns: [mailboxes.organizationId, mailboxes.id],
+    }).onDelete('cascade'),
+    index('mailbox_test_sends_recent_idx').on(t.organizationId, t.mailboxId, t.sentAt),
+  ]
+)
