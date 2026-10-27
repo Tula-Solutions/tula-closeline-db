@@ -642,6 +642,27 @@ describe('the auth schema, against Postgres', () => {
       expect(message).toContain('sessions_device_thumbprint_shape')
     })
 
+    test('a refresh token takes no sealed next token, or one of 1 to 256 bytes', async () => {
+      const user = await addUser(region.a, 'sealed@example.test')
+      const sessionId = await session(region.a, user.id, 'A'.repeat(43))
+      const insert = (sealed: Buffer | null) =>
+        inEnv(region.a.environmentId, (client) =>
+          client.query(
+            `insert into auth.refresh_tokens (id, project_id, environment_id, session_id, token_hash,
+                                              expires_at, sealed_next_token)
+             values ($1, $2, $3, $4, $5, now() + interval '1 day', $6)`,
+            [uuid(), region.a.projectId, region.a.environmentId, sessionId, uuid(), sealed]
+          )
+        )
+      await insert(null)
+      await insert(Buffer.alloc(1, 1))
+      await insert(Buffer.alloc(256, 1))
+      for (const size of [0, 257]) {
+        const message = await rejectionOf(insert(Buffer.alloc(size)))
+        expect(message).toContain('refresh_tokens_sealed_next_token_length')
+      }
+    })
+
     test('an account has its address in both spellings or in neither', async () => {
       const message = await rejectionOf(
         inEnv(region.a.environmentId, (client) =>
