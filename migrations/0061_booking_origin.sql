@@ -1,0 +1,2 @@
+ALTER TABLE "core"."bookings" ADD COLUMN "origin" text DEFAULT 'member' NOT NULL;--> statement-breakpoint
+ALTER TABLE "core"."bookings" ADD CONSTRAINT "bookings_origin_known" CHECK ("core"."bookings"."origin" in ('member', 'agent', 'public'));

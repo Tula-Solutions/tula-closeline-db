@@ -32,6 +32,8 @@ export const CALENDAR_CONNECTION_STATES = ['healthy', 'needs_reconnect'] as cons
 export const BOOKING_MODES = ['phone', 'video'] as const
 /** The states of a Booking. Only `confirmed` Bookings hold a Rep's time (the exclusion constraint). */
 export const BOOKING_STATES = ['pending', 'confirmed', 'cancelled'] as const
+/** Who made a Booking: a member, the Inbound Agent, or a Prospect on the public page. Mirrors the contract's `BOOKING_ORIGINS`. */
+export const BOOKING_ORIGINS = ['member', 'agent', 'public'] as const
 /** What a Routing Rule picks: one Rep, a Team in round-robin, or a named pool of Reps. */
 export const ROUTING_TARGET_KINDS = ['rep', 'team', 'pool'] as const
 /** What a routing decision was made for. */
@@ -397,6 +399,7 @@ export const bookings = coreSchema.table(
     prospectId: text('prospect_id').notNull(),
     status: text('status', { enum: BOOKING_STATES }).notNull().default('pending'),
     mode: text('mode', { enum: BOOKING_MODES }).notNull(),
+    origin: text('origin', { enum: BOOKING_ORIGINS }).notNull().default('member'),
     startsAt: ts('starts_at').notNull(),
     endsAt: ts('ends_at').notNull(),
     blockedFrom: ts('blocked_from').notNull(),
@@ -416,6 +419,7 @@ export const bookings = coreSchema.table(
     check('bookings_organization_not_global', notGlobal),
     check('bookings_status_known', sql`${t.status} in (${list(BOOKING_STATES)})`),
     check('bookings_mode_known', sql`${t.mode} in (${list(BOOKING_MODES)})`),
+    check('bookings_origin_known', sql`${t.origin} in (${list(BOOKING_ORIGINS)})`),
     check('bookings_ends_after_starts', sql`${t.endsAt} > ${t.startsAt}`),
     check(
       'bookings_blocked_covers_booking',

@@ -428,6 +428,13 @@
       "when": 1793128465536,
       "tag": "0060_routing_rule_id_prefix",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793134518370,
+      "tag": "0061_booking_origin",
+      "breakpoints": true
     }
   ]
 }

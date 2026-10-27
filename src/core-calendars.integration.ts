@@ -295,6 +295,35 @@ describe('core calendar, routing and Booking tables', () => {
       expect((rejected.reason as { code?: string }).code).toBe(EXCLUSION_VIOLATION)
     })
 
+    test('origin defaults to member, takes each contract value and refuses others', async () => {
+      const s = await seed()
+      const stored = await run(s.orgId, 'select origin from core.bookings where id = $1', [
+        s.bookingId,
+      ])
+      expect(stored.rows[0].origin).toBe('member')
+      const insert = (origin: string, hour: number) =>
+        run(
+          s.orgId,
+          `insert into core.bookings (id, organization_id, booking_type_id, membership_id, prospect_id, status, mode, starts_at, ends_at, blocked_from, blocked_until, idempotency_key_hash, calendar_event_id, origin)
+           values ($1, $2, $3, $4, $5, 'confirmed', 'video', $6, $7, $6, $7, $8, 'evt', $9)`,
+          [
+            newId('bkg'),
+            s.orgId,
+            s.typeId,
+            s.repId,
+            s.prospectId,
+            at(hour),
+            at(hour, 30),
+            hash(origin),
+            origin,
+          ]
+        )
+      await insert('agent', 5)
+      await insert('public', 6)
+      await insert('member', 7)
+      expect((await refusal(insert('robot', 8))).code).toBe(CHECK_VIOLATION)
+    })
+
     test('a retried idempotency key is refused, and malformed times are refused', async () => {
       const s = await seed()
       const insert = (key: string, start: string, end: string, from = start, until = end) =>
