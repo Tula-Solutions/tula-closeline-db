@@ -393,6 +393,13 @@
       "when": 1793116252939,
       "tag": "0055_core_calendars",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793118881355,
+      "tag": "0056_voice_copilot_tables",
+      "breakpoints": true
     }
   ]
 }
