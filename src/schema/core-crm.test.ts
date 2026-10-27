@@ -115,6 +115,7 @@ describe('the CRM tables', () => {
     expect(indexNames(crmSyncRuns).sort()).toEqual([
       'crm_sync_runs_kind_list_idx',
       'crm_sync_runs_list_idx',
+      'crm_sync_runs_retry_of_idx',
       'crm_sync_runs_state_list_idx',
     ])
   })
