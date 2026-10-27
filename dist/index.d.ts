@@ -32798,7 +32798,8 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g60<{
 * = any($ids)` (`calls_rep_list_idx`); one state, such as the missed inbound Calls
 * (`calls_state_list_idx`); of one Prospect (`calls_prospect_list_idx`); of one Line
 * (`calls_line_list_idx`, also the foreign key's index). A direction or time-range filter is
-* applied to the rows one of those reads.
+* applied to the rows one of those reads. `calls_stale_ringing_idx` is the one cross-Organization
+* read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing.
 */
 declare const voiceCalls: PgTableWithColumns_a5zn0g60<{
 	name: "calls";
@@ -36379,9 +36380,10 @@ declare const KEY_LOOKUP_ROLE = "closeline_core_key_lookup";
 */
 declare const OUTBOX_DRAIN_ROLE = "closeline_core_outbox_drain";
 /**
-* The NOLOGIN role that owns `voice.twilio_orgs_with_expired` and bypasses row-level security so
-* the Twilio purge can list the Organizations that hold expired rows. It reads two columns of
-* `twilio_calls` and of `twilio_placements`; no service role is a member of it.
+* The NOLOGIN role that owns `voice.twilio_orgs_with_expired` and `voice.orgs_with_stale_ringing`
+* and bypasses row-level security so voice can list the Organizations that hold expired Twilio rows
+* or stale ringing Calls. It reads two columns of `twilio_calls` and of `twilio_placements` and four
+* of `calls`; no service role is a member of it.
 */
 declare const VOICE_PURGE_SCAN_ROLE = "closeline_voice_purge_scan";
 /** The NOLOGIN definer roles that bypass row-level security by design. */

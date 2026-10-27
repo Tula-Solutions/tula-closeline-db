@@ -31,9 +31,10 @@ export const KEY_LOOKUP_ROLE = 'closeline_core_key_lookup'
 export const OUTBOX_DRAIN_ROLE = 'closeline_core_outbox_drain'
 
 /**
- * The NOLOGIN role that owns `voice.twilio_orgs_with_expired` and bypasses row-level security so
- * the Twilio purge can list the Organizations that hold expired rows. It reads two columns of
- * `twilio_calls` and of `twilio_placements`; no service role is a member of it.
+ * The NOLOGIN role that owns `voice.twilio_orgs_with_expired` and `voice.orgs_with_stale_ringing`
+ * and bypasses row-level security so voice can list the Organizations that hold expired Twilio rows
+ * or stale ringing Calls. It reads two columns of `twilio_calls` and of `twilio_placements` and four
+ * of `calls`; no service role is a member of it.
  */
 export const VOICE_PURGE_SCAN_ROLE = 'closeline_voice_purge_scan'
 

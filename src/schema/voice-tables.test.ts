@@ -86,6 +86,17 @@ describe('the voice tables', () => {
     }
   })
 
+  test('the stale ringing lookup has a partial index over (created_at, organization_id)', () => {
+    const index = getTableConfig(voiceCalls).indexes.find(
+      (i) => i.config.name === 'calls_stale_ringing_idx'
+    )
+    expect(index?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
+      'created_at',
+      'organization_id',
+    ])
+    expect(index?.config.where).toBeDefined()
+  })
+
   test('the Call lists by Rep, Prospect, Line and state each end in (created_at, id)', () => {
     const indexes = getTableConfig(voiceCalls).indexes
     for (const name of [
