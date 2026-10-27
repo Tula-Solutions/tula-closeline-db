@@ -196,6 +196,17 @@ describe('core calendar, routing and Booking tables', () => {
     expect(await findTenantIsolationGaps(handle.db)).toEqual([])
   })
 
+  test('every calendar table, booking_types included, still forces row-level security after all migrations', async () => {
+    const forced = await owner.query<{ relname: string; relforcerowsecurity: boolean }>(
+      `select relname, relforcerowsecurity from pg_class
+        where relnamespace = 'core'::regnamespace and relname = any($1) order by relname`,
+      [[...TABLES]]
+    )
+    expect(forced.rows.map((r) => [r.relname, r.relforcerowsecurity])).toEqual(
+      [...TABLES].sort().map((t) => [t, true])
+    )
+  })
+
   describe.each(TABLES)('%s', (table) => {
     test('a second Organization reads, updates and removes nothing of the first, and no scope sees nothing', async () => {
       const a = await seed()
@@ -453,6 +464,46 @@ describe('core calendar, routing and Booking tables', () => {
         c.release()
       }
       expect(await lookup(other)).toEqual([])
+    })
+
+    test('the migration backfills active types that already had a hash, and forcing row-level security is back on', async () => {
+      const a = await seed()
+      const retired = await seed()
+      const token = await publish(a)
+      const old = await publish(retired)
+      await update(retired, 'active = false')
+      // Put the directory back to its pre-migration state, then replay the migration's backfill.
+      // The migration runs on an empty directory, and the replay restores every row.
+      await owner.query('delete from core.booking_type_directory')
+      expect(await lookup(token)).toEqual([])
+      const migration = await Bun.file(
+        new URL('../migrations/0062_core_booking_type_lookup.sql', import.meta.url)
+      ).text()
+      const start = migration.indexOf('ALTER TABLE "core"."booking_types" NO FORCE')
+      const end = migration.indexOf(
+        'FORCE ROW LEVEL SECURITY;',
+        migration.indexOf('INSERT INTO', start)
+      )
+      expect(start).toBeGreaterThan(-1)
+      const statements = migration
+        .slice(start, end + 'FORCE ROW LEVEL SECURITY;'.length)
+        .split('--> statement-breakpoint')
+      const c = await owner.connect()
+      try {
+        await c.query('begin')
+        for (const statement of statements) {
+          await c.query(statement)
+        }
+        await c.query('commit')
+      } finally {
+        c.release()
+      }
+      expect(await lookup(token)).toEqual([{ organization_id: a.orgId, booking_type_id: a.typeId }])
+      expect(await lookup(old)).toEqual([])
+      const forced = await owner.query<{ relforcerowsecurity: boolean }>(
+        "select relforcerowsecurity from pg_class where oid = 'core.booking_types'::regclass"
+      )
+      expect(forced.rows).toEqual([{ relforcerowsecurity: true }])
     })
 
     test('a suspended Organization gives no row', async () => {
