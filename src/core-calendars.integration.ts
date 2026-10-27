@@ -359,8 +359,9 @@ describe('core calendar, routing and Booking tables', () => {
           value,
           s.typeId,
         ])
-      await set(a, hash('token'))
-      expect((await refusal(set(b, hash('token')))).code).toBe(UNIQUE_VIOLATION)
+      const token = hash(newId('tok'))
+      await set(a, token)
+      expect((await refusal(set(b, token))).code).toBe(UNIQUE_VIOLATION)
       expect((await refusal(set(b, 'short'))).code).toBe(CHECK_VIOLATION)
     })
   })

@@ -2223,7 +2223,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
       ['memberships', 'truncate core.memberships cascade'],
       [
         'memberships and team_members',
-        'truncate core.memberships, core.team_members, core.prospects, core.prospect_identities, core.prospect_fields, core.prospect_merges, core.contact_consent_event, core.conversations, core.messages, core.drafts, core.draft_sources, core.approval_decisions',
+        'truncate core.memberships, core.team_members, core.prospects, core.prospect_identities, core.prospect_fields, core.prospect_merges, core.contact_consent_event, core.conversations, core.messages, core.drafts, core.draft_sources, core.approval_decisions, core.calendar_connections, core.working_hours, core.routing_rules, core.busy_blocks, core.bookings',
       ],
       ['invitations', 'truncate core.invitations'],
       ['organizations', 'truncate core.organizations cascade'],
