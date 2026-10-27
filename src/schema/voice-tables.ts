@@ -55,6 +55,14 @@ export const VOICE_CALL_FAILURE_REASONS = [
 ] as const
 /** Who ended a Call. Mirrors the contract's `VOICE_CALL_ENDED_BY`. */
 export const VOICE_CALL_ENDED_BY = ['rep', 'prospect', 'system'] as const
+/** Why a Call ended, when the Inbound Agent or a cap ended it. */
+export const CALL_END_REASONS = [
+  'duration_cap',
+  'cost_cap',
+  'agent_ended',
+  'prospect_hung_up',
+  'rep_ended',
+] as const
 /** The states of a Call's Transcript. Mirrors the contract's `VOICE_TRANSCRIPT_STATES`. */
 export const VOICE_TRANSCRIPT_STATES = ['pending', 'ready', 'deleted'] as const
 /** The longest a Call can last, in seconds. Mirrors the contract's `MAX_CALL_DURATION_SECONDS`. */
@@ -241,6 +249,8 @@ export const voiceCalls = voiceSchema.table(
     durationSeconds: integer('duration_seconds'),
     endedBy: text('ended_by', { enum: VOICE_CALL_ENDED_BY }),
     failureReason: text('failure_reason', { enum: VOICE_CALL_FAILURE_REASONS }),
+    endReason: text('end_reason', { enum: CALL_END_REASONS }),
+    agentCostMicroCents: bigint('agent_cost_micro_cents', { mode: 'number' }).notNull().default(0),
     dealId: text('deal_id'),
     note: text('note'),
     transcriptState: text('transcript_state', { enum: VOICE_TRANSCRIPT_STATES })
@@ -315,6 +325,12 @@ export const voiceCalls = voiceSchema.table(
       'calls_ended_by_final',
       sql`${t.endedBy} is null or ${t.state} in (${list(VOICE_CALL_FINAL_STATES)})`
     ),
+    check(
+      'calls_end_reason_known',
+      sql`${t.endReason} is null or ${t.endReason} in (${list(CALL_END_REASONS)})`
+    ),
+    check('calls_end_reason_ended', sql`${t.endReason} is null or ${t.state} = 'ended'`),
+    check('calls_agent_cost_non_negative', sql`${t.agentCostMicroCents} >= 0`),
     check(
       'calls_times_ordered',
       sql`(${t.answeredAt} is null or ${t.answeredAt} >= ${t.createdAt})

@@ -231,7 +231,8 @@ describe('closeline_core_search, the role that owns the Prospect and member sear
               has_any_column_privilege('closeline_core_search', c.oid, 'SELECT') as some_columns,
               has_any_column_privilege('closeline_core_search', c.oid, 'INSERT, UPDATE, REFERENCES') as column_writes
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')`
+        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        order by 1`
     )
     expect(tables.rows.filter((r) => r.writes || r.column_writes)).toEqual([])
     expect(
@@ -379,7 +380,8 @@ describe('closeline_core_crm_lookup, the role that owns the CRM webhook lookup (
               has_any_column_privilege('closeline_core_crm_lookup', c.oid, 'SELECT') as some_columns,
               has_any_column_privilege('closeline_core_crm_lookup', c.oid, 'INSERT, UPDATE, REFERENCES') as column_writes
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')`
+        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        order by 1`
     )
     expect(tables.rows.filter((r) => r.writes || r.column_writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual([
@@ -482,7 +484,8 @@ describe('closeline_core_key_lookup, the role that owns the API key lookup (0035
               has_any_column_privilege('closeline_core_key_lookup', c.oid, 'SELECT') as some_columns,
               has_any_column_privilege('closeline_core_key_lookup', c.oid, 'INSERT, UPDATE, REFERENCES') as column_writes
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')`
+        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        order by 1`
     )
     expect(tables.rows.filter((r) => r.writes || r.column_writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual(['core.api_keys'])
@@ -579,7 +582,8 @@ describe('closeline_core_outbox_drain, the role that owns the outbox drain funct
               has_table_privilege('closeline_core_outbox_drain', c.oid, 'SELECT, UPDATE') as whole_table,
               has_any_column_privilege('closeline_core_outbox_drain', c.oid, 'SELECT, UPDATE') as some_columns
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')`
+        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        order by 1`
     )
     expect(tables.rows.filter((r) => r.writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual(['core.outbox'])
@@ -666,7 +670,8 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
               has_table_privilege('closeline_voice_purge_scan', c.oid, 'SELECT, UPDATE') as whole_table,
               has_any_column_privilege('closeline_voice_purge_scan', c.oid, 'SELECT, UPDATE') as some_columns
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')`
+        where n.nspname in ('auth', 'core', 'playbook', 'voice') and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        order by 1`
     )
     expect(tables.rows.filter((r) => r.writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual([

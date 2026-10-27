@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { tenantRlsStatements } from '../tenant'
 import {
+  CALL_END_REASONS,
   LINE_ASSIGNMENT_KINDS,
   LINE_STATES,
   MAX_CALL_DURATION_SECONDS,
@@ -163,5 +164,27 @@ describe('the voice tables', () => {
     expect(MAX_RECORDING_KEY_LENGTH).toBe(512)
     expect(MAX_PROVIDER_EVENT_ID_LENGTH).toBe(200)
     expect(MAX_VOICE_IDEMPOTENCY_KEY_LENGTH).toBe(255)
+  })
+})
+
+describe('the Call end reason and Agent cost columns', () => {
+  const columns = Object.fromEntries(getTableConfig(voiceCalls).columns.map((c) => [c.name, c]))
+
+  test('end_reason is a nullable text column and lists the reasons', () => {
+    expect(columns.end_reason?.dataType).toBe('string')
+    expect(columns.end_reason?.notNull).toBe(false)
+    expect(CALL_END_REASONS).toEqual([
+      'duration_cap',
+      'cost_cap',
+      'agent_ended',
+      'prospect_hung_up',
+      'rep_ended',
+    ])
+  })
+
+  test('agent_cost_micro_cents is a bigint that is required and defaults to 0', () => {
+    expect(columns.agent_cost_micro_cents?.columnType).toBe('PgBigInt53')
+    expect(columns.agent_cost_micro_cents?.notNull).toBe(true)
+    expect(columns.agent_cost_micro_cents?.default).toBe(0)
   })
 })
