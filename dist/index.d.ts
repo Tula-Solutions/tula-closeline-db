@@ -14621,7 +14621,7 @@ declare const MAX_PROSPECT_IMPORT_ROWS = 5e4;
 /** The states of an import. Mirrors the contract's `PROSPECT_IMPORT_STATES`. */
 declare const PROSPECT_IMPORT_STATES: readonly ["uploaded", "processing", "completed", "failed"];
 /** Why an import failed. Mirrors the contract's `PROSPECT_IMPORT_FAILURE_REASONS`. */
-declare const PROSPECT_IMPORT_FAILURE_REASONS: readonly ["too_many_rows", "unreadable"];
+declare const PROSPECT_IMPORT_FAILURE_REASONS: readonly ["too_many_rows", "unreadable", "processing_failed"];
 /** What happened to an import row. Mirrors the contract's `PROSPECT_IMPORT_ROW_RESULTS`. */
 declare const PROSPECT_IMPORT_ROW_RESULTS: readonly ["created", "updated", "skipped", "rejected"];
 /** Why a row was skipped. Mirrors the contract's `PROSPECT_IMPORT_SKIP_REASONS`. */
@@ -15587,14 +15587,14 @@ declare const prospectImports: PgTableWithColumns_a5zn0g41<{
 			tableName: "prospect_imports";
 			dataType: "string";
 			columnType: "PgText";
-			data: "too_many_rows" | "unreadable";
+			data: "processing_failed" | "too_many_rows" | "unreadable";
 			driverParam: string;
 			notNull: false;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["too_many_rows", "unreadable"];
+			enumValues: ["too_many_rows", "unreadable", "processing_failed"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

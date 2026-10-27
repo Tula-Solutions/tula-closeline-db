@@ -79,7 +79,11 @@ export const MAX_PROSPECT_IMPORT_ROWS = 50_000
 /** The states of an import. Mirrors the contract's `PROSPECT_IMPORT_STATES`. */
 export const PROSPECT_IMPORT_STATES = ['uploaded', 'processing', 'completed', 'failed'] as const
 /** Why an import failed. Mirrors the contract's `PROSPECT_IMPORT_FAILURE_REASONS`. */
-export const PROSPECT_IMPORT_FAILURE_REASONS = ['too_many_rows', 'unreadable'] as const
+export const PROSPECT_IMPORT_FAILURE_REASONS = [
+  'too_many_rows',
+  'unreadable',
+  'processing_failed',
+] as const
 /** What happened to an import row. Mirrors the contract's `PROSPECT_IMPORT_ROW_RESULTS`. */
 export const PROSPECT_IMPORT_ROW_RESULTS = ['created', 'updated', 'skipped', 'rejected'] as const
 /** Why a row was skipped. Mirrors the contract's `PROSPECT_IMPORT_SKIP_REASONS`. */
