@@ -3046,6 +3046,7 @@ var crmSyncRuns2 = coreSchema2.table("crm_sync_run", {
     columns: [t.organizationId, t.retryOfRunId],
     foreignColumns: [t.organizationId, t.id]
   }),
+  index28("crm_sync_runs_retry_of_idx").on(t.organizationId, t.retryOfRunId),
   index28("crm_sync_runs_list_idx").on(t.organizationId, t.connectionId, t.requestedAt.desc(), t.id.desc()),
   index28("crm_sync_runs_state_list_idx").on(t.organizationId, t.connectionId, t.state, t.requestedAt.desc(), t.id.desc()),
   index28("crm_sync_runs_kind_list_idx").on(t.organizationId, t.connectionId, t.objectKind, t.requestedAt.desc(), t.id.desc())
@@ -4216,6 +4217,7 @@ var outboundDrafts2 = outboundSchema2.table("drafts", {
   }),
   index34("drafts_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),
   index34("drafts_brief_idx").on(t.organizationId, t.briefId),
+  index34("drafts_brand_voice_idx").on(t.organizationId, t.brandVoiceId, t.voiceVersion),
   index34("drafts_prospect_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()),
   index34("drafts_campaign_idx").on(t.organizationId, t.campaignId, t.createdAt.desc(), t.id.desc()).where(sql28`${t.campaignId} is not null`),
   index34("drafts_ungrounded_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()).where(sql28`${t.ungrounded}`)

@@ -369,6 +369,7 @@ export const crmSyncRuns = coreSchema.table(
       columns: [t.organizationId, t.retryOfRunId],
       foreignColumns: [t.organizationId, t.id],
     }),
+    index('crm_sync_runs_retry_of_idx').on(t.organizationId, t.retryOfRunId),
     index('crm_sync_runs_list_idx').on(
       t.organizationId,
       t.connectionId,

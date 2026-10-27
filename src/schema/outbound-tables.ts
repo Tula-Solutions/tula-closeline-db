@@ -480,6 +480,7 @@ export const outboundDrafts = outboundSchema.table(
     }),
     index('drafts_list_idx').on(t.organizationId, t.createdAt.desc(), t.id.desc()),
     index('drafts_brief_idx').on(t.organizationId, t.briefId),
+    index('drafts_brand_voice_idx').on(t.organizationId, t.brandVoiceId, t.voiceVersion),
     index('drafts_prospect_idx').on(
       t.organizationId,
       t.prospectId,
