@@ -4,6 +4,7 @@ import { getTableConfig } from 'drizzle-orm/pg-core'
 import { tenantRlsStatements } from '../tenant'
 import {
   BOOKING_MODES,
+  BOOKING_ORIGINS,
   BOOKING_STATES,
   bookings,
   bookingTypes,
@@ -68,10 +69,17 @@ describe('the calendar, routing and Booking tables', () => {
     expect(CALENDAR_CONNECTION_STATES).toEqual(['healthy', 'needs_reconnect'])
     expect(BOOKING_MODES).toEqual(['phone', 'video'])
     expect(BOOKING_STATES).toEqual(['pending', 'confirmed', 'cancelled'])
+    expect(BOOKING_ORIGINS).toEqual(['member', 'agent', 'public'])
     expect(ROUTING_TARGET_KINDS).toEqual(['rep', 'team', 'pool'])
     expect(ROUTING_PURPOSES).toEqual(['booking', 'handoff', 'test'])
     expect(MAX_ROUTING_POOL_MEMBERS).toBe(20)
     expect(MAX_WORKING_WINDOWS).toBe(28)
+  })
+
+  test('a Booking records who made it, defaulting to a member', () => {
+    const column = getTableConfig(bookings).columns.find((c) => c.name === 'origin')
+    expect(column?.notNull).toBe(true)
+    expect(column?.default).toBe('member')
   })
 
   test('a confirmed Booking cannot overlap another of the same Rep, buffers included', () => {
