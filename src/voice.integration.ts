@@ -316,16 +316,30 @@ describe('voice tables', () => {
       await addLine(b.orgId, 'active', number)
     })
 
-    test('a Line is assigned to nobody, a Team or a Rep, never a mix', async () => {
+    test('a Line is assigned to nobody, a Team, a member or a role, never a mix', async () => {
       const a = await seed()
-      const insert = (kind: string, team: string | null, rep: string | null) =>
+      const insert = (
+        kind: string,
+        team: string | null,
+        rep: string | null,
+        role: string | null = null
+      ) =>
         run(
           a.orgId,
-          'insert into voice.lines (id, organization_id, number, country, state, assignment_kind, assignment_team_id, assignment_membership_id) values ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [newId('line'), a.orgId, newNumber(), 'US', 'active', kind, team, rep]
+          'insert into voice.lines (id, organization_id, number, country, state, assignment_kind, assignment_team_id, assignment_membership_id, assignment_role) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+          [newId('line'), a.orgId, newNumber(), 'US', 'active', kind, team, rep, role]
         )
       await insert('team', newId('team'), null)
       await insert('rep', null, newId('mem'))
+      await insert('role', null, null, 'manager')
+      await insert('unassigned', null, null)
+      expect((await refusal(insert('role', null, null))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('role', null, null, 'god'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('role', newId('team'), null, 'rep'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('role', null, newId('mem'), 'rep'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('team', newId('team'), null, 'rep'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('rep', null, newId('mem'), 'rep'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('unassigned', null, null, 'rep'))).code).toBe(CHECK_VIOLATION)
       expect((await refusal(insert('team', null, null))).code).toBe(CHECK_VIOLATION)
       expect((await refusal(insert('unassigned', newId('team'), null))).code).toBe(CHECK_VIOLATION)
       expect((await refusal(insert('rep', newId('team'), newId('mem')))).code).toBe(CHECK_VIOLATION)
