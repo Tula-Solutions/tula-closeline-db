@@ -551,6 +551,134 @@ describe('core calendar, routing and Booking tables', () => {
     })
   })
 
+  describe('booking_for_manage_token', () => {
+    const lookup = async (tokenHash: string | null) =>
+      (await run(null, 'select * from core.booking_for_manage_token($1)', [tokenHash])).rows
+    const update = (s: Seeded, set: string, values: unknown[] = []) =>
+      run(s.orgId, `update core.bookings set ${set} where id = $1`, [s.bookingId, ...values])
+    const issue = async (s: Seeded) => {
+      const token = hash(newId('mtk'))
+      await update(s, 'manage_token_hash = $2', [token])
+      return token
+    }
+    const opens = (s: Seeded) => [{ organization_id: s.orgId, booking_id: s.bookingId }]
+
+    test('a Booking with no token has no row; setting one opens it, with no scope set', async () => {
+      const a = await seed()
+      expect(await lookup(hash(a.bookingId))).toEqual([])
+      const token = await issue(a)
+      expect(await lookup(token)).toEqual(opens(a))
+    })
+
+    test('a Booking inserted with a token opens at once', async () => {
+      const a = await seed()
+      const token = hash(newId('mtk'))
+      const id = newId('bkg')
+      await run(
+        a.orgId,
+        `insert into core.bookings (id, organization_id, booking_type_id, membership_id, prospect_id, status, mode, starts_at, ends_at, blocked_from, blocked_until, idempotency_key_hash, manage_token_hash)
+         values ($1, $2, $3, $4, $5, 'pending', 'video', $6::timestamptz, $7::timestamptz, $6::timestamptz, $7::timestamptz, $8, $9)`,
+        [id, a.orgId, a.typeId, a.repId, a.prospectId, at(16), at(16, 30), hash(id), token]
+      )
+      expect(await lookup(token)).toEqual([{ organization_id: a.orgId, booking_id: id }])
+    })
+
+    test('rotating moves the row, clearing and deleting remove it', async () => {
+      const a = await seed()
+      const old = await issue(a)
+      const next = await issue(a)
+      expect(await lookup(old)).toEqual([])
+      expect(await lookup(next)).toEqual(opens(a))
+      await update(a, 'manage_token_hash = null')
+      expect(await lookup(next)).toEqual([])
+      const last = await issue(a)
+      expect(await lookup(last)).toEqual(opens(a))
+      await run(a.orgId, 'delete from core.bookings where id = $1', [a.bookingId])
+      expect(await lookup(last)).toEqual([])
+    })
+
+    test('a cancelled Booking still resolves: its status is not a filter', async () => {
+      const a = await seed()
+      const token = await issue(a)
+      await update(a, "status = 'cancelled', cancelled_at = now()")
+      expect(await lookup(token)).toEqual(opens(a))
+    })
+
+    test('unknown, malformed and null hashes give no row, and another Organization gets its own Booking only', async () => {
+      const a = await seed()
+      const b = await seed()
+      const tokenA = await issue(a)
+      const tokenB = await issue(b)
+      expect(await lookup(hash(newId('mtk')))).toEqual([])
+      expect(await lookup(null)).toEqual([])
+      expect(await lookup('short')).toEqual([])
+      expect(await lookup(tokenA.toUpperCase())).toEqual([])
+      expect(await lookup(tokenA)).toEqual(opens(a))
+      expect(await lookup(tokenB)).toEqual(opens(b))
+    })
+
+    test('the hash is unique and shaped', async () => {
+      const a = await seed()
+      const b = await seed()
+      const token = await issue(a)
+      const set = (s: Seeded, value: string) =>
+        run(s.orgId, 'update core.bookings set manage_token_hash = $1 where id = $2', [
+          value,
+          s.bookingId,
+        ])
+      expect((await refusal(set(b, token))).code).toBe(UNIQUE_VIOLATION)
+      expect((await refusal(set(b, 'short'))).code).toBe(CHECK_VIOLATION)
+    })
+
+    test('a suspended Organization gives no row; reactivating restores it', async () => {
+      const a = await seed()
+      const token = await issue(a)
+      const status = (value: string) =>
+        owner.query('update core.organization_state set status = $2 where organization_id = $1', [
+          a.orgId,
+          value,
+        ])
+      await status('suspended')
+      expect(await lookup(token)).toEqual([])
+      await status('active')
+      expect(await lookup(token)).toEqual(opens(a))
+    })
+
+    test('only closeline_core may execute it, and it returns exactly two columns', async () => {
+      const privileges = await owner.query<{ role: string; ok: boolean }>(
+        `select r as role, has_function_privilege(r, 'core.booking_for_manage_token(text)', 'EXECUTE') as ok
+           from unnest(array['closeline_core', 'closeline_auth', 'closeline_playbook', 'closeline_voice', 'public']) r
+          order by 1`
+      )
+      expect(privileges.rows.filter((r) => r.ok).map((r) => r.role)).toEqual(['closeline_core'])
+      const result = await run(null, 'select * from core.booking_for_manage_token($1)', [
+        hash('none'),
+      ])
+      expect(result.fields.map((f) => f.name)).toEqual(['organization_id', 'booking_id'])
+    })
+
+    test('closeline_core cannot touch the directory, and nothing can bulk-empty it or the Bookings', async () => {
+      const a = await seed()
+      await issue(a)
+      for (const statement of [
+        'select * from core.booking_manage_directory',
+        "insert into core.booking_manage_directory values ('x', 'y', 'z')",
+        'delete from core.booking_manage_directory',
+        'truncate core.booking_manage_directory',
+      ]) {
+        for (const setting of [null, a.orgId]) {
+          expect((await refusal(run(setting, statement))).message).toContain(
+            'permission denied for table'
+          )
+        }
+      }
+      const emptied = await refusal(owner.query('truncate core.booking_manage_directory'))
+      expect(emptied.message).toContain('core.truncate_refused')
+      const guarded = await refusal(owner.query('truncate core.bookings cascade'))
+      expect(guarded.message).toContain('core.truncate_refused')
+    })
+  })
+
   describe('routing_rules', () => {
     test('exactly the target of its kind is set, and a pool has 1 to 20 members', async () => {
       const s = await seed()

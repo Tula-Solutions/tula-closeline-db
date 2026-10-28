@@ -407,7 +407,9 @@ export const busyBlocks = coreSchema.table(
  * constraint, `bookings_rep_no_overlap`, so no two `confirmed` Bookings of one Rep have
  * overlapping `[blocked_from, blocked_until)` ranges, even under races; `pending` and `cancelled`
  * Bookings hold no time. `idempotency_key_hash` (SHA-256 hex) makes a retried book find the first
- * Booking. Lists (keyset `(starts_at, id)`): a Rep's by `bookings_rep_idx`, the Organization's by
+ * Booking. `manage_token_hash` (SHA-256 hex of the secret returned once in the confirmation, null
+ * when none) lets a Prospect cancel or reschedule through the public routes; it is unique, and
+ * `core.booking_for_manage_token` resolves it. Lists (keyset `(starts_at, id)`): a Rep's by `bookings_rep_idx`, the Organization's by
  * `bookings_list_idx`, a Prospect's by `bookings_prospect_idx`. A Booking Type in use cannot be
  * deleted (`bookings_booking_type_idx` serves the check).
  */
@@ -427,6 +429,7 @@ export const bookings = coreSchema.table(
     blockedFrom: ts('blocked_from').notNull(),
     blockedUntil: ts('blocked_until').notNull(),
     idempotencyKeyHash: text('idempotency_key_hash').notNull(),
+    manageTokenHash: text('manage_token_hash'),
     routingDecisionId: text('routing_decision_id'),
     calendarEventId: text('calendar_event_id'),
     joinUrl: text('join_url'),
@@ -448,6 +451,10 @@ export const bookings = coreSchema.table(
       sql`${t.blockedFrom} <= ${t.startsAt} and ${t.blockedUntil} >= ${t.endsAt}`
     ),
     check('bookings_idempotency_key_hash_shape', sql`${t.idempotencyKeyHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      'bookings_manage_token_hash_shape',
+      sql`${t.manageTokenHash} is null or ${t.manageTokenHash} ~ '^[0-9a-f]{64}$'`
+    ),
     check(
       'bookings_routing_decision_id_shape',
       sql`${t.routingDecisionId} is null or ${t.routingDecisionId} ~ '^rdc_[0-9a-f]{32}$'`
@@ -484,9 +491,32 @@ export const bookings = coreSchema.table(
       foreignColumns: [prospects.organizationId, prospects.id],
     }).onDelete('cascade'),
     uniqueIndex('bookings_idempotency_key').on(t.organizationId, t.idempotencyKeyHash),
+    uniqueIndex('bookings_manage_token_key').on(t.manageTokenHash),
     index('bookings_rep_idx').on(t.organizationId, t.membershipId, t.startsAt, t.id),
     index('bookings_list_idx').on(t.organizationId, t.startsAt, t.id),
     index('bookings_prospect_idx').on(t.organizationId, t.prospectId, t.startsAt),
     index('bookings_booking_type_idx').on(t.organizationId, t.bookingTypeId),
+  ]
+)
+
+/**
+ * The directory behind `core.booking_for_manage_token(token_hash)`: one row per Booking that has a
+ * manage token, whatever its status (core decides what a cancelled Booking allows), keyed by the
+ * SHA-256 hex of the token. The public manage routes receive only a token, so no Organization is set
+ * and row-level security hides `bookings`. It is not under row-level security; no service role holds
+ * any privilege on it. The trigger `booking_sync_manage_directory` on `bookings` keeps it, and the
+ * function (joined to `organization_state`, so only an `active` Organization answers) is the only way in.
+ */
+export const bookingManageDirectory = coreSchema.table(
+  'booking_manage_directory',
+  {
+    tokenHash: text('token_hash').primaryKey(),
+    organizationId: text('organization_id').notNull(),
+    bookingId: text('booking_id').notNull(),
+  },
+  (t) => [
+    check('booking_manage_directory_token_hash_shape', sql`${t.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check('booking_manage_directory_organization_id_shape', orgShape),
+    check('booking_manage_directory_booking_id_shape', idShape('booking_id', 'bkg')),
   ]
 )
