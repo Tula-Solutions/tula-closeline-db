@@ -923,4 +923,58 @@ describe('core consent tables', () => {
       }
     }, 180000)
   })
+
+  describe('suppression imports', () => {
+    const addImport = (
+      orgId: string,
+      userId: string,
+      columns = '',
+      values = ''
+    ): Promise<string> => {
+      const id = newId('simp')
+      return run(
+        orgId,
+        `insert into core.suppression_imports (id, organization_id, size_bytes, content_hash, object_key, created_by_user_id${columns}) values ($1, $2, 10, $3, 'k/1', $4${values})`,
+        [id, orgId, hash(), userId]
+      ).then(() => id)
+    }
+
+    test('counts are set exactly when completed and add up to the total', async () => {
+      const a = await seed()
+      const done =
+        ', state, total_rows, added_rows, already_suppressed_rows, invalid_rows, completed_at'
+      await addImport(a.orgId, a.userId, done, ", 'completed', 3, 1, 1, 1, now()")
+      const bad = [
+        ", 'completed', 3, 1, 1, 0, now()",
+        ", 'completed', 3, 3, 0, 0, null",
+        ", 'processing', 3, 3, 0, 0, now()",
+      ]
+      for (const values of bad) {
+        expect((await refusal(addImport(a.orgId, a.userId, done, values))).code).toBe(
+          CHECK_VIOLATION
+        )
+      }
+    })
+
+    test('a row is invalid exactly when it has a reason, and rows go with their import', async () => {
+      const a = await seed()
+      const b = await seed()
+      const importId = await addImport(a.orgId, a.userId)
+      const row = (n: number, result: string, reason: string | null) =>
+        run(
+          a.orgId,
+          'insert into core.suppression_import_rows (organization_id, import_id, row_number, result, reason) values ($1, $2, $3, $4, $5)',
+          [a.orgId, importId, n, result, reason]
+        )
+      await row(2, 'added', null)
+      await row(3, 'invalid', 'unsupported_address')
+      expect((await refusal(row(4, 'invalid', null))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(row(4, 'added', 'unreadable_address'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(row(1, 'added', null))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(row(50_002, 'added', null))).code).toBe(CHECK_VIOLATION)
+      expect(await countOf(b.orgId, 'suppression_import_rows')).toBe(0)
+      await run(a.orgId, 'delete from core.suppression_imports where id = $1', [importId])
+      expect(await countOf(a.orgId, 'suppression_import_rows')).toBe(0)
+    })
+  })
 })

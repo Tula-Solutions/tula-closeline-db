@@ -526,3 +526,141 @@ export const contactCheckLog = coreSchema.table(
       .where(sql`${t.prospectId} is not null`),
   ]
 )
+
+/** The most data rows a Suppression import holds. Mirrors the contract's `MAX_SUPPRESSION_IMPORT_ROWS`. */
+export const MAX_SUPPRESSION_IMPORT_ROWS = 50_000
+/** The largest Suppression import file, in bytes. Mirrors the contract's `MAX_SUPPRESSION_IMPORT_BYTES`. */
+export const MAX_SUPPRESSION_IMPORT_BYTES = 10 * 1024 * 1024
+/** The states of a Suppression import. Mirrors the contract's `SUPPRESSION_IMPORT_STATES`. */
+export const SUPPRESSION_IMPORT_STATES = ['uploaded', 'processing', 'completed', 'failed'] as const
+/** Why a whole Suppression import failed. Mirrors the contract's `SUPPRESSION_IMPORT_FAILURE_REASONS`. */
+export const SUPPRESSION_IMPORT_FAILURE_REASONS = ['too_many_rows', 'unreadable'] as const
+/** The result of one import row. Mirrors the contract's `SUPPRESSION_IMPORT_ROW_RESULTS`. */
+export const SUPPRESSION_IMPORT_ROW_RESULTS = ['added', 'already_suppressed', 'invalid'] as const
+/** Why an import row is invalid. Mirrors the contract's suppression import row reasons. */
+export const SUPPRESSION_IMPORT_ROW_REASONS = ['unreadable_address', 'unsupported_address'] as const
+
+/**
+ * A Suppression import: the uploaded CSV (kept in object storage under `object_key`) and the
+ * progress of the job that adds every address to Suppression. Counts are set exactly when
+ * `completed` and add up to `total_rows`. Lists newest first, keyset `(created_at, id)`.
+ */
+export const suppressionImports = coreSchema.table(
+  'suppression_imports',
+  {
+    id: text('id').notNull(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.organizationId, { onDelete: 'cascade' }),
+    state: text('state', { enum: SUPPRESSION_IMPORT_STATES }).notNull().default('uploaded'),
+    failureReason: text('failure_reason', { enum: SUPPRESSION_IMPORT_FAILURE_REASONS }),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    contentHash: bytes('content_hash').notNull(),
+    objectKey: text('object_key').notNull(),
+    processedRows: integer('processed_rows').notNull().default(0),
+    totalRows: integer('total_rows'),
+    addedRows: integer('added_rows'),
+    alreadySuppressedRows: integer('already_suppressed_rows'),
+    invalidRows: integer('invalid_rows'),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+    completedAt: ts('completed_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'suppression_imports_pkey', columns: [t.organizationId, t.id] }),
+    check('suppression_imports_id_shape', idShape('id', 'simp')),
+    check('suppression_imports_organization_id_shape', orgShape),
+    check('suppression_imports_organization_not_global', notGlobal),
+    check('suppression_imports_created_by_user_id_shape', idShape('created_by_user_id', 'usr')),
+    check(
+      'suppression_imports_state_known',
+      sql`${t.state} in (${list(SUPPRESSION_IMPORT_STATES)})`
+    ),
+    check(
+      'suppression_imports_failure_reason_known',
+      sql`${t.failureReason} in (${list(SUPPRESSION_IMPORT_FAILURE_REASONS)})`
+    ),
+    check(
+      'suppression_imports_failed_has_reason',
+      sql`(${t.state} = 'failed') = (${t.failureReason} is not null)`
+    ),
+    check(
+      'suppression_imports_size_bounds',
+      sql`${t.sizeBytes} between 1 and ${sql.raw(String(MAX_SUPPRESSION_IMPORT_BYTES))}`
+    ),
+    check('suppression_imports_content_hash_length', sql`octet_length(${t.contentHash}) = 32`),
+    check(
+      'suppression_imports_object_key_shape',
+      sql`char_length(${t.objectKey}) between 1 and 1024 and ${t.objectKey} collate "C" ~ '^[!-~]+$'`
+    ),
+    check(
+      'suppression_imports_processed_rows_bounds',
+      sql`${t.processedRows} between 0 and ${sql.raw(String(MAX_SUPPRESSION_IMPORT_ROWS))}`
+    ),
+    check(
+      'suppression_imports_counts_when_completed',
+      sql`(${t.state} = 'completed') = (${t.totalRows} is not null)
+        and (${t.totalRows} is null) = (${t.addedRows} is null)
+        and (${t.totalRows} is null) = (${t.alreadySuppressedRows} is null)
+        and (${t.totalRows} is null) = (${t.invalidRows} is null)
+        and (${t.totalRows} is null) = (${t.completedAt} is null)`
+    ),
+    check(
+      'suppression_imports_counts_add_up',
+      sql`${t.totalRows} is null or (${t.addedRows} >= 0 and ${t.alreadySuppressedRows} >= 0
+        and ${t.invalidRows} >= 0
+        and ${t.totalRows} <= ${sql.raw(String(MAX_SUPPRESSION_IMPORT_ROWS))}
+        and ${t.totalRows} = ${t.addedRows} + ${t.alreadySuppressedRows} + ${t.invalidRows})`
+    ),
+    index('suppression_imports_list_idx').on(t.organizationId, t.createdAt.desc(), t.id.desc()),
+  ]
+)
+
+/**
+ * One row of a Suppression import report, by CSV row number (the header is row 1). No cell of the
+ * file is stored: the report says what happened to row N, never what it held.
+ */
+export const suppressionImportRows = coreSchema.table(
+  'suppression_import_rows',
+  {
+    organizationId: text('organization_id').notNull(),
+    importId: text('import_id').notNull(),
+    rowNumber: integer('row_number').notNull(),
+    result: text('result', { enum: SUPPRESSION_IMPORT_ROW_RESULTS }).notNull(),
+    reason: text('reason', { enum: SUPPRESSION_IMPORT_ROW_REASONS }),
+  },
+  (t) => [
+    primaryKey({
+      name: 'suppression_import_rows_pkey',
+      columns: [t.organizationId, t.importId, t.rowNumber],
+    }),
+    check('suppression_import_rows_organization_id_shape', orgShape),
+    check('suppression_import_rows_organization_not_global', notGlobal),
+    check('suppression_import_rows_import_id_shape', idShape('import_id', 'simp')),
+    check(
+      'suppression_import_rows_row_number_bounds',
+      sql`${t.rowNumber} between 2 and ${sql.raw(String(MAX_SUPPRESSION_IMPORT_ROWS + 1))}`
+    ),
+    check(
+      'suppression_import_rows_result_known',
+      sql`${t.result} in (${list(SUPPRESSION_IMPORT_ROW_RESULTS)})`
+    ),
+    check(
+      'suppression_import_rows_reason_matches_result',
+      sql`(${t.result} = 'invalid') = (${t.reason} is not null)
+        and (${t.reason} is null or ${t.reason} in (${list(SUPPRESSION_IMPORT_ROW_REASONS)}))`
+    ),
+    foreignKey({
+      name: 'suppression_import_rows_import_fk',
+      columns: [t.organizationId, t.importId],
+      foreignColumns: [suppressionImports.organizationId, suppressionImports.id],
+    }).onDelete('cascade'),
+    index('suppression_import_rows_result_idx').on(
+      t.organizationId,
+      t.importId,
+      t.result,
+      t.rowNumber
+    ),
+  ]
+)
