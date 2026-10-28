@@ -5359,6 +5359,7 @@ var voiceCalls2 = voiceSchema2.table("calls", {
   disclosureWordingVersion: integer25("disclosure_wording_version"),
   disclosurePlayedAt: ts12("disclosure_played_at"),
   aiAssisted: boolean16("ai_assisted").notNull().default(false),
+  copilot: boolean16("copilot").notNull().default(false),
   createdAt: ts12("created_at").notNull().defaultNow(),
   answeredAt: ts12("answered_at"),
   endedAt: ts12("ended_at"),
@@ -5421,6 +5422,7 @@ var voiceCalls2 = voiceSchema2.table("calls", {
   index38("calls_rep_list_idx").on(t.organizationId, t.repMembershipId, t.createdAt.desc(), t.id.desc()).where(sql33`${t.repMembershipId} is not null`),
   index38("calls_state_list_idx").on(t.organizationId, t.state, t.createdAt.desc(), t.id.desc()),
   index38("calls_stale_ringing_idx").on(t.createdAt, t.organizationId).where(sql33`${t.state} = 'ringing' and ${t.direction} = 'inbound'`),
+  index38("calls_stale_outbound_idx").on(t.createdAt, t.organizationId).where(sql33`${t.direction} = 'outbound' and ${t.state} in ('ringing', 'connecting')`),
   index38("calls_prospect_list_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()).where(sql33`${t.prospectId} is not null`),
   index38("calls_line_list_idx").on(t.organizationId, t.lineId, t.createdAt.desc(), t.id.desc())
 ]);

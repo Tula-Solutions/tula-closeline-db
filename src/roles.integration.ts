@@ -686,6 +686,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
     )
     expect(owned.rows.map((r) => r.name)).toEqual([
       'voice.orgs_with_due_recordings(timestamp with time zone,text,integer)',
+      'voice.orgs_with_stale_outbound(timestamp with time zone,text,integer)',
       'voice.orgs_with_stale_ringing(timestamp with time zone,text,integer)',
       'voice.twilio_orgs_with_expired(timestamp with time zone,text,integer)',
     ])
