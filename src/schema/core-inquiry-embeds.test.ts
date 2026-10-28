@@ -9,17 +9,19 @@ const migration = readFileSync(
 )
 
 describe('core.inquiry_embeds', () => {
-  test('holds the key hash, never the key, with the origins and the versioned wording', () => {
+  test('holds the key and its hash, the origins and the wording snapshot', () => {
     expect(
       getTableConfig(inquiryEmbeds)
         .columns.map((c) => c.name)
         .sort()
     ).toEqual([
       'allowed_origins',
+      'consent_wording_id',
       'consent_wording_text',
       'consent_wording_version',
       'created_at',
       'organization_id',
+      'publishable_key',
       'publishable_key_hash',
       'updated_at',
     ])

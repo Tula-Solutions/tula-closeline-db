@@ -9,6 +9,7 @@ const SETTING = 'app.organization_id'
 const FUNCTION = 'core.inquiry_embed_for_key_hash(text)'
 const newId = (prefix: string): string => `${prefix}_${randomBytes(16).toString('hex')}`
 const newHash = (): string => createHash('sha256').update(randomBytes(32)).digest('hex')
+const newKey = (): string => randomBytes(32).toString('base64url')
 
 describe('core.inquiry_embeds and core.inquiry_embed_for_key_hash', () => {
   let owner: Pool
@@ -40,9 +41,10 @@ describe('core.inquiry_embeds and core.inquiry_embed_for_key_hash', () => {
   }
 
   /** An Organization with an embed; returns its id and key hash. */
-  async function seed(origins = ['https://a.example.test'], version = 1) {
+  async function seed(origins = ['https://a.example.test'], version = 1, withWording = true) {
     const orgId = newId('org')
     const hash = newHash()
+    const wordingId = newId('cwd')
     orgs.push(orgId)
     await scoped(core, orgId, async (c) => {
       await c.query(
@@ -54,12 +56,25 @@ describe('core.inquiry_embeds and core.inquiry_embed_for_key_hash', () => {
         [newId('mem'), orgId, newId('usr')]
       )
       await c.query(
-        `insert into core.inquiry_embeds (organization_id, publishable_key_hash, allowed_origins,
-           consent_wording_version, consent_wording_text) values ($1, $2, $3, $4, $5)`,
-        [orgId, hash, origins, version, `Wording ${version}`]
+        "insert into core.consent_wording (id, organization_id, version, text, channels, created_by_user_id) values ($1, $2, 1, 'Wording', array['phone'], $3)",
+        [wordingId, orgId, newId('usr')]
+      )
+      await c.query(
+        `insert into core.inquiry_embeds (organization_id, publishable_key, publishable_key_hash,
+           allowed_origins, consent_wording_id, consent_wording_version, consent_wording_text)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          orgId,
+          newKey(),
+          hash,
+          origins,
+          withWording ? wordingId : null,
+          withWording ? version : null,
+          withWording ? `Wording ${version}` : null,
+        ]
       )
     })
-    return { orgId, hash }
+    return { orgId, hash, wordingId }
   }
 
   const lookup = async (hash: unknown) =>
@@ -103,9 +118,9 @@ describe('core.inquiry_embeds and core.inquiry_embed_for_key_hash', () => {
     await expect(
       scoped(core, b.orgId, (c) =>
         c.query(
-          `insert into core.inquiry_embeds (organization_id, publishable_key_hash, allowed_origins,
-             consent_wording_version, consent_wording_text) values ($1, $2, '{https://x.test}', 1, 'w')`,
-          [a.orgId, newHash()]
+          `insert into core.inquiry_embeds (organization_id, publishable_key, publishable_key_hash,
+             allowed_origins) values ($1, $2, $3, '{}')`,
+          [a.orgId, newKey(), newHash()]
         )
       )
     ).rejects.toThrow('row-level security')
@@ -151,6 +166,21 @@ describe('core.inquiry_embeds and core.inquiry_embed_for_key_hash', () => {
     expect(await lookup(a.hash)).toHaveLength(1)
   })
 
+  test('an embed with no origin or no wording yet is not live: the lookup gives no row', async () => {
+    const noWording = await seed(['https://a.example.test'], 1, false)
+    const noOrigin = await seed([])
+    expect(await lookup(noWording.hash)).toEqual([])
+    expect(await lookup(noOrigin.hash)).toEqual([])
+    await expect(
+      scoped(owner, noWording.orgId, (c) =>
+        c.query(
+          "update core.inquiry_embeds set consent_wording_text = 'x' where organization_id = $1",
+          [noWording.orgId]
+        )
+      )
+    ).rejects.toThrow('inquiry_embeds_wording_all_or_none')
+  })
+
   test('the key hash is unique and the origins are bounded', async () => {
     const a = await seed()
     const b = await seed()
@@ -165,7 +195,8 @@ describe('core.inquiry_embeds and core.inquiry_embed_for_key_hash', () => {
     await expect(
       scoped(owner, a.orgId, (c) =>
         c.query(
-          "update core.inquiry_embeds set allowed_origins = '{}' where organization_id = $1",
+          `update core.inquiry_embeds set allowed_origins = array_fill('https://x.test'::text, array[21])
+            where organization_id = $1`,
           [a.orgId]
         )
       )

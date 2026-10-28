@@ -1,5 +1,5 @@
 {
-  "id": "23d89ecf-ede2-4407-bf22-050c66099fa1",
+  "id": "3bd478cd-0d40-42c6-9bb8-e7a069e197a7",
   "prevId": "73f2331a-ab55-4cd6-9de3-769b747fe854",
   "version": "7",
   "dialect": "postgresql",
@@ -15261,6 +15261,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "publishable_key": {
+          "name": "publishable_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "publishable_key_hash": {
           "name": "publishable_key_hash",
           "type": "text",
@@ -15273,17 +15279,23 @@
           "primaryKey": false,
           "notNull": true
         },
+        "consent_wording_id": {
+          "name": "consent_wording_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "consent_wording_version": {
           "name": "consent_wording_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "consent_wording_text": {
           "name": "consent_wording_text",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -15331,6 +15343,22 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "inquiry_embeds_wording_fk": {
+          "name": "inquiry_embeds_wording_fk",
+          "tableFrom": "inquiry_embeds",
+          "tableTo": "consent_wording",
+          "schemaTo": "core",
+          "columnsFrom": [
+            "organization_id",
+            "consent_wording_id"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -15352,13 +15380,25 @@
           "name": "inquiry_embeds_organization_not_global",
           "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
         },
+        "inquiry_embeds_key_shape": {
+          "name": "inquiry_embeds_key_shape",
+          "value": "\"core\".\"inquiry_embeds\".\"publishable_key\" ~ '^[A-Za-z0-9_-]{32,64}$'"
+        },
         "inquiry_embeds_key_hash_shape": {
           "name": "inquiry_embeds_key_hash_shape",
           "value": "\"core\".\"inquiry_embeds\".\"publishable_key_hash\" ~ '^[0-9a-f]{64}$'"
         },
         "inquiry_embeds_origins_bounds": {
           "name": "inquiry_embeds_origins_bounds",
-          "value": "cardinality(\"core\".\"inquiry_embeds\".\"allowed_origins\") between 1 and 20"
+          "value": "cardinality(\"core\".\"inquiry_embeds\".\"allowed_origins\") between 0 and 20"
+        },
+        "inquiry_embeds_wording_all_or_none": {
+          "name": "inquiry_embeds_wording_all_or_none",
+          "value": "(\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null) = (\"core\".\"inquiry_embeds\".\"consent_wording_version\" is null) and (\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null) = (\"core\".\"inquiry_embeds\".\"consent_wording_text\" is null)"
+        },
+        "inquiry_embeds_wording_id_shape": {
+          "name": "inquiry_embeds_wording_id_shape",
+          "value": "\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null or \"core\".\"inquiry_embeds\".\"consent_wording_id\" ~ '^cwd_[0-9a-f]{32}$'"
         },
         "inquiry_embeds_wording_version": {
           "name": "inquiry_embeds_wording_version",
@@ -15366,7 +15406,7 @@
         },
         "inquiry_embeds_wording_text_shape": {
           "name": "inquiry_embeds_wording_text_shape",
-          "value": "char_length(\"core\".\"inquiry_embeds\".\"consent_wording_text\") between 1 and 2000"
+          "value": "char_length(\"core\".\"inquiry_embeds\".\"consent_wording_text\") between 1 and 5000"
         }
       },
       "isRLSEnabled": false

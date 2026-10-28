@@ -1,21 +1,27 @@
 CREATE TABLE "core"."inquiry_embeds" (
 	"organization_id" text NOT NULL,
+	"publishable_key" text NOT NULL,
 	"publishable_key_hash" text NOT NULL,
 	"allowed_origins" text[] NOT NULL,
-	"consent_wording_version" integer NOT NULL,
-	"consent_wording_text" text NOT NULL,
+	"consent_wording_id" text,
+	"consent_wording_version" integer,
+	"consent_wording_text" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "inquiry_embeds_pkey" PRIMARY KEY("organization_id"),
 	CONSTRAINT "inquiry_embeds_organization_id_shape" CHECK ("organization_id" ~ '^org_[0-9a-f]{32}$'),
 	CONSTRAINT "inquiry_embeds_organization_not_global" CHECK ("organization_id" <> 'org_00000000000000000000000000000000'),
+	CONSTRAINT "inquiry_embeds_key_shape" CHECK ("core"."inquiry_embeds"."publishable_key" ~ '^[A-Za-z0-9_-]{32,64}$'),
 	CONSTRAINT "inquiry_embeds_key_hash_shape" CHECK ("core"."inquiry_embeds"."publishable_key_hash" ~ '^[0-9a-f]{64}$'),
-	CONSTRAINT "inquiry_embeds_origins_bounds" CHECK (cardinality("core"."inquiry_embeds"."allowed_origins") between 1 and 20),
+	CONSTRAINT "inquiry_embeds_origins_bounds" CHECK (cardinality("core"."inquiry_embeds"."allowed_origins") between 0 and 20),
+	CONSTRAINT "inquiry_embeds_wording_all_or_none" CHECK (("core"."inquiry_embeds"."consent_wording_id" is null) = ("core"."inquiry_embeds"."consent_wording_version" is null) and ("core"."inquiry_embeds"."consent_wording_id" is null) = ("core"."inquiry_embeds"."consent_wording_text" is null)),
+	CONSTRAINT "inquiry_embeds_wording_id_shape" CHECK ("core"."inquiry_embeds"."consent_wording_id" is null or "core"."inquiry_embeds"."consent_wording_id" ~ '^cwd_[0-9a-f]{32}$'),
 	CONSTRAINT "inquiry_embeds_wording_version" CHECK ("core"."inquiry_embeds"."consent_wording_version" >= 1),
-	CONSTRAINT "inquiry_embeds_wording_text_shape" CHECK (char_length("core"."inquiry_embeds"."consent_wording_text") between 1 and 2000)
+	CONSTRAINT "inquiry_embeds_wording_text_shape" CHECK (char_length("core"."inquiry_embeds"."consent_wording_text") between 1 and 5000)
 );
 --> statement-breakpoint
 ALTER TABLE "core"."inquiry_embeds" ADD CONSTRAINT "inquiry_embeds_organization_id_organizations_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "core"."organizations"("organization_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "core"."inquiry_embeds" ADD CONSTRAINT "inquiry_embeds_wording_fk" FOREIGN KEY ("organization_id","consent_wording_id") REFERENCES "core"."consent_wording"("organization_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "inquiry_embeds_key_hash_key" ON "core"."inquiry_embeds" USING btree ("publishable_key_hash");
 --> statement-breakpoint
 ALTER TABLE "core"."inquiry_embeds" ENABLE ROW LEVEL SECURITY;
@@ -27,9 +33,10 @@ CREATE POLICY "inquiry_embeds_tenant_isolation" ON "core"."inquiry_embeds" AS PE
 -- inquiry_embed_for_key_hash: the Organization, allowed origins and consent wording of the embed a
 -- publishable key hash opens. The public Inquiry route receives only the key, so no Organization is
 -- set and row-level security hides core.inquiry_embeds. Exact match through the unique index; an
--- unknown or malformed hash gives no row. Core checks the Organization's status itself afterwards.
--- At most one row, and no key hash or timestamp is returned. Owned by
--- the existing key-lookup definer role, which gets column SELECT on those five columns only.
+-- unknown or malformed hash gives no row, and so does an embed that is not live (no allowed origin
+-- or no wording yet). Core checks the Organization's status itself afterwards. At most one row, and
+-- no key, key hash or timestamp is returned. Owned by the existing key-lookup definer role, which
+-- gets column SELECT on the columns it reads only.
 GRANT SELECT ("organization_id", "publishable_key_hash", "allowed_origins", "consent_wording_version", "consent_wording_text") ON "core"."inquiry_embeds" TO closeline_core_key_lookup;
 --> statement-breakpoint
 CREATE FUNCTION "core"."inquiry_embed_for_key_hash"(p_key_hash text)
@@ -39,6 +46,8 @@ SET search_path = pg_catalog, pg_temp AS $$
   SELECT e."organization_id", e."allowed_origins", e."consent_wording_version", e."consent_wording_text"
     FROM "core"."inquiry_embeds" e
    WHERE e."publishable_key_hash" = p_key_hash
+     AND cardinality(e."allowed_origins") > 0
+     AND e."consent_wording_text" IS NOT NULL
    LIMIT 1
 $$;
 --> statement-breakpoint
