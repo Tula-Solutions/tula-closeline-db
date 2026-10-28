@@ -611,6 +611,55 @@ export const outboundEnrollments = outboundSchema.table(
 )
 
 /**
+ * The running tally of one variant of a Step: how many sends it made and how many Enrollments
+ * that last received it then replied, hard bounced or unsubscribed. The engine adds to it in the
+ * same transaction that records the event, so a results read costs the number of variants (at
+ * most 4) instead of a scan of the Campaign's log.
+ *
+ * Lookups served: a Step's variants (the primary key prefix).
+ */
+export const outboundVariantStats = outboundSchema.table(
+  'variant_stats',
+  {
+    organizationId: text('organization_id').notNull(),
+    campaignId: text('campaign_id').notNull(),
+    version: integer('version').notNull(),
+    stepKey: text('step_key').notNull(),
+    variantKey: text('variant_key').notNull(),
+    sent: integer('sent').notNull().default(0),
+    replied: integer('replied').notNull().default(0),
+    bounced: integer('bounced').notNull().default(0),
+    unsubscribed: integer('unsubscribed').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({
+      name: 'variant_stats_pkey',
+      columns: [t.organizationId, t.campaignId, t.version, t.stepKey, t.variantKey],
+    }),
+    check('variant_stats_organization_id_shape', orgShape),
+    check('variant_stats_organization_not_global', notGlobal),
+    check('variant_stats_campaign_id_shape', idShape('campaign_id', 'cpg')),
+    check('variant_stats_step_key_shape', sql.raw(`"step_key" ~ '${KEY_SHAPE}'`)),
+    check('variant_stats_variant_key_shape', sql.raw(`"variant_key" ~ '${KEY_SHAPE}'`)),
+    check(
+      'variant_stats_counts_not_negative',
+      sql`${t.sent} >= 0 and ${t.replied} >= 0 and ${t.bounced} >= 0 and ${t.unsubscribed} >= 0`
+    ),
+    foreignKey({
+      name: 'variant_stats_variant_fk',
+      columns: [t.organizationId, t.campaignId, t.version, t.stepKey, t.variantKey],
+      foreignColumns: [
+        outboundVariants.organizationId,
+        outboundVariants.campaignId,
+        outboundVariants.version,
+        outboundVariants.stepKey,
+        outboundVariants.key,
+      ],
+    }).onDelete('cascade'),
+  ]
+)
+
+/**
  * What happened to an Enrollment, in order: an append-only history (the service role cannot
  * update a row). `send_id` names the send decision of a `sent`, `deferred` or `refused` event;
  * `stop_reason` is set exactly on a `stopped` event and `call_result` exactly on a `call_result`

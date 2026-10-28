@@ -1,5 +1,5 @@
 {
-  "id": "1151faeb-dd6e-4ebf-884f-96d586289b78",
+  "id": "30842e1f-5489-4199-9199-42171be24809",
   "prevId": "73f2331a-ab55-4cd6-9de3-769b747fe854",
   "version": "7",
   "dialect": "postgresql",
@@ -19801,6 +19801,136 @@
         "steps_fields_match_kind": {
           "name": "steps_fields_match_kind",
           "value": "(\"outbound\".\"steps\".\"kind\" = 'email'\n          and \"outbound\".\"steps\".\"goal\" is not null and char_length(\"outbound\".\"steps\".\"goal\") between 1 and 500\n          and \"outbound\".\"steps\".\"next_key\" is not null\n          and \"outbound\".\"steps\".\"wait_hours\" is null and \"outbound\".\"steps\".\"task\" is null and \"outbound\".\"steps\".\"instruction\" is null\n          and \"outbound\".\"steps\".\"due_in_hours\" is null and \"outbound\".\"steps\".\"arms\" is null and \"outbound\".\"steps\".\"default_next_key\" is null)\n        or (\"outbound\".\"steps\".\"kind\" = 'wait'\n          and \"outbound\".\"steps\".\"wait_hours\" is not null and \"outbound\".\"steps\".\"wait_hours\" between 1 and 2160\n          and \"outbound\".\"steps\".\"next_key\" is not null\n          and \"outbound\".\"steps\".\"goal\" is null and \"outbound\".\"steps\".\"task\" is null and \"outbound\".\"steps\".\"instruction\" is null\n          and \"outbound\".\"steps\".\"due_in_hours\" is null and \"outbound\".\"steps\".\"arms\" is null and \"outbound\".\"steps\".\"default_next_key\" is null)\n        or (\"outbound\".\"steps\".\"kind\" = 'branch'\n          and jsonb_typeof(\"outbound\".\"steps\".\"arms\") = 'array'\n          and jsonb_array_length(\"outbound\".\"steps\".\"arms\") between 1 and 5\n          and \"outbound\".\"steps\".\"default_next_key\" is not null\n          and \"outbound\".\"steps\".\"goal\" is null and \"outbound\".\"steps\".\"next_key\" is null and \"outbound\".\"steps\".\"wait_hours\" is null\n          and \"outbound\".\"steps\".\"task\" is null and \"outbound\".\"steps\".\"instruction\" is null and \"outbound\".\"steps\".\"due_in_hours\" is null)\n        or (\"outbound\".\"steps\".\"kind\" = 'rep_task'\n          and \"outbound\".\"steps\".\"task\" in ('call', 'manual_message', 'research', 'other')\n          and \"outbound\".\"steps\".\"instruction\" is not null and char_length(\"outbound\".\"steps\".\"instruction\") between 1 and 500\n          and \"outbound\".\"steps\".\"due_in_hours\" is not null and \"outbound\".\"steps\".\"due_in_hours\" between 1 and 2160\n          and \"outbound\".\"steps\".\"next_key\" is not null\n          and \"outbound\".\"steps\".\"goal\" is null and \"outbound\".\"steps\".\"wait_hours\" is null\n          and \"outbound\".\"steps\".\"arms\" is null and \"outbound\".\"steps\".\"default_next_key\" is null)\n        or (\"outbound\".\"steps\".\"kind\" = 'end'\n          and \"outbound\".\"steps\".\"goal\" is null and \"outbound\".\"steps\".\"next_key\" is null and \"outbound\".\"steps\".\"wait_hours\" is null\n          and \"outbound\".\"steps\".\"task\" is null and \"outbound\".\"steps\".\"instruction\" is null and \"outbound\".\"steps\".\"due_in_hours\" is null\n          and \"outbound\".\"steps\".\"arms\" is null and \"outbound\".\"steps\".\"default_next_key\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "outbound.variant_stats": {
+      "name": "variant_stats",
+      "schema": "outbound",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "campaign_id": {
+          "name": "campaign_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "step_key": {
+          "name": "step_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "variant_key": {
+          "name": "variant_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent": {
+          "name": "sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "replied": {
+          "name": "replied",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bounced": {
+          "name": "bounced",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "unsubscribed": {
+          "name": "unsubscribed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "variant_stats_variant_fk": {
+          "name": "variant_stats_variant_fk",
+          "tableFrom": "variant_stats",
+          "tableTo": "variants",
+          "schemaTo": "outbound",
+          "columnsFrom": [
+            "organization_id",
+            "campaign_id",
+            "version",
+            "step_key",
+            "variant_key"
+          ],
+          "columnsTo": [
+            "organization_id",
+            "campaign_id",
+            "version",
+            "step_key",
+            "key"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "variant_stats_pkey": {
+          "name": "variant_stats_pkey",
+          "columns": [
+            "organization_id",
+            "campaign_id",
+            "version",
+            "step_key",
+            "variant_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "variant_stats_organization_id_shape": {
+          "name": "variant_stats_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "variant_stats_organization_not_global": {
+          "name": "variant_stats_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
+        },
+        "variant_stats_campaign_id_shape": {
+          "name": "variant_stats_campaign_id_shape",
+          "value": "\"campaign_id\" ~ '^cpg_[0-9a-f]{32}$'"
+        },
+        "variant_stats_step_key_shape": {
+          "name": "variant_stats_step_key_shape",
+          "value": "\"step_key\" ~ '^[a-z][a-z0-9_-]{0,39}$'"
+        },
+        "variant_stats_variant_key_shape": {
+          "name": "variant_stats_variant_key_shape",
+          "value": "\"variant_key\" ~ '^[a-z][a-z0-9_-]{0,39}$'"
+        },
+        "variant_stats_counts_not_negative": {
+          "name": "variant_stats_counts_not_negative",
+          "value": "\"outbound\".\"variant_stats\".\"sent\" >= 0 and \"outbound\".\"variant_stats\".\"replied\" >= 0 and \"outbound\".\"variant_stats\".\"bounced\" >= 0 and \"outbound\".\"variant_stats\".\"unsubscribed\" >= 0"
         }
       },
       "isRLSEnabled": false
