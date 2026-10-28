@@ -320,6 +320,7 @@ describe('the voice line lookup', () => {
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       line_for_number: [true, false, true],
       orgs_with_due_callbacks: [true, false, true],
+      orgs_with_due_recordings: [true, false, true],
       orgs_with_stale_ringing: [true, false, true],
       refuse_idempotency_rewrite: [false, true, false],
       refuse_truncate: [false, true, false],
@@ -375,7 +376,8 @@ describe('the voice line lookup', () => {
           fn.name,
           fn.name === 'twilio_orgs_with_expired' ||
           fn.name === 'orgs_with_stale_ringing' ||
-          fn.name === 'orgs_with_due_callbacks'
+          fn.name === 'orgs_with_due_callbacks' ||
+          fn.name === 'orgs_with_due_recordings'
             ? 'closeline_voice_purge_scan'
             : 'closeline_owner',
         ])
@@ -388,7 +390,8 @@ describe('the voice line lookup', () => {
           fn.name === 'twilio_owner' ||
           fn.name === 'twilio_orgs_with_expired' ||
           fn.name === 'orgs_with_stale_ringing' ||
-          fn.name === 'orgs_with_due_callbacks'
+          fn.name === 'orgs_with_due_callbacks' ||
+          fn.name === 'orgs_with_due_recordings'
             ? 's'
             : 'v',
         ])
