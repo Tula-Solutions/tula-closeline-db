@@ -1,6 +1,6 @@
 {
   "name": "tula-closeline-db",
-  "version": "0.77.0",
+  "version": "0.79.0",
   "description": "Closeline database migrations and typed schema, one Postgres schema per service",
   "private": true,
   "type": "module",

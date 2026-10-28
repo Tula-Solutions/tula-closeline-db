@@ -106,6 +106,9 @@ export const MAX_DRAFT_REVISION = 10_000
 export const MAX_WON_DEAL_COUNT = 100
 /** The most findings one check counts. Mirrors the `count` of the contract's `outreachDraftCheckSchema`. */
 export const MAX_CHECK_COUNT = 1000
+
+/** How many regeneration keys a Draft remembers, newest last. */
+export const MAX_REGENERATE_KEYS = 32
 /** The most statements dropped from a Research Brief. Mirrors the `droppedCount` of `researchBriefSchema`. */
 export const MAX_DROPPED_COUNT = 1000
 
@@ -392,14 +395,17 @@ export const outboundBriefStatements = outboundSchema.table(
  * model it was written with. `subject` and `body` are model output and the Prospect's message:
  * tenant data, untrusted, never logged, put in an error report, a trace or an event. `revision`
  * starts at 1 and rises with each edit; `source` is `generated` until a person edits the text.
- * `request_key` is the `Idempotency-Key` that wrote the Draft (null when none): a retry under it finds
- * the Draft (`drafts_request_key`). `regenerate_key` is the key of the latest regeneration, so a
- * retried regeneration is recognised and does not raise the revision twice.
  * `ungrounded` is true when no Moment of a won Deal applies, and an ungrounded Draft is never
  * `auto_sendable` (a check); that every check passed is a fact about `draft_checks` rows the
  * service reads and writes together with this row. `won_deal_count` is the count of won Deals
  * behind the Draft's Moments at write time. The Brand Voice and Brief are the Organization's own
  * (composite foreign keys), and the voice version is the one of that Brand Voice row.
+ *
+ * `request_key` is the `Idempotency-Key` that wrote the Draft (null when none): a retry under it
+ * finds the Draft (`drafts_request_key`). `regenerate_keys` holds the keys of the latest
+ * `MAX_REGENERATE_KEYS` regenerations, so a retried regeneration is recognised and does not raise
+ * the revision twice. `variant_key` is the Campaign Variant the Draft was written for (null when
+ * none), so a later promotion cannot relabel what was sent.
  *
  * Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page): all Drafts
  * (`drafts_list_idx`), one Prospect (`drafts_prospect_idx`), one Campaign (`drafts_campaign_idx`),
@@ -430,7 +436,8 @@ export const outboundDrafts = outboundSchema.table(
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
     requestKey: text('request_key'),
-    regenerateKey: text('regenerate_key'),
+    regenerateKeys: text('regenerate_keys').array().notNull().default(sql`'{}'::text[]`),
+    variantKey: text('variant_key'),
   },
   (t) => [
     primaryKey({ name: 'drafts_pkey', columns: [t.organizationId, t.id] }),
@@ -483,8 +490,15 @@ export const outboundDrafts = outboundSchema.table(
       sql`${t.requestKey} is null or (char_length(${t.requestKey}) between 16 and 128 and ${t.requestKey} ~ '^[A-Za-z0-9_.:-]+$')`
     ),
     check(
-      'drafts_regenerate_key_shape',
-      sql`${t.regenerateKey} is null or (char_length(${t.regenerateKey}) between 16 and 128 and ${t.regenerateKey} ~ '^[A-Za-z0-9_.:-]+$')`
+      'drafts_regenerate_keys_shape',
+      sql`cardinality(${t.regenerateKeys}) <= ${num(MAX_REGENERATE_KEYS)}
+        and (cardinality(${t.regenerateKeys}) = 0
+          or array_to_string(${t.regenerateKeys}, ' ') ~ '^[A-Za-z0-9_.:-]{16,128}( [A-Za-z0-9_.:-]{16,128})*$')`
+    ),
+    check(
+      'drafts_variant_key_shape',
+      sql`${t.variantKey} is null or (char_length(${t.variantKey}) between 1 and ${num(MAX_STEP_KEY_LENGTH)}
+        and ${t.variantKey} ~ '^[a-z][a-z0-9_-]*$')`
     ),
     uniqueIndex('drafts_request_key').on(t.organizationId, t.requestKey),
     foreignKey({

@@ -1,5 +1,0 @@
-ALTER TABLE "outbound"."drafts" ADD COLUMN "request_key" text;--> statement-breakpoint
-ALTER TABLE "outbound"."drafts" ADD COLUMN "regenerate_key" text;--> statement-breakpoint
-CREATE UNIQUE INDEX "drafts_request_key" ON "outbound"."drafts" USING btree ("organization_id","request_key");--> statement-breakpoint
-ALTER TABLE "outbound"."drafts" ADD CONSTRAINT "drafts_request_key_shape" CHECK ("outbound"."drafts"."request_key" is null or (char_length("outbound"."drafts"."request_key") between 16 and 128 and "outbound"."drafts"."request_key" ~ '^[A-Za-z0-9_.:-]+$'));--> statement-breakpoint
-ALTER TABLE "outbound"."drafts" ADD CONSTRAINT "drafts_regenerate_key_shape" CHECK ("outbound"."drafts"."regenerate_key" is null or (char_length("outbound"."drafts"."regenerate_key") between 16 and 128 and "outbound"."drafts"."regenerate_key" ~ '^[A-Za-z0-9_.:-]+$'));
