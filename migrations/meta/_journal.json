@@ -456,6 +456,20 @@
       "when": 1793189345566,
       "tag": "0064_outbound_linkedin",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793191960696,
+      "tag": "0065_outbound_signal_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1793194861808,
+      "tag": "0066_voice_agent_calls",
+      "breakpoints": true
     }
   ]
 }

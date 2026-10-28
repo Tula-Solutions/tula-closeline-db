@@ -175,6 +175,7 @@ describe('voice.agent_calls', () => {
     const soon = () => new Date(Date.now() + 1000)
     const cases: [string, Row][] = [
       ['a result on a dialing row', { result: 'no_answer' }],
+      ['an end reason on a dialing row', { end_reason: 'booked' }],
       ['an ended row without a result', { state: 'ended', ended_at: new Date() }],
       ['an ended row without an end time', { state: 'ended', result: 'no_answer' }],
       ['an end reason on a non-answered result', endedRow('busy', { end_reason: 'booked' })],
