@@ -62,6 +62,10 @@ export const AGENT_CALL_SOURCES = ['campaign_step', 'rep_request'] as const
 export const AGENT_CALL_STATES = ['queued', 'dialing', 'live', 'ended'] as const
 /** The most attempts of a call Step. Mirrors the contract's `MAX_CALL_ATTEMPTS`. */
 export const MAX_CALL_ATTEMPTS = 3
+/** The longest goal of an Agent Call. Mirrors the contract's `MAX_GOAL_LENGTH`. */
+export const MAX_AGENT_CALL_GOAL_LENGTH = 500
+/** The longest Organization name kept on an Agent Call, for its opening words. */
+export const MAX_AGENT_CALL_ORGANIZATION_NAME_LENGTH = 200
 /** The length of a number hash, in bytes (SHA-256). */
 export const AGENT_CALL_NUMBER_HASH_BYTES = 32
 
@@ -125,6 +129,8 @@ export const voiceAgentCalls = voiceSchema.table(
     endReason: text('end_reason', { enum: AGENT_CALL_END_REASONS }),
     gateCode: text('gate_code', { enum: CALL_GATE_CODES }),
     retryAt: ts('retry_at'),
+    goal: text('goal'),
+    organizationName: text('organization_name'),
     callId: text('call_id'),
     durationSeconds: integer('duration_seconds'),
     numberHash: bytea('number_hash'),
@@ -150,6 +156,14 @@ export const voiceAgentCalls = voiceSchema.table(
     ),
     check('agent_calls_requested_by_shape', idShape('requested_by_membership_id', 'mem')),
     check('agent_calls_call_id_shape', idShape('call_id', 'call')),
+    check(
+      'agent_calls_goal_length',
+      sql`${t.goal} is null or char_length(${t.goal}) between 1 and ${num(MAX_AGENT_CALL_GOAL_LENGTH)}`
+    ),
+    check(
+      'agent_calls_organization_name_length',
+      sql`${t.organizationName} is null or char_length(${t.organizationName}) between 1 and ${num(MAX_AGENT_CALL_ORGANIZATION_NAME_LENGTH)}`
+    ),
     check('agent_calls_source_known', sql`${t.source} in (${list(AGENT_CALL_SOURCES)})`),
     check('agent_calls_state_known', sql`${t.state} in (${list(AGENT_CALL_STATES)})`),
     check(
@@ -228,6 +242,7 @@ export const voiceAgentCalls = voiceSchema.table(
       sql`(${t.dialedAt} is null or ${t.dialedAt} >= ${t.createdAt})
         and (${t.endedAt} is null or ${t.endedAt} >= coalesce(${t.dialedAt}, ${t.createdAt}))`
     ),
+    index('agent_calls_due_idx').on(t.retryAt, t.organizationId).where(sql`${t.state} = 'queued'`),
     uniqueIndex('agent_calls_key').on(t.organizationId, t.idempotencyKey),
     uniqueIndex('agent_calls_prospect_open_key')
       .on(t.organizationId, t.prospectId)

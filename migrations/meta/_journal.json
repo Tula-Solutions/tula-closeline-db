@@ -554,6 +554,13 @@
       "when": 1793222888151,
       "tag": "0078_outbound_draft_request_key",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793224789042,
+      "tag": "0079_voice_agent_call_opening",
+      "breakpoints": true
     }
   ]
 }
