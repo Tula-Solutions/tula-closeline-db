@@ -1,5 +1,5 @@
 {
-  "id": "cd45b96f-ba92-46e6-a85a-05cc960c9047",
+  "id": "80f52968-9638-41cb-9066-ebe17be86738",
   "prevId": "3b114587-d0c5-4acb-b255-5c5b02e6a8a9",
   "version": "7",
   "dialect": "postgresql",
@@ -21461,145 +21461,6 @@
       },
       "isRLSEnabled": false
     },
-    "outbound.linkedin_sends": {
-      "name": "linkedin_sends",
-      "schema": "outbound",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "send_key": {
-          "name": "send_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'sending'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "linkedin_sends_account_idx": {
-          "name": "linkedin_sends_account_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "linkedin_sends_account_fk": {
-          "name": "linkedin_sends_account_fk",
-          "tableFrom": "linkedin_sends",
-          "tableTo": "linkedin_accounts",
-          "schemaTo": "outbound",
-          "columnsFrom": [
-            "organization_id",
-            "account_id"
-          ],
-          "columnsTo": [
-            "organization_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "linkedin_sends_pkey": {
-          "name": "linkedin_sends_pkey",
-          "columns": [
-            "organization_id",
-            "send_key"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "linkedin_sends_organization_id_shape": {
-          "name": "linkedin_sends_organization_id_shape",
-          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "linkedin_sends_organization_not_global": {
-          "name": "linkedin_sends_organization_not_global",
-          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "linkedin_sends_account_id_shape": {
-          "name": "linkedin_sends_account_id_shape",
-          "value": "\"account_id\" ~ '^lia_[0-9a-f]{32}$'"
-        },
-        "linkedin_sends_send_key_length": {
-          "name": "linkedin_sends_send_key_length",
-          "value": "char_length(\"outbound\".\"linkedin_sends\".\"send_key\") between 1 and 200"
-        },
-        "linkedin_sends_kind_known": {
-          "name": "linkedin_sends_kind_known",
-          "value": "\"outbound\".\"linkedin_sends\".\"kind\" in ('connection', 'message')"
-        },
-        "linkedin_sends_state_known": {
-          "name": "linkedin_sends_state_known",
-          "value": "\"outbound\".\"linkedin_sends\".\"state\" in ('sending', 'sent')"
-        },
-        "linkedin_sends_sent_matches_state": {
-          "name": "linkedin_sends_sent_matches_state",
-          "value": "(\"outbound\".\"linkedin_sends\".\"state\" = 'sent') = (\"outbound\".\"linkedin_sends\".\"sent_at\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "outbound.linkedin_usage": {
       "name": "linkedin_usage",
       "schema": "outbound",
@@ -23544,6 +23405,215 @@
         "mailboxes_health_effect_needs_score": {
           "name": "mailboxes_health_effect_needs_score",
           "value": "\"outbound\".\"mailboxes\".\"health_effect\" = 'none' or \"outbound\".\"mailboxes\".\"health_score\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "outbound.fit_scores": {
+      "name": "fit_scores",
+      "schema": "outbound",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prospect_id": {
+          "name": "prospect_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_score": {
+          "name": "max_score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "matches": {
+          "name": "matches",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criteria_version": {
+          "name": "criteria_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scored_at": {
+          "name": "scored_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fit_scores_list_idx": {
+          "name": "fit_scores_list_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "score",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "prospect_id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "fit_scores_pkey": {
+          "name": "fit_scores_pkey",
+          "columns": [
+            "organization_id",
+            "prospect_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fit_scores_organization_id_shape": {
+          "name": "fit_scores_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "fit_scores_organization_not_global": {
+          "name": "fit_scores_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
+        },
+        "fit_scores_prospect_id_shape": {
+          "name": "fit_scores_prospect_id_shape",
+          "value": "\"prospect_id\" ~ '^prs_[0-9a-f]{32}$'"
+        },
+        "fit_scores_score_range": {
+          "name": "fit_scores_score_range",
+          "value": "\"outbound\".\"fit_scores\".\"score\" between 0 and \"outbound\".\"fit_scores\".\"max_score\""
+        },
+        "fit_scores_criteria_version_positive": {
+          "name": "fit_scores_criteria_version_positive",
+          "value": "\"outbound\".\"fit_scores\".\"criteria_version\" >= 1"
+        },
+        "fit_scores_matches_shape": {
+          "name": "fit_scores_matches_shape",
+          "value": "jsonb_typeof(\"outbound\".\"fit_scores\".\"matches\") = 'array'\n        and octet_length(\"outbound\".\"fit_scores\".\"matches\"::text) <= 16384"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "outbound.signal_settings": {
+      "name": "signal_settings",
+      "schema": "outbound",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kinds": {
+          "name": "kinds",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "criteria_version": {
+          "name": "criteria_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "webhook_secret_ciphertext": {
+          "name": "webhook_secret_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_key_id": {
+          "name": "webhook_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_rotated_at": {
+          "name": "webhook_rotated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "signal_settings_pkey": {
+          "name": "signal_settings_pkey",
+          "columns": [
+            "organization_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "signal_settings_organization_id_shape": {
+          "name": "signal_settings_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "signal_settings_organization_not_global": {
+          "name": "signal_settings_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
+        },
+        "signal_settings_kinds_shape": {
+          "name": "signal_settings_kinds_shape",
+          "value": "jsonb_typeof(\"outbound\".\"signal_settings\".\"kinds\") = 'array'\n        and octet_length(\"outbound\".\"signal_settings\".\"kinds\"::text) <= 4096"
+        },
+        "signal_settings_versions_positive": {
+          "name": "signal_settings_versions_positive",
+          "value": "\"outbound\".\"signal_settings\".\"version\" >= 1 and \"outbound\".\"signal_settings\".\"criteria_version\" >= 1"
+        },
+        "signal_settings_webhook_shape": {
+          "name": "signal_settings_webhook_shape",
+          "value": "(\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\" is null or octet_length(\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\") between 1 and 2048)\n        and (\"outbound\".\"signal_settings\".\"webhook_key_id\" is null or char_length(\"outbound\".\"signal_settings\".\"webhook_key_id\") between 1 and 128)\n        and (\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\" is null) = (\"outbound\".\"signal_settings\".\"webhook_key_id\" is null)\n        and (\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\" is null) = (\"outbound\".\"signal_settings\".\"webhook_rotated_at\" is null)"
         }
       },
       "isRLSEnabled": false

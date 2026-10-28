@@ -113,6 +113,7 @@ describe('the outbound campaign tables', () => {
       'deferred',
       'refused',
       'rep_task_created',
+      'call_result',
       'branch_taken',
       'stopped',
       'completed',

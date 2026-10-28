@@ -20,7 +20,7 @@ const migrationFile = readdirSync(new URL('../../migrations/', import.meta.url))
   f.startsWith('0064_')
 )
 const sendsFile = readdirSync(new URL('../../migrations/', import.meta.url)).find((f) =>
-  f.startsWith('0065_')
+  f.startsWith('0069_')
 )
 const migration = [migrationFile, sendsFile]
   .map((f) => readFileSync(new URL(`../../migrations/${f ?? 'missing'}`, import.meta.url), 'utf8'))
