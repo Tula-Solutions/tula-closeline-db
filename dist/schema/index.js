@@ -162,6 +162,7 @@ import {
   routingDecisions2,
   busyBlocks2,
   bookings2,
+  bookingManageDirectory2,
   CONSENT_CHANNELS2,
   CONSENT_GRANT_SOURCES2,
   CONSENT_WITHDRAWAL_SOURCES2,
@@ -619,7 +620,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-n9zwk21k.js";
+} from "../shared/chunk-yhejjvg1.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -1087,6 +1088,7 @@ export {
   auditLogs2 as auditLogs,
   authSchema2 as authSchema,
   backupCodes2 as backupCodes,
+  bookingManageDirectory2 as bookingManageDirectory,
   bookingTypeDirectory2 as bookingTypeDirectory,
   bookingTypes2 as bookingTypes,
   bookings2 as bookings,

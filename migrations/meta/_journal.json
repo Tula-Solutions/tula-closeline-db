@@ -442,6 +442,13 @@
       "when": 1793136909344,
       "tag": "0062_core_booking_type_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793156566008,
+      "tag": "0063_core_booking_manage_lookup",
+      "breakpoints": true
     }
   ]
 }
