@@ -540,6 +540,13 @@
       "when": 1793221230673,
       "tag": "0076_variant_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793222427218,
+      "tag": "0077_voice_chat_rate_counters",
+      "breakpoints": true
     }
   ]
 }

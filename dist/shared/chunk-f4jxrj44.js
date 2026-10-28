@@ -79,6 +79,7 @@ __export(exports_schema, {
   CALL_VENDOR_ID_PATTERN: () => CALL_VENDOR_ID_PATTERN2,
   CAMPAIGN_APPROVAL_MODES: () => CAMPAIGN_APPROVAL_MODES2,
   CAMPAIGN_STATES: () => CAMPAIGN_STATES2,
+  CHAT_RATE_KEY_HASH_BYTES: () => CHAT_RATE_KEY_HASH_BYTES2,
   CHAT_STATES: () => CHAT_STATES2,
   CHAT_TOKEN_HASH_BYTES: () => CHAT_TOKEN_HASH_BYTES2,
   CITATION_KINDS: () => CITATION_KINDS2,
@@ -664,6 +665,7 @@ __export(exports_schema, {
   voiceCallEvents: () => voiceCallEvents2,
   voiceCallTurns: () => voiceCallTurns2,
   voiceCalls: () => voiceCalls2,
+  voiceChatRateCounters: () => voiceChatRateCounters2,
   voiceChats: () => voiceChats2,
   voiceCopilotCards: () => voiceCopilotCards2,
   voiceCopilotSettings: () => voiceCopilotSettings2,
@@ -7528,18 +7530,43 @@ var playbookWorkHints2 = playbookSchema2.table("work_hints", {
   check43("work_hints_global_only_consumed", sql48`${t.kind} = 'consumed_purge' or ${t.organizationId} <> ${sql48.raw(`'${GLOBAL_SCOPE_ORGANIZATION_ID2}'`)}`),
   index51("work_hints_due_idx").on(t.kind, t.dueAt, t.organizationId)
 ]);
-// src/schema/voice-copilot.ts
+// src/schema/voice-chat-limits.ts
 import { sql as sql49 } from "drizzle-orm";
+import { check as check44, customType as customType20, index as index52, integer as integer35, primaryKey as primaryKey32, text as text61, timestamp as timestamp55 } from "drizzle-orm/pg-core";
+var CHAT_RATE_KEY_HASH_BYTES2 = 32;
+var bytes17 = customType20({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value),
+  fromDriver: (value) => new Uint8Array(value)
+});
+var voiceChatRateCounters2 = voiceSchema2.table("chat_rate_counters", {
+  organizationId: text61("organization_id").notNull(),
+  keyHash: bytes17("key_hash").notNull(),
+  windowStart: timestamp55("window_start", { withTimezone: true }).notNull(),
+  hits: integer35("hits").notNull()
+}, (t) => [
+  primaryKey32({
+    name: "chat_rate_counters_pkey",
+    columns: [t.organizationId, t.keyHash, t.windowStart]
+  }),
+  check44("chat_rate_counters_organization_id_shape", sql49.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`)),
+  check44("chat_rate_counters_organization_not_global", sql49.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`)),
+  check44("chat_rate_counters_key_hash_length", sql49`octet_length(${t.keyHash}) = ${sql49.raw(String(CHAT_RATE_KEY_HASH_BYTES2))}`),
+  check44("chat_rate_counters_hits_positive", sql49`${t.hits} >= 1`),
+  index52("chat_rate_counters_window_idx").on(t.organizationId, t.windowStart)
+]);
+// src/schema/voice-copilot.ts
+import { sql as sql50 } from "drizzle-orm";
 import {
   boolean as boolean20,
-  check as check44,
+  check as check45,
   foreignKey as foreignKey22,
-  index as index52,
-  integer as integer35,
+  index as index53,
+  integer as integer36,
   jsonb as jsonb25,
-  primaryKey as primaryKey32,
-  text as text61,
-  timestamp as timestamp55,
+  primaryKey as primaryKey33,
+  text as text62,
+  timestamp as timestamp56,
   uniqueIndex as uniqueIndex23
 } from "drizzle-orm/pg-core";
 var CALL_TURN_TRACKS2 = ["rep", "prospect"];
@@ -7562,268 +7589,268 @@ var MIN_COPILOT_MIN_EVIDENCE2 = 1;
 var MAX_COPILOT_MIN_EVIDENCE2 = 20;
 var DEFAULT_COPILOT_MIN_MOMENTS2 = 3;
 var DEFAULT_COPILOT_MIN_DEALS2 = 2;
-var list23 = (values) => sql49.raw(values.map((v) => `'${v}'`).join(", "));
-var num11 = (value) => sql49.raw(String(value));
-var idShape25 = (column, prefix) => sql49.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var orgShape17 = sql49.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
-var notGlobal21 = sql49.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
-var ts23 = (name) => timestamp55(name, { withTimezone: true });
+var list23 = (values) => sql50.raw(values.map((v) => `'${v}'`).join(", "));
+var num11 = (value) => sql50.raw(String(value));
+var idShape25 = (column, prefix) => sql50.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var orgShape17 = sql50.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
+var notGlobal21 = sql50.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
+var ts23 = (name) => timestamp56(name, { withTimezone: true });
 var MAX_QUOTES_BYTES = 24576;
 var MAX_CITED_BYTES = 1024;
 var voiceCallTurns2 = voiceSchema2.table("call_turns", {
-  organizationId: text61("organization_id").notNull(),
-  callId: text61("call_id").notNull(),
-  track: text61("track", { enum: CALL_TURN_TRACKS2 }).notNull(),
-  sequence: integer35("sequence").notNull(),
-  text: text61("text").notNull(),
-  startMs: integer35("start_ms").notNull(),
-  endMs: integer35("end_ms").notNull(),
+  organizationId: text62("organization_id").notNull(),
+  callId: text62("call_id").notNull(),
+  track: text62("track", { enum: CALL_TURN_TRACKS2 }).notNull(),
+  sequence: integer36("sequence").notNull(),
+  text: text62("text").notNull(),
+  startMs: integer36("start_ms").notNull(),
+  endMs: integer36("end_ms").notNull(),
   createdAt: ts23("created_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey32({
+  primaryKey33({
     name: "call_turns_pkey",
     columns: [t.organizationId, t.callId, t.track, t.sequence]
   }),
-  check44("call_turns_organization_id_shape", orgShape17),
-  check44("call_turns_organization_not_global", notGlobal21),
-  check44("call_turns_call_id_shape", idShape25("call_id", "call")),
-  check44("call_turns_track_known", sql49`${t.track} in (${list23(CALL_TURN_TRACKS2)})`),
-  check44("call_turns_sequence_range", sql49`${t.sequence} >= 1`),
-  check44("call_turns_text_shape", sql49`char_length(${t.text}) between 1 and ${num11(MAX_CALL_TURN_TEXT_LENGTH2)}`),
-  check44("call_turns_times_range", sql49`${t.startMs} between 0 and ${num11(MAX_CALL_DURATION_SECONDS2 * 1000)}
+  check45("call_turns_organization_id_shape", orgShape17),
+  check45("call_turns_organization_not_global", notGlobal21),
+  check45("call_turns_call_id_shape", idShape25("call_id", "call")),
+  check45("call_turns_track_known", sql50`${t.track} in (${list23(CALL_TURN_TRACKS2)})`),
+  check45("call_turns_sequence_range", sql50`${t.sequence} >= 1`),
+  check45("call_turns_text_shape", sql50`char_length(${t.text}) between 1 and ${num11(MAX_CALL_TURN_TEXT_LENGTH2)}`),
+  check45("call_turns_times_range", sql50`${t.startMs} between 0 and ${num11(MAX_CALL_DURATION_SECONDS2 * 1000)}
         and ${t.endMs} between ${t.startMs} and ${num11(MAX_CALL_DURATION_SECONDS2 * 1000)}`),
   foreignKey22({
     name: "call_turns_call_fk",
     columns: [t.organizationId, t.callId],
     foreignColumns: [voiceCalls2.organizationId, voiceCalls2.id]
   }).onDelete("cascade"),
-  index52("call_turns_time_idx").on(t.organizationId, t.callId, t.startMs, t.track, t.sequence)
+  index53("call_turns_time_idx").on(t.organizationId, t.callId, t.startMs, t.track, t.sequence)
 ]);
 var voiceCopilotCards2 = voiceSchema2.table("copilot_cards", {
-  id: text61("id").notNull(),
-  organizationId: text61("organization_id").notNull(),
-  callId: text61("call_id").notNull(),
-  sequence: integer35("sequence").notNull(),
-  kind: text61("kind", { enum: COPILOT_CARD_KINDS2 }).notNull(),
-  evidenceMoments: integer35("evidence_moments").notNull(),
-  evidenceDeals: integer35("evidence_deals").notNull(),
+  id: text62("id").notNull(),
+  organizationId: text62("organization_id").notNull(),
+  callId: text62("call_id").notNull(),
+  sequence: integer36("sequence").notNull(),
+  kind: text62("kind", { enum: COPILOT_CARD_KINDS2 }).notNull(),
+  evidenceMoments: integer36("evidence_moments").notNull(),
+  evidenceDeals: integer36("evidence_deals").notNull(),
   citedMoments: jsonb25("cited_moments").$type().notNull(),
-  quotes: jsonb25("quotes").$type().notNull().default(sql49`'[]'::jsonb`),
-  objectionType: text61("objection_type", { enum: COPILOT_OBJECTION_TYPES2 }),
-  response: text61("response"),
-  nextStep: text61("next_step"),
-  documentId: text61("document_id"),
-  documentPage: integer35("document_page"),
-  documentPassage: text61("document_passage"),
+  quotes: jsonb25("quotes").$type().notNull().default(sql50`'[]'::jsonb`),
+  objectionType: text62("objection_type", { enum: COPILOT_OBJECTION_TYPES2 }),
+  response: text62("response"),
+  nextStep: text62("next_step"),
+  documentId: text62("document_id"),
+  documentPage: integer36("document_page"),
+  documentPassage: text62("document_passage"),
   shownAt: ts23("shown_at").notNull().defaultNow(),
-  rating: text61("rating", { enum: COPILOT_RATINGS2 }),
+  rating: text62("rating", { enum: COPILOT_RATINGS2 }),
   dismissed: boolean20("dismissed").notNull().default(false),
   pinned: boolean20("pinned").notNull().default(false),
   updatedAt: ts23("updated_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey32({ name: "copilot_cards_pkey", columns: [t.organizationId, t.id] }),
-  check44("copilot_cards_id_shape", idShape25("id", "ccard")),
-  check44("copilot_cards_organization_id_shape", orgShape17),
-  check44("copilot_cards_organization_not_global", notGlobal21),
-  check44("copilot_cards_call_id_shape", idShape25("call_id", "call")),
-  check44("copilot_cards_sequence_range", sql49`${t.sequence} between 1 and ${num11(MAX_COPILOT_CARDS_PER_CALL2)}`),
-  check44("copilot_cards_kind_known", sql49`${t.kind} in (${list23(COPILOT_CARD_KINDS2)})`),
-  check44("copilot_cards_evidence_range", sql49`${t.evidenceMoments} between 1 and ${num11(MAX_COPILOT_EVIDENCE2)}
+  primaryKey33({ name: "copilot_cards_pkey", columns: [t.organizationId, t.id] }),
+  check45("copilot_cards_id_shape", idShape25("id", "ccard")),
+  check45("copilot_cards_organization_id_shape", orgShape17),
+  check45("copilot_cards_organization_not_global", notGlobal21),
+  check45("copilot_cards_call_id_shape", idShape25("call_id", "call")),
+  check45("copilot_cards_sequence_range", sql50`${t.sequence} between 1 and ${num11(MAX_COPILOT_CARDS_PER_CALL2)}`),
+  check45("copilot_cards_kind_known", sql50`${t.kind} in (${list23(COPILOT_CARD_KINDS2)})`),
+  check45("copilot_cards_evidence_range", sql50`${t.evidenceMoments} between 1 and ${num11(MAX_COPILOT_EVIDENCE2)}
         and ${t.evidenceDeals} between 1 and ${t.evidenceMoments}`),
-  check44("copilot_cards_cited_shape", sql49`jsonb_typeof(${t.citedMoments}) = 'array'
+  check45("copilot_cards_cited_shape", sql50`jsonb_typeof(${t.citedMoments}) = 'array'
         and jsonb_array_length(${t.citedMoments}) between 1 and ${num11(MAX_COPILOT_CITED_MOMENTS2)}
         and octet_length(${t.citedMoments}::text) <= ${num11(MAX_CITED_BYTES)}
         and jsonb_array_length(${t.citedMoments}) <= ${t.evidenceMoments}
         and jsonb_array_length(jsonb_path_query_array(${t.citedMoments},
           '$[*] ? (@.callId like_regex "^call_[0-9a-f]{32}$" && @.dealRecordId like_regex "^deal_[0-9a-f]{32}$")'))
           = jsonb_array_length(${t.citedMoments})`),
-  check44("copilot_cards_quotes_shape", sql49`jsonb_typeof(${t.quotes}) = 'array'
+  check45("copilot_cards_quotes_shape", sql50`jsonb_typeof(${t.quotes}) = 'array'
         and jsonb_array_length(${t.quotes}) <= ${num11(MAX_COPILOT_CITED_MOMENTS2)}
         and octet_length(${t.quotes}::text) <= ${num11(MAX_QUOTES_BYTES)}`),
-  check44("copilot_cards_objection_type_known", sql49`${t.objectionType} is null or ${t.objectionType} in (${list23(COPILOT_OBJECTION_TYPES2)})`),
-  check44("copilot_cards_rating_known", sql49`${t.rating} is null or ${t.rating} in (${list23(COPILOT_RATINGS2)})`),
-  check44("copilot_cards_response_shape", sql49`${t.response} is null or char_length(${t.response}) between 1 and ${num11(MAX_COPILOT_CARD_TEXT_LENGTH2)}`),
-  check44("copilot_cards_next_step_shape", sql49`${t.nextStep} is null or char_length(${t.nextStep}) between 1 and ${num11(MAX_COPILOT_CARD_TEXT_LENGTH2)}`),
-  check44("copilot_cards_document_id_shape", idShape25("document_id", "doc")),
-  check44("copilot_cards_document_page_range", sql49`${t.documentPage} is null or ${t.documentPage} between 1 and ${num11(MAX_DOCUMENT_PAGES2)}`),
-  check44("copilot_cards_document_passage_shape", sql49`${t.documentPassage} is null or char_length(${t.documentPassage}) between 1 and ${num11(MAX_COPILOT_QUOTE_LENGTH2)}`),
-  check44("copilot_cards_kind_columns", sql49`(${t.kind} = 'objection') = (${t.objectionType} is not null and ${t.response} is not null)
+  check45("copilot_cards_objection_type_known", sql50`${t.objectionType} is null or ${t.objectionType} in (${list23(COPILOT_OBJECTION_TYPES2)})`),
+  check45("copilot_cards_rating_known", sql50`${t.rating} is null or ${t.rating} in (${list23(COPILOT_RATINGS2)})`),
+  check45("copilot_cards_response_shape", sql50`${t.response} is null or char_length(${t.response}) between 1 and ${num11(MAX_COPILOT_CARD_TEXT_LENGTH2)}`),
+  check45("copilot_cards_next_step_shape", sql50`${t.nextStep} is null or char_length(${t.nextStep}) between 1 and ${num11(MAX_COPILOT_CARD_TEXT_LENGTH2)}`),
+  check45("copilot_cards_document_id_shape", idShape25("document_id", "doc")),
+  check45("copilot_cards_document_page_range", sql50`${t.documentPage} is null or ${t.documentPage} between 1 and ${num11(MAX_DOCUMENT_PAGES2)}`),
+  check45("copilot_cards_document_passage_shape", sql50`${t.documentPassage} is null or char_length(${t.documentPassage}) between 1 and ${num11(MAX_COPILOT_QUOTE_LENGTH2)}`),
+  check45("copilot_cards_kind_columns", sql50`(${t.kind} = 'objection') = (${t.objectionType} is not null and ${t.response} is not null)
         and (${t.kind} = 'objection' or (${t.objectionType} is null and ${t.response} is null))
         and (${t.kind} = 'next_step') = (${t.nextStep} is not null)
         and (${t.kind} = 'document') = (${t.documentId} is not null and ${t.documentPassage} is not null)
         and (${t.kind} = 'document' or ${t.documentPage} is null)`),
-  check44("copilot_cards_dismissed_or_pinned", sql49`not (${t.dismissed} and ${t.pinned})`),
+  check45("copilot_cards_dismissed_or_pinned", sql50`not (${t.dismissed} and ${t.pinned})`),
   foreignKey22({
     name: "copilot_cards_call_fk",
     columns: [t.organizationId, t.callId],
     foreignColumns: [voiceCalls2.organizationId, voiceCalls2.id]
   }).onDelete("cascade"),
   uniqueIndex23("copilot_cards_call_sequence_key").on(t.organizationId, t.callId, t.sequence),
-  index52("copilot_cards_shown_idx").on(t.organizationId, t.callId, t.shownAt, t.id)
+  index53("copilot_cards_shown_idx").on(t.organizationId, t.callId, t.shownAt, t.id)
 ]);
 var voiceCopilotSettings2 = voiceSchema2.table("copilot_settings", {
-  organizationId: text61("organization_id").notNull(),
+  organizationId: text62("organization_id").notNull(),
   enabled: boolean20("enabled").notNull().default(false),
-  minMoments: integer35("min_moments").notNull().default(DEFAULT_COPILOT_MIN_MOMENTS2),
-  minDeals: integer35("min_deals").notNull().default(DEFAULT_COPILOT_MIN_DEALS2),
+  minMoments: integer36("min_moments").notNull().default(DEFAULT_COPILOT_MIN_MOMENTS2),
+  minDeals: integer36("min_deals").notNull().default(DEFAULT_COPILOT_MIN_DEALS2),
   updatedAt: ts23("updated_at").notNull().defaultNow(),
-  updatedByMembershipId: text61("updated_by_membership_id")
+  updatedByMembershipId: text62("updated_by_membership_id")
 }, (t) => [
-  primaryKey32({ name: "copilot_settings_pkey", columns: [t.organizationId] }),
-  check44("copilot_settings_organization_id_shape", orgShape17),
-  check44("copilot_settings_organization_not_global", notGlobal21),
-  check44("copilot_settings_min_range", sql49`${t.minMoments} between ${num11(MIN_COPILOT_MIN_EVIDENCE2)} and ${num11(MAX_COPILOT_MIN_EVIDENCE2)}
+  primaryKey33({ name: "copilot_settings_pkey", columns: [t.organizationId] }),
+  check45("copilot_settings_organization_id_shape", orgShape17),
+  check45("copilot_settings_organization_not_global", notGlobal21),
+  check45("copilot_settings_min_range", sql50`${t.minMoments} between ${num11(MIN_COPILOT_MIN_EVIDENCE2)} and ${num11(MAX_COPILOT_MIN_EVIDENCE2)}
         and ${t.minDeals} between ${num11(MIN_COPILOT_MIN_EVIDENCE2)} and ${t.minMoments}`),
-  check44("copilot_settings_updated_by_membership_id_shape", idShape25("updated_by_membership_id", "mem"))
+  check45("copilot_settings_updated_by_membership_id_shape", idShape25("updated_by_membership_id", "mem"))
 ]);
 // src/schema/voice-idempotency.ts
-import { sql as sql50 } from "drizzle-orm";
+import { sql as sql51 } from "drizzle-orm";
 import {
-  check as check45,
-  customType as customType20,
-  index as index53,
+  check as check46,
+  customType as customType21,
+  index as index54,
   jsonb as jsonb26,
-  primaryKey as primaryKey33,
+  primaryKey as primaryKey34,
   smallint as smallint14,
-  text as text62,
-  timestamp as timestamp56
+  text as text63,
+  timestamp as timestamp57
 } from "drizzle-orm/pg-core";
-var idShape26 = (column, prefix) => sql50.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
-var bytes17 = customType20({
+var idShape26 = (column, prefix) => sql51.raw(`"${column}" ~ '^${prefix}_[0-9a-f]{32}$'`);
+var bytes18 = customType21({
   dataType: () => "bytea",
   toDriver: (value) => Buffer.from(value),
   fromDriver: (value) => new Uint8Array(value)
 });
 var voiceIdempotencyKeys2 = voiceSchema2.table("idempotency_keys", {
-  organizationId: text62("organization_id").notNull(),
-  userId: text62("user_id").notNull(),
-  route: text62("route").notNull(),
-  key: text62("key").notNull(),
-  requestHash: bytes17("request_hash").notNull(),
+  organizationId: text63("organization_id").notNull(),
+  userId: text63("user_id").notNull(),
+  route: text63("route").notNull(),
+  key: text63("key").notNull(),
+  requestHash: bytes18("request_hash").notNull(),
   status: smallint14("status"),
   response: jsonb26("response").$type(),
-  createdAt: timestamp56("created_at", { withTimezone: true }).notNull().defaultNow()
+  createdAt: timestamp57("created_at", { withTimezone: true }).notNull().defaultNow()
 }, (t) => [
-  primaryKey33({
+  primaryKey34({
     name: "idempotency_keys_pkey",
     columns: [t.organizationId, t.userId, t.route, t.key]
   }),
-  check45("idempotency_keys_organization_id_shape", idShape26("organization_id", "org")),
-  check45("idempotency_keys_organization_not_global", sql50.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`)),
-  check45("idempotency_keys_user_id_shape", idShape26("user_id", "usr")),
-  check45("idempotency_keys_route_shape", sql50`char_length(${t.route}) between 1 and ${sql50.raw(String(IDEMPOTENCY_ROUTE_MAX2))}
+  check46("idempotency_keys_organization_id_shape", idShape26("organization_id", "org")),
+  check46("idempotency_keys_organization_not_global", sql51.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`)),
+  check46("idempotency_keys_user_id_shape", idShape26("user_id", "usr")),
+  check46("idempotency_keys_route_shape", sql51`char_length(${t.route}) between 1 and ${sql51.raw(String(IDEMPOTENCY_ROUTE_MAX2))}
         and ${t.route} collate "C" ~ '^[a-z0-9._]+$'`),
-  check45("idempotency_keys_key_shape", sql50`char_length(${t.key}) between 1 and ${sql50.raw(String(IDEMPOTENCY_KEY_MAX2))}
+  check46("idempotency_keys_key_shape", sql51`char_length(${t.key}) between 1 and ${sql51.raw(String(IDEMPOTENCY_KEY_MAX2))}
         and ${t.key} collate "C" ~ '^[!-~]+$'`),
-  check45("idempotency_keys_request_hash_length", sql50`octet_length(${t.requestHash}) = ${sql50.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
-  check45("idempotency_keys_status_range", sql50`${t.status} between 100 and 599`),
-  check45("idempotency_keys_response_matches_status", sql50`(${t.status} is null) = (${t.response} is null)`),
-  check45("idempotency_keys_response_size", sql50`octet_length(${t.response}::text) <= ${sql50.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
-  index53("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
+  check46("idempotency_keys_request_hash_length", sql51`octet_length(${t.requestHash}) = ${sql51.raw(String(IDEMPOTENCY_HASH_BYTES2))}`),
+  check46("idempotency_keys_status_range", sql51`${t.status} between 100 and 599`),
+  check46("idempotency_keys_response_matches_status", sql51`(${t.status} is null) = (${t.response} is null)`),
+  check46("idempotency_keys_response_size", sql51`octet_length(${t.response}::text) <= ${sql51.raw(String(IDEMPOTENCY_RESPONSE_MAX_BYTES2))}`),
+  index54("idempotency_keys_purge_idx").on(t.organizationId, t.createdAt)
 ]);
 // src/schema/voice-twilio.ts
-import { sql as sql51 } from "drizzle-orm";
+import { sql as sql52 } from "drizzle-orm";
 import {
   boolean as boolean21,
-  check as check46,
+  check as check47,
   foreignKey as foreignKey23,
-  index as index54,
-  integer as integer36,
-  primaryKey as primaryKey34,
-  text as text63,
-  timestamp as timestamp57
+  index as index55,
+  integer as integer37,
+  primaryKey as primaryKey35,
+  text as text64,
+  timestamp as timestamp58
 } from "drizzle-orm/pg-core";
 var MAX_TWILIO_RING_IDENTITIES2 = 100;
 var MAX_TWILIO_PROVIDER_ID_LENGTH2 = 128;
 var MAX_TWILIO_PLACEMENT_KEY_LENGTH2 = 255;
 var MAX_TWILIO_FINGERPRINT_LENGTH2 = 128;
 var TWILIO_DIRECTORY_KINDS2 = ["call", "recording"];
-var list24 = (values) => sql51.raw(values.map((v) => `'${v}'`).join(", "));
-var orgShape18 = sql51.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
-var notGlobal22 = sql51.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
-var providerIdShape = (column) => sql51.raw(`char_length("${column}") between 1 and ${MAX_TWILIO_PROVIDER_ID_LENGTH2} and "${column}" collate "C" ~ '^[A-Za-z0-9._:-]+$'`);
-var ts24 = (name) => timestamp57(name, { withTimezone: true });
+var list24 = (values) => sql52.raw(values.map((v) => `'${v}'`).join(", "));
+var orgShape18 = sql52.raw(`"organization_id" ~ '^org_[0-9a-f]{32}$'`);
+var notGlobal22 = sql52.raw(`"organization_id" <> 'org_00000000000000000000000000000000'`);
+var providerIdShape = (column) => sql52.raw(`char_length("${column}") between 1 and ${MAX_TWILIO_PROVIDER_ID_LENGTH2} and "${column}" collate "C" ~ '^[A-Za-z0-9._:-]+$'`);
+var ts24 = (name) => timestamp58(name, { withTimezone: true });
 var voiceTwilioCalls2 = voiceSchema2.table("twilio_calls", {
-  organizationId: text63("organization_id").notNull(),
-  providerCallId: text63("provider_call_id").notNull(),
-  callId: text63("call_id"),
-  direction: text63("direction", { enum: VOICE_CALL_DIRECTIONS2 }).notNull(),
-  disclosureWordingVersion: integer36("disclosure_wording_version"),
+  organizationId: text64("organization_id").notNull(),
+  providerCallId: text64("provider_call_id").notNull(),
+  callId: text64("call_id"),
+  direction: text64("direction", { enum: VOICE_CALL_DIRECTIONS2 }).notNull(),
+  disclosureWordingVersion: integer37("disclosure_wording_version"),
   disclosureAiAssisted: boolean21("disclosure_ai_assisted"),
   disclosurePlayedAt: ts24("disclosure_played_at"),
   disclosureStarted: boolean21("disclosure_started").notNull().default(false),
-  bridgedTo: text63("bridged_to"),
-  ringIdentities: text63("ring_identities").array().notNull().default(sql51`'{}'::text[]`),
-  recordingId: text63("recording_id"),
-  streamId: text63("stream_id"),
+  bridgedTo: text64("bridged_to"),
+  ringIdentities: text64("ring_identities").array().notNull().default(sql52`'{}'::text[]`),
+  recordingId: text64("recording_id"),
+  streamId: text64("stream_id"),
   createdAt: ts24("created_at").notNull().defaultNow(),
   updatedAt: ts24("updated_at").notNull().defaultNow(),
   expiresAt: ts24("expires_at").notNull()
 }, (t) => [
-  primaryKey34({ name: "twilio_calls_pkey", columns: [t.organizationId, t.providerCallId] }),
-  check46("twilio_calls_organization_id_shape", orgShape18),
-  check46("twilio_calls_organization_not_global", notGlobal22),
-  check46("twilio_calls_provider_call_id_shape", providerIdShape("provider_call_id")),
-  check46("twilio_calls_call_id_shape", sql51.raw(`"call_id" ~ '^call_[0-9a-f]{32}$'`)),
-  check46("twilio_calls_bridged_to_shape", sql51.raw(`"bridged_to" ~ '^mem_[0-9a-f]{32}$'`)),
-  check46("twilio_calls_direction_known", sql51`${t.direction} in (${list24(VOICE_CALL_DIRECTIONS2)})`),
-  check46("twilio_calls_disclosure_all_or_none", sql51`(${t.disclosureWordingVersion} is null) = (${t.disclosureAiAssisted} is null)
+  primaryKey35({ name: "twilio_calls_pkey", columns: [t.organizationId, t.providerCallId] }),
+  check47("twilio_calls_organization_id_shape", orgShape18),
+  check47("twilio_calls_organization_not_global", notGlobal22),
+  check47("twilio_calls_provider_call_id_shape", providerIdShape("provider_call_id")),
+  check47("twilio_calls_call_id_shape", sql52.raw(`"call_id" ~ '^call_[0-9a-f]{32}$'`)),
+  check47("twilio_calls_bridged_to_shape", sql52.raw(`"bridged_to" ~ '^mem_[0-9a-f]{32}$'`)),
+  check47("twilio_calls_direction_known", sql52`${t.direction} in (${list24(VOICE_CALL_DIRECTIONS2)})`),
+  check47("twilio_calls_disclosure_all_or_none", sql52`(${t.disclosureWordingVersion} is null) = (${t.disclosureAiAssisted} is null)
         and (${t.disclosureWordingVersion} is null) = (${t.disclosurePlayedAt} is null)
         and (${t.disclosureWordingVersion} is null or ${t.disclosureWordingVersion} >= 1)`),
-  check46("twilio_calls_ring_identities_bounds", sql51`coalesce(cardinality(${t.ringIdentities}), 0) <= ${sql51.raw(String(MAX_TWILIO_RING_IDENTITIES2))}
+  check47("twilio_calls_ring_identities_bounds", sql52`coalesce(cardinality(${t.ringIdentities}), 0) <= ${sql52.raw(String(MAX_TWILIO_RING_IDENTITIES2))}
         and array_position(${t.ringIdentities}, null) is null
         and array_to_string(${t.ringIdentities}, ',') ~ '^(mem_[0-9a-f]{32}(,mem_[0-9a-f]{32})*)?$'`),
-  check46("twilio_calls_recording_id_shape", sql51`${t.recordingId} is null or (${sql51.raw(`char_length("recording_id") between 1 and ${MAX_TWILIO_PROVIDER_ID_LENGTH2}`)})`),
-  check46("twilio_calls_stream_id_shape", sql51`${t.streamId} is null or (${sql51.raw(`char_length("stream_id") between 1 and ${MAX_TWILIO_PROVIDER_ID_LENGTH2}`)})`),
-  check46("twilio_calls_expires_after_creation", sql51`${t.expiresAt} > ${t.createdAt}`),
-  index54("twilio_calls_purge_idx").on(t.organizationId, t.expiresAt)
+  check47("twilio_calls_recording_id_shape", sql52`${t.recordingId} is null or (${sql52.raw(`char_length("recording_id") between 1 and ${MAX_TWILIO_PROVIDER_ID_LENGTH2}`)})`),
+  check47("twilio_calls_stream_id_shape", sql52`${t.streamId} is null or (${sql52.raw(`char_length("stream_id") between 1 and ${MAX_TWILIO_PROVIDER_ID_LENGTH2}`)})`),
+  check47("twilio_calls_expires_after_creation", sql52`${t.expiresAt} > ${t.createdAt}`),
+  index55("twilio_calls_purge_idx").on(t.organizationId, t.expiresAt)
 ]);
 var voiceTwilioRecordings2 = voiceSchema2.table("twilio_recordings", {
-  organizationId: text63("organization_id").notNull(),
-  recordingId: text63("recording_id").notNull(),
-  providerCallId: text63("provider_call_id").notNull(),
+  organizationId: text64("organization_id").notNull(),
+  recordingId: text64("recording_id").notNull(),
+  providerCallId: text64("provider_call_id").notNull(),
   createdAt: ts24("created_at").notNull().defaultNow()
 }, (t) => [
-  primaryKey34({ name: "twilio_recordings_pkey", columns: [t.organizationId, t.recordingId] }),
-  check46("twilio_recordings_organization_id_shape", orgShape18),
-  check46("twilio_recordings_organization_not_global", notGlobal22),
-  check46("twilio_recordings_recording_id_shape", providerIdShape("recording_id")),
-  check46("twilio_recordings_provider_call_id_shape", providerIdShape("provider_call_id")),
+  primaryKey35({ name: "twilio_recordings_pkey", columns: [t.organizationId, t.recordingId] }),
+  check47("twilio_recordings_organization_id_shape", orgShape18),
+  check47("twilio_recordings_organization_not_global", notGlobal22),
+  check47("twilio_recordings_recording_id_shape", providerIdShape("recording_id")),
+  check47("twilio_recordings_provider_call_id_shape", providerIdShape("provider_call_id")),
   foreignKey23({
     name: "twilio_recordings_call_fk",
     columns: [t.organizationId, t.providerCallId],
     foreignColumns: [voiceTwilioCalls2.organizationId, voiceTwilioCalls2.providerCallId]
   }).onDelete("cascade"),
-  index54("twilio_recordings_call_idx").on(t.organizationId, t.providerCallId)
+  index55("twilio_recordings_call_idx").on(t.organizationId, t.providerCallId)
 ]);
 var voiceTwilioPlacements2 = voiceSchema2.table("twilio_placements", {
-  organizationId: text63("organization_id").notNull(),
-  idempotencyKey: text63("idempotency_key").notNull(),
-  providerCallId: text63("provider_call_id").notNull(),
-  fingerprint: text63("fingerprint").notNull(),
+  organizationId: text64("organization_id").notNull(),
+  idempotencyKey: text64("idempotency_key").notNull(),
+  providerCallId: text64("provider_call_id").notNull(),
+  fingerprint: text64("fingerprint").notNull(),
   createdAt: ts24("created_at").notNull().defaultNow(),
   expiresAt: ts24("expires_at").notNull()
 }, (t) => [
-  primaryKey34({ name: "twilio_placements_pkey", columns: [t.organizationId, t.idempotencyKey] }),
-  check46("twilio_placements_organization_id_shape", orgShape18),
-  check46("twilio_placements_organization_not_global", notGlobal22),
-  check46("twilio_placements_idempotency_key_shape", sql51`char_length(${t.idempotencyKey}) between 1 and ${sql51.raw(String(MAX_TWILIO_PLACEMENT_KEY_LENGTH2))}`),
-  check46("twilio_placements_provider_call_id_shape", providerIdShape("provider_call_id")),
-  check46("twilio_placements_fingerprint_shape", sql51`char_length(${t.fingerprint}) between 1 and ${sql51.raw(String(MAX_TWILIO_FINGERPRINT_LENGTH2))}`),
-  check46("twilio_placements_expires_after_creation", sql51`${t.expiresAt} > ${t.createdAt}`),
-  index54("twilio_placements_purge_idx").on(t.organizationId, t.expiresAt)
+  primaryKey35({ name: "twilio_placements_pkey", columns: [t.organizationId, t.idempotencyKey] }),
+  check47("twilio_placements_organization_id_shape", orgShape18),
+  check47("twilio_placements_organization_not_global", notGlobal22),
+  check47("twilio_placements_idempotency_key_shape", sql52`char_length(${t.idempotencyKey}) between 1 and ${sql52.raw(String(MAX_TWILIO_PLACEMENT_KEY_LENGTH2))}`),
+  check47("twilio_placements_provider_call_id_shape", providerIdShape("provider_call_id")),
+  check47("twilio_placements_fingerprint_shape", sql52`char_length(${t.fingerprint}) between 1 and ${sql52.raw(String(MAX_TWILIO_FINGERPRINT_LENGTH2))}`),
+  check47("twilio_placements_expires_after_creation", sql52`${t.expiresAt} > ${t.createdAt}`),
+  index55("twilio_placements_purge_idx").on(t.organizationId, t.expiresAt)
 ]);
 var voiceTwilioDirectory2 = voiceSchema2.table("twilio_directory", {
-  kind: text63("kind", { enum: TWILIO_DIRECTORY_KINDS2 }).notNull(),
-  refId: text63("ref_id").notNull(),
-  organizationId: text63("organization_id").notNull(),
-  providerCallId: text63("provider_call_id").notNull()
+  kind: text64("kind", { enum: TWILIO_DIRECTORY_KINDS2 }).notNull(),
+  refId: text64("ref_id").notNull(),
+  organizationId: text64("organization_id").notNull(),
+  providerCallId: text64("provider_call_id").notNull()
 }, (t) => [
-  primaryKey34({ name: "twilio_directory_pkey", columns: [t.kind, t.refId] }),
-  check46("twilio_directory_kind_known", sql51`${t.kind} in (${list24(TWILIO_DIRECTORY_KINDS2)})`),
-  check46("twilio_directory_ref_id_shape", providerIdShape("ref_id")),
-  check46("twilio_directory_organization_id_shape", orgShape18),
-  check46("twilio_directory_organization_not_global", notGlobal22),
-  check46("twilio_directory_provider_call_id_shape", providerIdShape("provider_call_id"))
+  primaryKey35({ name: "twilio_directory_pkey", columns: [t.kind, t.refId] }),
+  check47("twilio_directory_kind_known", sql52`${t.kind} in (${list24(TWILIO_DIRECTORY_KINDS2)})`),
+  check47("twilio_directory_ref_id_shape", providerIdShape("ref_id")),
+  check47("twilio_directory_organization_id_shape", orgShape18),
+  check47("twilio_directory_organization_not_global", notGlobal22),
+  check47("twilio_directory_provider_call_id_shape", providerIdShape("provider_call_id"))
 ]);
-export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, REFRESH_SEALED_NEXT_TOKEN_MAX_BYTES2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, ROLLUP_METRICS2, ROLLUP_GROUP_KINDS2, MAX_ROLLUP_GROUP_KEY_LENGTH2, MAX_ROLLUP_COUNT2, TOUCH_KINDS2, TOUCH_CHANNELS2, TOUCH_AGENT_KINDS2, MAX_TOUCH_SOURCES2, SOURCE_KINDS2, MAX_SOURCE_KEY_LENGTH2, SOURCE_PERFORMANCE_FLAGS2, MAX_SOURCE_DEALS2, ASSESSMENT_SUBJECT_KINDS2, ASSESSMENT_VERDICTS2, ASSESSMENT_JUDGE_SOURCES2, FINDING_CATEGORIES2, FINDING_SEVERITIES2, FINDING_FEEDBACKS2, MAX_FINDING_SPAN_OFFSET2, MAX_FINDING_EXPLANATION_LENGTH2, MAX_ASSESSED_NUMBER2, CONVERSATION_OUTCOME_LABELS2, MAX_SUMMARY_LENGTH2, rollupDaily2, analyticsEvents2, touches2, sourcePerformance2, assessments2, assessmentFindings2, conversationSummaries2, PROSPECT_IDENTITY_KINDS2, PROSPECT_STATUSES2, PROSPECT_FIELD_NAMES2, PROSPECT_COMPANY_FIELD_NAMES2, MAX_PROSPECT_COMPANY_TEXT_LENGTH2, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH2, MAX_PROSPECT_COMPANY_TECHNOLOGIES2, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH2, FIELD_HISTORY_STATES2, MAX_FIELD_HISTORY_ENTRIES2, MAX_PROSPECT_FIELD_VALUE_LENGTH2, MAX_SOURCE_REF_LENGTH2, MAX_PROSPECT_COMPANY_NAME_LENGTH2, MAX_PROSPECT_NOTES_LENGTH2, MAX_PROSPECT_TAG_LENGTH2, MAX_PROSPECT_TAGS2, MAX_PROSPECT_IMPORT_BYTES2, MAX_PROSPECT_IMPORT_ROWS2, PROSPECT_IMPORT_STATES2, PROSPECT_IMPORT_FAILURE_REASONS2, PROSPECT_IMPORT_ROW_RESULTS2, PROSPECT_IMPORT_SKIP_REASONS2, PROSPECT_IMPORT_REJECT_REASONS2, PROSPECT_MERGE_STATES2, PROSPECT_MERGE_UNDO_DAYS2, MAX_MERGED_PROSPECTS2, MAX_MERGE_SNAPSHOT_BYTES2, SOURCE_KIND_PATTERN2, IDENTITY_VALUE_PATTERNS2, prospectCompanies2, prospects2, prospectIdentities2, prospectFields2, prospectCompanyFields2, prospectImports2, prospectImportRows2, prospectMerges2, CALENDAR_PROVIDERS2, CALENDAR_CONNECTION_STATES2, BOOKING_MODES2, BOOKING_STATES2, BOOKING_ORIGINS2, ROUTING_TARGET_KINDS2, ROUTING_PURPOSES2, MAX_ROUTING_POOL_MEMBERS2, MAX_ROUTING_RULES2, MAX_WORKING_WINDOWS2, calendarConnections2, workingHours2, bookingTypes2, bookingTypeDirectory2, routingRules2, routingState2, routingDecisions2, busyBlocks2, bookings2, bookingManageDirectory2, CONSENT_CHANNELS2, CONSENT_GRANT_SOURCES2, CONSENT_WITHDRAWAL_SOURCES2, CONSENT_EVENT_KINDS2, MAX_EVIDENCE_REF_LENGTH2, MAX_SUBMISSION_IP_LENGTH2, MAX_SUBMISSION_USER_AGENT_LENGTH2, MAX_CONSENT_WORDING_LENGTH2, MAX_CONSENT_FORM_NAME_LENGTH2, CONSENT_FORM_STATES2, SUPPRESSION_REASONS2, SUPPRESSION_ADDRESS_KINDS2, SUPPRESSION_REMOVABLE_REASONS2, MAX_SUPPRESSION_NOTE_LENGTH2, MAX_SUPPRESSION_SOURCE_REF_LENGTH2, MAX_MASKED_ADDRESS_LENGTH2, CONTACT_PURPOSES2, LOGGED_DENIAL_CODES2, CONTACT_ALLOW_BASES2, MAX_CALLER_LENGTH2, ADDRESS_HASH_BYTES2, CONTACT_CHECK_RETENTION_DAYS2, FORM_TOKEN_PATTERN2, MIN_FORM_TOKEN_LENGTH2, MAX_FORM_TOKEN_LENGTH2, consentWordings2, consentForms2, consentFormDirectory2, contactConsentEvents2, suppressionEntries2, contactCheckLog2, MAX_SUPPRESSION_IMPORT_ROWS2, MAX_SUPPRESSION_IMPORT_BYTES2, SUPPRESSION_IMPORT_STATES2, SUPPRESSION_IMPORT_FAILURE_REASONS2, SUPPRESSION_IMPORT_ROW_RESULTS2, SUPPRESSION_IMPORT_ROW_REASONS2, suppressionImports2, suppressionImportRows2, AGENT_KINDS2, MAX_AGENT_INSTRUCTION_LENGTH2, CONTROL_LEVELS2, AGENT_SETTING_CHANNELS2, DEFAULT_CHANNEL2, ORGANIZATION_AGENT_KIND2, MAX_ESCALATION_RULES2, AUDIT_ACTOR_KINDS2, MAX_AUDIT_METADATA_BYTES2, EXPORT_KINDS2, EXPORT_FORMATS2, EXPORT_STATES2, EXPORT_ACTIVE_STATES2, EXPORT_FAILURE_REASONS2, EXPORT_SERVICES2, EXPORT_PART_STATES2, EXPORT_PART_FAILURE_REASONS2, MAX_EXPORT_PART_FILES2, MAX_EXPORT_PART_BYTES2, MAX_EXPORT_PREFIX_LENGTH2, API_KEY_SCOPES2, MAX_API_KEY_NAME_LENGTH2, API_KEY_ROLE_CEILINGS2, agentInstructionVersions2, agentInstructionPointers2, agentSettings2, auditEvents2, exportJobs2, exportParts2, coreApiKeys2, apiKeyUsage2, CRM_PROVIDERS2, CRM_OBJECT_KINDS2, CRM_SCOPE_LEVELS2, CRM_CONNECTION_STATES2, CRM_DIRECTIONS2, CRM_STAGE_OUTCOMES2, CRM_FIELD_KEYS2, CRM_MAPPING_KINDS2, CRM_RUN_TRIGGERS2, CRM_RUN_STATES2, CRM_RUN_ERROR_CODES2, CRM_REF_STATES2, MAX_CRM_EXTERNAL_ID_LENGTH2, MAX_CRM_LABEL_LENGTH2, MAX_CRM_RUN_COUNT2, CRM_SKIP_REASON_COUNT2, MAX_CRM_RUN_FAILURES2, MAX_CRM_SEALED_TOKEN_BYTES2, MAX_CRM_KEY_ID_LENGTH2, MAX_CRM_CURSOR_LENGTH2, MAX_CRM_WRITE_KEY_LENGTH2, MAX_CRM_LOCAL_ID_LENGTH2, CRM_WEBHOOK_WINDOW_SECONDS2, crmConnections2, crmMappings2, crmSyncRuns2, crmExternalRefs2, crmWebhookReceipts2, DEMO_RATE_ADDRESS_HASH_BYTES2, demoRateCounters2, DEMO_NOTIFICATION_STATUSES2, DEMO_REQUEST_NAME_MAX2, DEMO_REQUEST_MESSAGE_MAX2, DEMO_REQUEST_SOURCE_PAGE_MAX2, DEMO_REQUEST_KEY_LENGTH2, demoRequests2, INBOX_CHANNELS2, CONVERSATION_CONTROLLERS2, CONVERSATION_STATES2, MESSAGE_DIRECTIONS2, MESSAGE_AUTHOR_KINDS2, REPLY_LABELS2, CLASSIFICATION_DECIDERS2, MAX_MESSAGE_BODY_LENGTH2, MAX_PROVIDER_MESSAGE_ID_LENGTH2, MAX_PENDING_DRAFT_COUNT2, DRAFT_AUTHORS2, DRAFT_STATUSES2, DRAFT_HOLD_REASONS2, MAX_STRATEGY_LENGTH2, MAX_DRAFT_CHECKS2, DRAFT_SOURCE_KINDS2, SOURCE_OUTCOMES2, MAX_EVIDENCE_COUNT2, DECISION_KINDS2, MAX_DECISION_NOTE_LENGTH2, APPROVAL_MODES2, MAX_EXCEPT_LABELS2, ESCALATION_TRIGGERS2, ESCALATION_TARGETS2, conversations2, messages2, drafts2, draftSources2, approvalDecisions2, approvalPolicies2, escalationRules2, OUTBOX_MAX_ATTEMPTS2, OUTBOX_TOPIC_MAX_LENGTH2, OUTBOX_DEDUPE_KEY_MAX_LENGTH2, OUTBOX_PAYLOAD_MAX_BYTES2, OUTBOX_ERROR_CODE_MAX_LENGTH2, OUTBOX_MAX_BATCH2, OUTBOX_MIN_LEASE_MS2, OUTBOX_MAX_LEASE_MS2, OUTBOX_MAX_RETRY_DELAY_MS2, outbox2, outboundSchema2, MAILBOX_PROVIDERS2, MAILBOX_KINDS2, MAILBOX_STATES2, MAILBOX_STATE_REASONS2, HEALTH_EFFECTS2, WEEKDAYS2, SEND_STATES2, SEND_REFUSAL_REASONS2, SEND_DEFERRING_REASONS2, SEND_CHECKS2, MAIL_EVENT_KINDS2, HEALTH_COMPONENT_KINDS2, MAX_MAILBOX_TEAMS2, MAX_MAILBOX_NAME_LENGTH2, MAX_SENDS_PER_DAY2, MAX_SENDS_PER_HOUR2, MAX_MIN_GAP_SECONDS2, MAX_SEQUENCE_STEP2, MAX_ATTEMPT_EPOCH2, MAX_MAIL_PROVIDER_MESSAGE_ID_LENGTH2, MAX_PROVIDER_REFERENCE_LENGTH2, MAX_TOKEN_CIPHERTEXT_BYTES2, MAX_HEALTH_COMPONENTS2, MAX_HEALTH_COUNT2, mailboxes2, mailboxLimits2, mailMessages2, mailEvents2, healthDaily2, mailboxConnectAttempts2, mailboxTestSends2, DRAFT_CHANNELS2, OUTBOUND_LANGUAGES2, DRAFT_CHECKS2, DRAFT_CHECK_RESULTS2, DRAFT_TEXT_SOURCES2, ANGLE_ORIGINS2, CITATION_KINDS2, CITATION_PROSPECT_FIELDS2, BRIEF_ENTRY_ROLES2, MAX_BRIEF_STATEMENTS2, MAX_BRIEF_STATEMENT_LENGTH2, MAX_ANGLE_LENGTH2, MAX_DRAFT_CITATIONS2, MAX_DRAFT_SUBJECT_LENGTH2, MAX_DRAFT_BODY_LENGTH2, MAX_DRAFT_GOAL_LENGTH2, MAX_STEP_KEY_LENGTH2, MAX_MODEL_NAME_LENGTH2, MAX_TONE_LENGTH2, MAX_PREFERRED_WORDS2, MAX_BANNED_PHRASES2, MAX_VOICE_TERM_LENGTH2, MAX_SIGN_OFF_LENGTH2, MAX_VOICE_LENGTH_CHARACTERS2, MIN_VOICE_LENGTH_CHARACTERS2, MAX_VOICE_VERSION2, MAX_CITATION_URL_LENGTH2, MAX_CITATION_DOCUMENT_PAGE2, MAX_DRAFT_REVISION2, MAX_WON_DEAL_COUNT2, MAX_CHECK_COUNT2, MAX_DROPPED_COUNT2, outboundBrandVoices2, outboundBriefs2, outboundBriefStatements2, outboundDrafts2, outboundDraftCitations2, outboundDraftChecks2, outboundModelUsage2, voiceSchema2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2, MAX_QUEUED_DEAL_IMPORTS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, LINE_STATES2, LINE_ASSIGNMENT_KINDS2, LINE_ASSIGNMENT_ROLES2, DEFAULT_LINE_CONCURRENT_AGENT_CALLS2, DEFAULT_LINE_DAILY_AGENT_DIAL_CAP2, MAX_LINE_CONCURRENT_AGENT_CALLS2, MAX_LINE_DAILY_AGENT_DIAL_CAP2, MAX_LINE_LABEL_LENGTH2, VOICE_CALL_DIRECTIONS2, VOICE_CALL_STATES2, VOICE_CALL_FINAL_STATES2, VOICE_CALL_FAILURE_REASONS2, VOICE_CALL_ENDED_BY2, CALL_END_REASONS2, VOICE_TRANSCRIPT_STATES2, VOICE_TRANSCRIPT_UNAVAILABLE_REASONS2, MAX_CALL_DURATION_SECONDS2, MAX_WRAP_UP_NOTE_LENGTH2, VOICE_RECORDING_STATES2, MAX_RECORDING_KEY_LENGTH2, VOICE_RECORDING_CHANNELS2, VOICE_CALL_EVENT_KINDS2, MAX_PROVIDER_EVENT_ID_LENGTH2, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2, voiceLines2, voiceLineDirectory2, voiceCalls2, voiceCallEvents2, voiceRecordings2, INQUIRY_SOURCES2, INQUIRY_CALLBACK_STATES2, INQUIRY_SKIP_REASONS2, MAX_CALLBACK_ATTEMPTS2, MAX_SOURCE_URL_LENGTH2, MIN_AGENT_IDEMPOTENCY_KEY_LENGTH2, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH2, AGENT_VOICE_STYLES2, MAX_AGENT_CALL_SECONDS2, MAX_AGENT_CALL_COST_USD_CENTS2, MAX_AGENT_CONCURRENCY2, MAX_AGENT_GREETING_LENGTH2, MAX_AGENT_HOURS_DAYS2, QUALIFICATION_QUESTION_KINDS2, MAX_QUALIFICATION_QUESTIONS2, MAX_QUESTION_PROMPT_LENGTH2, MAX_ANSWER_LENGTH2, MIN_QUESTION_CHOICES2, MAX_QUESTION_CHOICES2, MAX_SKIP_CONDITIONS2, MAX_QUALIFICATION_SUMMARY_LENGTH2, AGENT_TURN_ROLES2, AGENT_TOOLS2, MAX_TURN_TEXT_LENGTH2, MAX_TURN_SOURCES2, MAX_DOCUMENT_PAGES2, MAX_COPILOT_QUOTE_LENGTH2, HANDOFF_CHANNELS2, HANDOFF_STATES2, HANDOFF_REASONS2, HANDOFF_RESULTS2, MAX_HANDOFF_ATTEMPTS2, CHAT_STATES2, CHAT_TOKEN_HASH_BYTES2, voiceChats2, voiceInquiries2, voiceAgentSettings2, voiceQualificationQuestions2, voiceQualificationAnswers2, voiceAgentTurns2, voiceAgentTurnSources2, voiceHandoffs2, CALL_RESULTS2, AGENT_CALL_END_REASONS2, CALL_GATE_CODES2, AGENT_CALL_SOURCES2, AGENT_CALL_STATES2, MAX_CALL_ATTEMPTS2, AGENT_CALL_NUMBER_HASH_BYTES2, voiceAgentCalls2, CAMPAIGN_STATES2, CAMPAIGN_APPROVAL_MODES2, WINDOW_ZONES2, STEP_KINDS2, STEP_TASKS2, MAX_SEQUENCE_STEPS2, ENROLLMENT_STATES2, ENROLLMENT_STOP_REASONS2, ENROLLMENT_EVENT_KINDS2, PLAY_INTENTS2, PLAY_SOURCES2, PLAY_STATUSES2, PLAY_CITATION_KINDS2, PROMOTION_SOURCES2, OUTBOUND_WORK_KINDS2, MAX_CAMPAIGN_NAME_LENGTH2, MAX_DAILY_CAP2, MAX_CAMPAIGN_VERSION2, MAX_STEP_HOURS2, MAX_TASK_INSTRUCTION_LENGTH2, MAX_BRANCH_ARMS2, MAX_VARIANT_WEIGHT2, MAX_VARIANT_LABEL_LENGTH2, MAX_VARIANT_ANGLE_LENGTH2, MAX_PLAY_EVIDENCE2, MAX_PLAY_CITATIONS2, MAX_PLAY_STEPS2, outboundPlays2, outboundPlayCitations2, outboundCampaigns2, outboundSequences2, outboundSteps2, outboundVariants2, outboundEnrollments2, outboundVariantStats2, outboundEnrollmentEvents2, outboundSendDecisions2, outboundWorkHints2, FIELD_GROUPS2, RUN_STATUSES2, FINAL_RUN_STATUSES2, STOP_REASONS2, ATTEMPT_OUTCOMES2, SKIPPED_ATTEMPT_OUTCOMES2, ATTEMPT_FAILURES2, SIGNAL_KINDS2, SIGNAL_SOURCE_TYPES2, FIT_FIELDS2, FIT_OPERATORS2, MAX_ATTEMPTS_PER_RUN2, MAX_RUN_FIELDS2, MAX_PROVIDERS2, MAX_PROVIDER_KEY_LENGTH2, MAX_MICRO_DOLLARS2, MAX_ATTEMPT_DURATION_MS2, MAX_RESERVATION_HOLD_KEY_LENGTH2, MAX_RUN_REQUEST_ID_LENGTH2, MAX_SIGNAL_DETAIL_BYTES2, MAX_FIT_CONDITION_BYTES2, MAX_FIT_VALUES2, MAX_FIT_NAME_LENGTH2, MAX_FIT_WEIGHT2, MAX_CREDENTIAL_CIPHERTEXT_BYTES2, MAX_CREDENTIAL_KEY_ID_LENGTH2, enrichmentRuns2, enrichmentAttempts2, signals2, fitCriteria2, providerSettings2, enrichmentSpend2, enrichmentReservations2, LINKEDIN_ACCOUNT_STATUSES2, LINKEDIN_PAUSE_REASONS2, LINKEDIN_DAILY_CONNECTION_CEILING2, LINKEDIN_DAILY_MESSAGE_CEILING2, LINKEDIN_WEEKLY_CONNECTION_CEILING2, MAX_LINKEDIN_TYPED_NAME_LENGTH2, MAX_LINKEDIN_PROVIDER_REFERENCE_LENGTH2, MAX_LINKEDIN_WORDING_VERSION_LENGTH2, linkedinAccounts2, linkedinRiskAcceptances2, linkedinChannelSettings2, linkedinUsage2, LINKEDIN_SEND_KINDS2, LINKEDIN_SEND_STATES2, MAX_LINKEDIN_SEND_KEY_LENGTH2, linkedinSends2, MAX_WEBHOOK_SECRET_CIPHERTEXT_BYTES2, MAX_SIGNAL_KINDS_BYTES2, MAX_FIT_MATCHES_BYTES2, signalSettings2, fitScores2, UNSUBSCRIBE_RATE_KEY_HASH_BYTES2, unsubscribeRateCounters2, CALL_STATES2, CALL_FAILURE_REASONS2, CALL_KINDS2, CALL_MEDIA_TYPES2, CALL_CHANNELS2, CALL_REP_BY2, CALL_MAX_TRANSCRIPT_BYTES2, CALL_MAX_RECORDING_BYTES2, CALL_MAX_RECORDING_SECONDS2, CALL_MAX_SPEAKERS2, CALL_SPEAKER_LABEL_MAX_LENGTH2, CALL_SPEAKER_LABEL_MAX_BYTES2, CALL_MAX_SEQ2, CALL_MAX_MOMENTS2, CALL_PURGE_MAX_ATTEMPTS2, CALL_JOB_MAX_ATTEMPTS2, CALL_MAX_VENDOR_SENDS2, MAX_SEARCH_STATE_IDS2, CALL_VENDOR_ID_PATTERN2, CALL_JOB_KINDS2, CALL_JOB_STATES2, repChangeAllowed2, callReuploadRequeues2, CALL_PENDING_CLEANUP_PREDICATE2, CALL_ORIGINS2, calls2, callJobs2, callVendorSends2, consumedMessage2, EMBED_USAGE_MAX_ADD2, EMBED_USAGE_MAX_MOMENTS2, playbookEmbedUsage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, liveCallWaits2, ORPHAN_SWEEP_CURSOR_MAX_BYTES2, ORPHAN_SWEEP_MIN_CLAIM_MS2, ORPHAN_SWEEP_MAX_CLAIM_MS2, playbookOrphanSweeps2, SUGGESTION_KINDS2, SUGGESTION_STATUSES2, MAX_SUGGESTION_TEXT_LENGTH2, MAX_SUGGESTION_MOMENTS2, SUGGESTION_FINGERPRINT_BYTES2, suggestions2, WORK_KINDS2, playbookWorkHints2, CALL_TURN_TRACKS2, MAX_CALL_TURN_TEXT_LENGTH2, COPILOT_CARD_KINDS2, COPILOT_OBJECTION_TYPES2, COPILOT_RATINGS2, MAX_COPILOT_CARDS_PER_CALL2, MAX_COPILOT_CITED_MOMENTS2, MAX_COPILOT_CARD_TEXT_LENGTH2, MAX_COPILOT_EVIDENCE2, MIN_COPILOT_MIN_EVIDENCE2, MAX_COPILOT_MIN_EVIDENCE2, DEFAULT_COPILOT_MIN_MOMENTS2, DEFAULT_COPILOT_MIN_DEALS2, voiceCallTurns2, voiceCopilotCards2, voiceCopilotSettings2, voiceIdempotencyKeys2, MAX_TWILIO_RING_IDENTITIES2, MAX_TWILIO_PROVIDER_ID_LENGTH2, MAX_TWILIO_PLACEMENT_KEY_LENGTH2, MAX_TWILIO_FINGERPRINT_LENGTH2, TWILIO_DIRECTORY_KINDS2, voiceTwilioCalls2, voiceTwilioRecordings2, voiceTwilioPlacements2, voiceTwilioDirectory2, exports_schema };
+export { authSchema2, workspaces2, projects2, ENVIRONMENT_KINDS2, environments2, TENANT_SETTING, ABANDON_CASE_MAX_ATTEMPTS2, ABANDON_CASE_OUTCOMES2, abandonCases2, API_KEY_KINDS2, apiKeys2, ATTEMPT_COUNTER_KINDS2, ATTEMPT_COUNTER_MAX_HITS2, ATTEMPT_COUNTER_KEY_HASH_BYTES2, attemptCounters2, AUDIT_ACTOR_TYPES2, AUDIT_RETENTION_FLOOR2, auditLogs2, users2, backupCodes2, CREDENTIAL_TYPES2, credentials2, environmentSettings2, EVENT_RETENTION_FLOOR2, events2, flowAttempts2, hooks2, hookCallCounts2, IDENTITY_PROVIDERS2, identities2, instanceAuditLogs2, nativeApps2, OAUTH_PROVIDERS2, oauthProviders2, PASSKEY_CHALLENGE_PURPOSES2, passkeyChallenges2, passkeys2, passwordHistory2, proposals2, SESSION_CLIENTS2, SESSION_REVOKE_REASONS2, SESSION_TYPES2, sessions2, REFRESH_SEALED_NEXT_TOKEN_MAX_BYTES2, refreshTokens2, SIGNING_KEY_STATUSES2, signingKeys2, SMS_COUNT_RETENTION_FLOOR_DAYS2, smsCodeCounts2, USER_FACTOR_TYPES2, userFactors2, VERIFICATION_PURPOSES2, verificationTokens2, webhookEndpoints2, WEBHOOK_DELIVERY_STATES2, WEBHOOK_DELIVERY_RETENTION_FLOOR2, webhookDeliveries2, webhookDeliveryAttempts2, coreSchema2, MEMBERSHIP_ROLES2, INVITATION_ROLES2, ORGANIZATION_REGIONS2, ORGANIZATION_STATUSES2, INVITATION_STATES2, MEMBER_NAME_MAX2, IDEMPOTENCY_ROUTE_MAX2, IDEMPOTENCY_KEY_MAX2, IDEMPOTENCY_HASH_BYTES2, IDEMPOTENCY_RESPONSE_MAX_BYTES2, organizations2, memberships2, teams2, teamMembers2, invitations2, membershipDirectory2, invitationDirectory2, organizationState2, idempotencyKeys2, ROLLUP_METRICS2, ROLLUP_GROUP_KINDS2, MAX_ROLLUP_GROUP_KEY_LENGTH2, MAX_ROLLUP_COUNT2, TOUCH_KINDS2, TOUCH_CHANNELS2, TOUCH_AGENT_KINDS2, MAX_TOUCH_SOURCES2, SOURCE_KINDS2, MAX_SOURCE_KEY_LENGTH2, SOURCE_PERFORMANCE_FLAGS2, MAX_SOURCE_DEALS2, ASSESSMENT_SUBJECT_KINDS2, ASSESSMENT_VERDICTS2, ASSESSMENT_JUDGE_SOURCES2, FINDING_CATEGORIES2, FINDING_SEVERITIES2, FINDING_FEEDBACKS2, MAX_FINDING_SPAN_OFFSET2, MAX_FINDING_EXPLANATION_LENGTH2, MAX_ASSESSED_NUMBER2, CONVERSATION_OUTCOME_LABELS2, MAX_SUMMARY_LENGTH2, rollupDaily2, analyticsEvents2, touches2, sourcePerformance2, assessments2, assessmentFindings2, conversationSummaries2, PROSPECT_IDENTITY_KINDS2, PROSPECT_STATUSES2, PROSPECT_FIELD_NAMES2, PROSPECT_COMPANY_FIELD_NAMES2, MAX_PROSPECT_COMPANY_TEXT_LENGTH2, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH2, MAX_PROSPECT_COMPANY_TECHNOLOGIES2, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH2, FIELD_HISTORY_STATES2, MAX_FIELD_HISTORY_ENTRIES2, MAX_PROSPECT_FIELD_VALUE_LENGTH2, MAX_SOURCE_REF_LENGTH2, MAX_PROSPECT_COMPANY_NAME_LENGTH2, MAX_PROSPECT_NOTES_LENGTH2, MAX_PROSPECT_TAG_LENGTH2, MAX_PROSPECT_TAGS2, MAX_PROSPECT_IMPORT_BYTES2, MAX_PROSPECT_IMPORT_ROWS2, PROSPECT_IMPORT_STATES2, PROSPECT_IMPORT_FAILURE_REASONS2, PROSPECT_IMPORT_ROW_RESULTS2, PROSPECT_IMPORT_SKIP_REASONS2, PROSPECT_IMPORT_REJECT_REASONS2, PROSPECT_MERGE_STATES2, PROSPECT_MERGE_UNDO_DAYS2, MAX_MERGED_PROSPECTS2, MAX_MERGE_SNAPSHOT_BYTES2, SOURCE_KIND_PATTERN2, IDENTITY_VALUE_PATTERNS2, prospectCompanies2, prospects2, prospectIdentities2, prospectFields2, prospectCompanyFields2, prospectImports2, prospectImportRows2, prospectMerges2, CALENDAR_PROVIDERS2, CALENDAR_CONNECTION_STATES2, BOOKING_MODES2, BOOKING_STATES2, BOOKING_ORIGINS2, ROUTING_TARGET_KINDS2, ROUTING_PURPOSES2, MAX_ROUTING_POOL_MEMBERS2, MAX_ROUTING_RULES2, MAX_WORKING_WINDOWS2, calendarConnections2, workingHours2, bookingTypes2, bookingTypeDirectory2, routingRules2, routingState2, routingDecisions2, busyBlocks2, bookings2, bookingManageDirectory2, CONSENT_CHANNELS2, CONSENT_GRANT_SOURCES2, CONSENT_WITHDRAWAL_SOURCES2, CONSENT_EVENT_KINDS2, MAX_EVIDENCE_REF_LENGTH2, MAX_SUBMISSION_IP_LENGTH2, MAX_SUBMISSION_USER_AGENT_LENGTH2, MAX_CONSENT_WORDING_LENGTH2, MAX_CONSENT_FORM_NAME_LENGTH2, CONSENT_FORM_STATES2, SUPPRESSION_REASONS2, SUPPRESSION_ADDRESS_KINDS2, SUPPRESSION_REMOVABLE_REASONS2, MAX_SUPPRESSION_NOTE_LENGTH2, MAX_SUPPRESSION_SOURCE_REF_LENGTH2, MAX_MASKED_ADDRESS_LENGTH2, CONTACT_PURPOSES2, LOGGED_DENIAL_CODES2, CONTACT_ALLOW_BASES2, MAX_CALLER_LENGTH2, ADDRESS_HASH_BYTES2, CONTACT_CHECK_RETENTION_DAYS2, FORM_TOKEN_PATTERN2, MIN_FORM_TOKEN_LENGTH2, MAX_FORM_TOKEN_LENGTH2, consentWordings2, consentForms2, consentFormDirectory2, contactConsentEvents2, suppressionEntries2, contactCheckLog2, MAX_SUPPRESSION_IMPORT_ROWS2, MAX_SUPPRESSION_IMPORT_BYTES2, SUPPRESSION_IMPORT_STATES2, SUPPRESSION_IMPORT_FAILURE_REASONS2, SUPPRESSION_IMPORT_ROW_RESULTS2, SUPPRESSION_IMPORT_ROW_REASONS2, suppressionImports2, suppressionImportRows2, AGENT_KINDS2, MAX_AGENT_INSTRUCTION_LENGTH2, CONTROL_LEVELS2, AGENT_SETTING_CHANNELS2, DEFAULT_CHANNEL2, ORGANIZATION_AGENT_KIND2, MAX_ESCALATION_RULES2, AUDIT_ACTOR_KINDS2, MAX_AUDIT_METADATA_BYTES2, EXPORT_KINDS2, EXPORT_FORMATS2, EXPORT_STATES2, EXPORT_ACTIVE_STATES2, EXPORT_FAILURE_REASONS2, EXPORT_SERVICES2, EXPORT_PART_STATES2, EXPORT_PART_FAILURE_REASONS2, MAX_EXPORT_PART_FILES2, MAX_EXPORT_PART_BYTES2, MAX_EXPORT_PREFIX_LENGTH2, API_KEY_SCOPES2, MAX_API_KEY_NAME_LENGTH2, API_KEY_ROLE_CEILINGS2, agentInstructionVersions2, agentInstructionPointers2, agentSettings2, auditEvents2, exportJobs2, exportParts2, coreApiKeys2, apiKeyUsage2, CRM_PROVIDERS2, CRM_OBJECT_KINDS2, CRM_SCOPE_LEVELS2, CRM_CONNECTION_STATES2, CRM_DIRECTIONS2, CRM_STAGE_OUTCOMES2, CRM_FIELD_KEYS2, CRM_MAPPING_KINDS2, CRM_RUN_TRIGGERS2, CRM_RUN_STATES2, CRM_RUN_ERROR_CODES2, CRM_REF_STATES2, MAX_CRM_EXTERNAL_ID_LENGTH2, MAX_CRM_LABEL_LENGTH2, MAX_CRM_RUN_COUNT2, CRM_SKIP_REASON_COUNT2, MAX_CRM_RUN_FAILURES2, MAX_CRM_SEALED_TOKEN_BYTES2, MAX_CRM_KEY_ID_LENGTH2, MAX_CRM_CURSOR_LENGTH2, MAX_CRM_WRITE_KEY_LENGTH2, MAX_CRM_LOCAL_ID_LENGTH2, CRM_WEBHOOK_WINDOW_SECONDS2, crmConnections2, crmMappings2, crmSyncRuns2, crmExternalRefs2, crmWebhookReceipts2, DEMO_RATE_ADDRESS_HASH_BYTES2, demoRateCounters2, DEMO_NOTIFICATION_STATUSES2, DEMO_REQUEST_NAME_MAX2, DEMO_REQUEST_MESSAGE_MAX2, DEMO_REQUEST_SOURCE_PAGE_MAX2, DEMO_REQUEST_KEY_LENGTH2, demoRequests2, INBOX_CHANNELS2, CONVERSATION_CONTROLLERS2, CONVERSATION_STATES2, MESSAGE_DIRECTIONS2, MESSAGE_AUTHOR_KINDS2, REPLY_LABELS2, CLASSIFICATION_DECIDERS2, MAX_MESSAGE_BODY_LENGTH2, MAX_PROVIDER_MESSAGE_ID_LENGTH2, MAX_PENDING_DRAFT_COUNT2, DRAFT_AUTHORS2, DRAFT_STATUSES2, DRAFT_HOLD_REASONS2, MAX_STRATEGY_LENGTH2, MAX_DRAFT_CHECKS2, DRAFT_SOURCE_KINDS2, SOURCE_OUTCOMES2, MAX_EVIDENCE_COUNT2, DECISION_KINDS2, MAX_DECISION_NOTE_LENGTH2, APPROVAL_MODES2, MAX_EXCEPT_LABELS2, ESCALATION_TRIGGERS2, ESCALATION_TARGETS2, conversations2, messages2, drafts2, draftSources2, approvalDecisions2, approvalPolicies2, escalationRules2, OUTBOX_MAX_ATTEMPTS2, OUTBOX_TOPIC_MAX_LENGTH2, OUTBOX_DEDUPE_KEY_MAX_LENGTH2, OUTBOX_PAYLOAD_MAX_BYTES2, OUTBOX_ERROR_CODE_MAX_LENGTH2, OUTBOX_MAX_BATCH2, OUTBOX_MIN_LEASE_MS2, OUTBOX_MAX_LEASE_MS2, OUTBOX_MAX_RETRY_DELAY_MS2, outbox2, outboundSchema2, MAILBOX_PROVIDERS2, MAILBOX_KINDS2, MAILBOX_STATES2, MAILBOX_STATE_REASONS2, HEALTH_EFFECTS2, WEEKDAYS2, SEND_STATES2, SEND_REFUSAL_REASONS2, SEND_DEFERRING_REASONS2, SEND_CHECKS2, MAIL_EVENT_KINDS2, HEALTH_COMPONENT_KINDS2, MAX_MAILBOX_TEAMS2, MAX_MAILBOX_NAME_LENGTH2, MAX_SENDS_PER_DAY2, MAX_SENDS_PER_HOUR2, MAX_MIN_GAP_SECONDS2, MAX_SEQUENCE_STEP2, MAX_ATTEMPT_EPOCH2, MAX_MAIL_PROVIDER_MESSAGE_ID_LENGTH2, MAX_PROVIDER_REFERENCE_LENGTH2, MAX_TOKEN_CIPHERTEXT_BYTES2, MAX_HEALTH_COMPONENTS2, MAX_HEALTH_COUNT2, mailboxes2, mailboxLimits2, mailMessages2, mailEvents2, healthDaily2, mailboxConnectAttempts2, mailboxTestSends2, DRAFT_CHANNELS2, OUTBOUND_LANGUAGES2, DRAFT_CHECKS2, DRAFT_CHECK_RESULTS2, DRAFT_TEXT_SOURCES2, ANGLE_ORIGINS2, CITATION_KINDS2, CITATION_PROSPECT_FIELDS2, BRIEF_ENTRY_ROLES2, MAX_BRIEF_STATEMENTS2, MAX_BRIEF_STATEMENT_LENGTH2, MAX_ANGLE_LENGTH2, MAX_DRAFT_CITATIONS2, MAX_DRAFT_SUBJECT_LENGTH2, MAX_DRAFT_BODY_LENGTH2, MAX_DRAFT_GOAL_LENGTH2, MAX_STEP_KEY_LENGTH2, MAX_MODEL_NAME_LENGTH2, MAX_TONE_LENGTH2, MAX_PREFERRED_WORDS2, MAX_BANNED_PHRASES2, MAX_VOICE_TERM_LENGTH2, MAX_SIGN_OFF_LENGTH2, MAX_VOICE_LENGTH_CHARACTERS2, MIN_VOICE_LENGTH_CHARACTERS2, MAX_VOICE_VERSION2, MAX_CITATION_URL_LENGTH2, MAX_CITATION_DOCUMENT_PAGE2, MAX_DRAFT_REVISION2, MAX_WON_DEAL_COUNT2, MAX_CHECK_COUNT2, MAX_DROPPED_COUNT2, outboundBrandVoices2, outboundBriefs2, outboundBriefStatements2, outboundDrafts2, outboundDraftCitations2, outboundDraftChecks2, outboundModelUsage2, voiceSchema2, playbookSchema2, DOCUMENT_STATES2, DOCUMENT_FAILURE_REASONS2, DOCUMENT_FILE_TYPES2, DOCUMENT_MAX_BYTES2, DOCUMENT_MAX_PAGE_COUNT2, DOCUMENT_PURGE_MAX_ATTEMPTS2, INGESTION_JOB_STATES2, INGESTION_STEPS2, INGESTION_JOB_MAX_ATTEMPTS2, INGESTION_MAX_CHUNKS2, CONSUMED_MESSAGE_STATES2, GLOBAL_SCOPE_ORGANIZATION_ID2, PENDING_CLEANUP_PREDICATE2, documents2, organizationUsage2, ingestionJobs2, indexSettings2, DEAL_OUTCOMES2, DEAL_IMPORT_STATES2, DEAL_IMPORT_FAILURE_REASONS2, DEAL_IMPORT_ROW_RESULTS2, DEAL_IMPORT_ROW_REASONS2, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID2, MAX_QUEUED_DEAL_IMPORTS2, DEAL_ID_MAX_LENGTH2, DEAL_ID_MAX_BYTES2, DEAL_NAME_MAX_LENGTH2, DEAL_NAME_MAX_BYTES2, DEAL_IMPORT_MAX_ROWS2, DEAL_IMPORT_MAX_BYTES2, DEAL_MAX_SEQ2, RIGHTS_MAX_WORDING_VERSION2, DEAL_IMPORT_MAX_ATTEMPTS2, DEAL_IMPORT_APPLY_BATCH2, deals2, dealImports2, dealImportRows2, rightsConfirmations2, LINE_STATES2, LINE_ASSIGNMENT_KINDS2, LINE_ASSIGNMENT_ROLES2, DEFAULT_LINE_CONCURRENT_AGENT_CALLS2, DEFAULT_LINE_DAILY_AGENT_DIAL_CAP2, MAX_LINE_CONCURRENT_AGENT_CALLS2, MAX_LINE_DAILY_AGENT_DIAL_CAP2, MAX_LINE_LABEL_LENGTH2, VOICE_CALL_DIRECTIONS2, VOICE_CALL_STATES2, VOICE_CALL_FINAL_STATES2, VOICE_CALL_FAILURE_REASONS2, VOICE_CALL_ENDED_BY2, CALL_END_REASONS2, VOICE_TRANSCRIPT_STATES2, VOICE_TRANSCRIPT_UNAVAILABLE_REASONS2, MAX_CALL_DURATION_SECONDS2, MAX_WRAP_UP_NOTE_LENGTH2, VOICE_RECORDING_STATES2, MAX_RECORDING_KEY_LENGTH2, VOICE_RECORDING_CHANNELS2, VOICE_CALL_EVENT_KINDS2, MAX_PROVIDER_EVENT_ID_LENGTH2, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH2, voiceLines2, voiceLineDirectory2, voiceCalls2, voiceCallEvents2, voiceRecordings2, INQUIRY_SOURCES2, INQUIRY_CALLBACK_STATES2, INQUIRY_SKIP_REASONS2, MAX_CALLBACK_ATTEMPTS2, MAX_SOURCE_URL_LENGTH2, MIN_AGENT_IDEMPOTENCY_KEY_LENGTH2, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH2, AGENT_VOICE_STYLES2, MAX_AGENT_CALL_SECONDS2, MAX_AGENT_CALL_COST_USD_CENTS2, MAX_AGENT_CONCURRENCY2, MAX_AGENT_GREETING_LENGTH2, MAX_AGENT_HOURS_DAYS2, QUALIFICATION_QUESTION_KINDS2, MAX_QUALIFICATION_QUESTIONS2, MAX_QUESTION_PROMPT_LENGTH2, MAX_ANSWER_LENGTH2, MIN_QUESTION_CHOICES2, MAX_QUESTION_CHOICES2, MAX_SKIP_CONDITIONS2, MAX_QUALIFICATION_SUMMARY_LENGTH2, AGENT_TURN_ROLES2, AGENT_TOOLS2, MAX_TURN_TEXT_LENGTH2, MAX_TURN_SOURCES2, MAX_DOCUMENT_PAGES2, MAX_COPILOT_QUOTE_LENGTH2, HANDOFF_CHANNELS2, HANDOFF_STATES2, HANDOFF_REASONS2, HANDOFF_RESULTS2, MAX_HANDOFF_ATTEMPTS2, CHAT_STATES2, CHAT_TOKEN_HASH_BYTES2, voiceChats2, voiceInquiries2, voiceAgentSettings2, voiceQualificationQuestions2, voiceQualificationAnswers2, voiceAgentTurns2, voiceAgentTurnSources2, voiceHandoffs2, CALL_RESULTS2, AGENT_CALL_END_REASONS2, CALL_GATE_CODES2, AGENT_CALL_SOURCES2, AGENT_CALL_STATES2, MAX_CALL_ATTEMPTS2, AGENT_CALL_NUMBER_HASH_BYTES2, voiceAgentCalls2, CAMPAIGN_STATES2, CAMPAIGN_APPROVAL_MODES2, WINDOW_ZONES2, STEP_KINDS2, STEP_TASKS2, MAX_SEQUENCE_STEPS2, ENROLLMENT_STATES2, ENROLLMENT_STOP_REASONS2, ENROLLMENT_EVENT_KINDS2, PLAY_INTENTS2, PLAY_SOURCES2, PLAY_STATUSES2, PLAY_CITATION_KINDS2, PROMOTION_SOURCES2, OUTBOUND_WORK_KINDS2, MAX_CAMPAIGN_NAME_LENGTH2, MAX_DAILY_CAP2, MAX_CAMPAIGN_VERSION2, MAX_STEP_HOURS2, MAX_TASK_INSTRUCTION_LENGTH2, MAX_BRANCH_ARMS2, MAX_VARIANT_WEIGHT2, MAX_VARIANT_LABEL_LENGTH2, MAX_VARIANT_ANGLE_LENGTH2, MAX_PLAY_EVIDENCE2, MAX_PLAY_CITATIONS2, MAX_PLAY_STEPS2, outboundPlays2, outboundPlayCitations2, outboundCampaigns2, outboundSequences2, outboundSteps2, outboundVariants2, outboundEnrollments2, outboundVariantStats2, outboundEnrollmentEvents2, outboundSendDecisions2, outboundWorkHints2, FIELD_GROUPS2, RUN_STATUSES2, FINAL_RUN_STATUSES2, STOP_REASONS2, ATTEMPT_OUTCOMES2, SKIPPED_ATTEMPT_OUTCOMES2, ATTEMPT_FAILURES2, SIGNAL_KINDS2, SIGNAL_SOURCE_TYPES2, FIT_FIELDS2, FIT_OPERATORS2, MAX_ATTEMPTS_PER_RUN2, MAX_RUN_FIELDS2, MAX_PROVIDERS2, MAX_PROVIDER_KEY_LENGTH2, MAX_MICRO_DOLLARS2, MAX_ATTEMPT_DURATION_MS2, MAX_RESERVATION_HOLD_KEY_LENGTH2, MAX_RUN_REQUEST_ID_LENGTH2, MAX_SIGNAL_DETAIL_BYTES2, MAX_FIT_CONDITION_BYTES2, MAX_FIT_VALUES2, MAX_FIT_NAME_LENGTH2, MAX_FIT_WEIGHT2, MAX_CREDENTIAL_CIPHERTEXT_BYTES2, MAX_CREDENTIAL_KEY_ID_LENGTH2, enrichmentRuns2, enrichmentAttempts2, signals2, fitCriteria2, providerSettings2, enrichmentSpend2, enrichmentReservations2, LINKEDIN_ACCOUNT_STATUSES2, LINKEDIN_PAUSE_REASONS2, LINKEDIN_DAILY_CONNECTION_CEILING2, LINKEDIN_DAILY_MESSAGE_CEILING2, LINKEDIN_WEEKLY_CONNECTION_CEILING2, MAX_LINKEDIN_TYPED_NAME_LENGTH2, MAX_LINKEDIN_PROVIDER_REFERENCE_LENGTH2, MAX_LINKEDIN_WORDING_VERSION_LENGTH2, linkedinAccounts2, linkedinRiskAcceptances2, linkedinChannelSettings2, linkedinUsage2, LINKEDIN_SEND_KINDS2, LINKEDIN_SEND_STATES2, MAX_LINKEDIN_SEND_KEY_LENGTH2, linkedinSends2, MAX_WEBHOOK_SECRET_CIPHERTEXT_BYTES2, MAX_SIGNAL_KINDS_BYTES2, MAX_FIT_MATCHES_BYTES2, signalSettings2, fitScores2, UNSUBSCRIBE_RATE_KEY_HASH_BYTES2, unsubscribeRateCounters2, CALL_STATES2, CALL_FAILURE_REASONS2, CALL_KINDS2, CALL_MEDIA_TYPES2, CALL_CHANNELS2, CALL_REP_BY2, CALL_MAX_TRANSCRIPT_BYTES2, CALL_MAX_RECORDING_BYTES2, CALL_MAX_RECORDING_SECONDS2, CALL_MAX_SPEAKERS2, CALL_SPEAKER_LABEL_MAX_LENGTH2, CALL_SPEAKER_LABEL_MAX_BYTES2, CALL_MAX_SEQ2, CALL_MAX_MOMENTS2, CALL_PURGE_MAX_ATTEMPTS2, CALL_JOB_MAX_ATTEMPTS2, CALL_MAX_VENDOR_SENDS2, MAX_SEARCH_STATE_IDS2, CALL_VENDOR_ID_PATTERN2, CALL_JOB_KINDS2, CALL_JOB_STATES2, repChangeAllowed2, callReuploadRequeues2, CALL_PENDING_CLEANUP_PREDICATE2, CALL_ORIGINS2, calls2, callJobs2, callVendorSends2, consumedMessage2, EMBED_USAGE_MAX_ADD2, EMBED_USAGE_MAX_MOMENTS2, playbookEmbedUsage2, INTERNAL_CALL_USER_ID2, playbookIdempotencyKeys2, liveCallWaits2, ORPHAN_SWEEP_CURSOR_MAX_BYTES2, ORPHAN_SWEEP_MIN_CLAIM_MS2, ORPHAN_SWEEP_MAX_CLAIM_MS2, playbookOrphanSweeps2, SUGGESTION_KINDS2, SUGGESTION_STATUSES2, MAX_SUGGESTION_TEXT_LENGTH2, MAX_SUGGESTION_MOMENTS2, SUGGESTION_FINGERPRINT_BYTES2, suggestions2, WORK_KINDS2, playbookWorkHints2, CHAT_RATE_KEY_HASH_BYTES2, voiceChatRateCounters2, CALL_TURN_TRACKS2, MAX_CALL_TURN_TEXT_LENGTH2, COPILOT_CARD_KINDS2, COPILOT_OBJECTION_TYPES2, COPILOT_RATINGS2, MAX_COPILOT_CARDS_PER_CALL2, MAX_COPILOT_CITED_MOMENTS2, MAX_COPILOT_CARD_TEXT_LENGTH2, MAX_COPILOT_EVIDENCE2, MIN_COPILOT_MIN_EVIDENCE2, MAX_COPILOT_MIN_EVIDENCE2, DEFAULT_COPILOT_MIN_MOMENTS2, DEFAULT_COPILOT_MIN_DEALS2, voiceCallTurns2, voiceCopilotCards2, voiceCopilotSettings2, voiceIdempotencyKeys2, MAX_TWILIO_RING_IDENTITIES2, MAX_TWILIO_PROVIDER_ID_LENGTH2, MAX_TWILIO_PLACEMENT_KEY_LENGTH2, MAX_TWILIO_FINGERPRINT_LENGTH2, TWILIO_DIRECTORY_KINDS2, voiceTwilioCalls2, voiceTwilioRecordings2, voiceTwilioPlacements2, voiceTwilioDirectory2, exports_schema };
