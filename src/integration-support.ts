@@ -362,3 +362,20 @@ export async function pinColumnStats(
   }
   return restore
 }
+
+/**
+ * Drop a scratch database once its closed pools' backends have gone. `Pool.end()` resolves before
+ * the server finishes the exit, and `with (force)` on a backend still leaving sends it a FATAL
+ * that the already-detached client reports as an unhandled error; force only ends what is left.
+ */
+export async function dropTestDatabase(admin: Pool, name: string): Promise<void> {
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    const left = await admin.query('select 1 from pg_stat_activity where datname = $1', [name])
+    if (left.rowCount === 0) {
+      break
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  await admin.query(`drop database if exists "${name}" with (force)`)
+}
