@@ -321,6 +321,8 @@ describe('the voice line lookup', () => {
       line_for_number: [true, false, true],
       orgs_with_due_recordings: [true, false, true],
       orgs_with_stale_ringing: [true, false, true],
+      refuse_agent_call_rewrite: [false, true, false],
+      refuse_agent_call_truncate: [false, true, false],
       refuse_idempotency_rewrite: [false, true, false],
       refuse_truncate: [false, true, false],
       refuse_twilio_call_identity_change: [false, true, false],
