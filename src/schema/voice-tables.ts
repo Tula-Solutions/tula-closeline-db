@@ -83,6 +83,12 @@ export const VOICE_TRANSCRIPT_UNAVAILABLE_REASONS = [
   'speech_to_text_failed',
   'stream_dropped',
 ] as const
+/** Why a Call's Copilot panel is quiet; null once a card is shown. Mirrors the contract's quiet reasons minus `transcript_unavailable`. */
+export const VOICE_COPILOT_QUIET_REASONS = [
+  'not_enough_won_moments',
+  'below_minimum_evidence',
+  'playbook_unavailable',
+] as const
 /** The longest a Call can last, in seconds. Mirrors the contract's `MAX_CALL_DURATION_SECONDS`. */
 export const MAX_CALL_DURATION_SECONDS = 43_200
 /** The longest wrap-up note, in characters. Mirrors the contract's `MAX_WRAP_UP_NOTE_LENGTH`. */
@@ -267,7 +273,8 @@ export const voiceLineDirectory = voiceSchema.table(
  * read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing; `voice.orgs_with_stale_outbound` (migration 0071) finds outbound
  * Calls still ringing or connecting (`calls_stale_outbound_idx`). `copilot` is set when voice places
  * the Call and never changes; `transcript_unavailable` is set when the live Transcript's speech-to-text
- * fails, so any instance can tell the Rep's stream.
+ * fails, and `copilot_quiet_reason` when a card search finds nothing to show (null once a card is
+ * shown), so any instance can tell the Rep's stream.
  */
 export const voiceCalls = voiceSchema.table(
   'calls',
@@ -303,6 +310,7 @@ export const voiceCalls = voiceSchema.table(
     transcriptUnavailable: text('transcript_unavailable', {
       enum: VOICE_TRANSCRIPT_UNAVAILABLE_REASONS,
     }),
+    copilotQuietReason: text('copilot_quiet_reason', { enum: VOICE_COPILOT_QUIET_REASONS }),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
   (t) => [
@@ -330,6 +338,10 @@ export const voiceCalls = voiceSchema.table(
     check(
       'calls_transcript_unavailable_known',
       sql`${t.transcriptUnavailable} is null or ${t.transcriptUnavailable} in (${list(VOICE_TRANSCRIPT_UNAVAILABLE_REASONS)})`
+    ),
+    check(
+      'calls_copilot_quiet_reason_known',
+      sql`${t.copilotQuietReason} is null or ${t.copilotQuietReason} in (${list(VOICE_COPILOT_QUIET_REASONS)})`
     ),
     check(
       'calls_transcript_state_known',

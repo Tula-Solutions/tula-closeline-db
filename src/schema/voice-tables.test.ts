@@ -19,6 +19,7 @@ import {
   VOICE_CALL_FAILURE_REASONS,
   VOICE_CALL_FINAL_STATES,
   VOICE_CALL_STATES,
+  VOICE_COPILOT_QUIET_REASONS,
   VOICE_RECORDING_STATES,
   VOICE_TRANSCRIPT_STATES,
   VOICE_TRANSCRIPT_UNAVAILABLE_REASONS,
@@ -202,6 +203,19 @@ describe('the Call transcript_unavailable column', () => {
     expect(VOICE_TRANSCRIPT_UNAVAILABLE_REASONS).toEqual([
       'speech_to_text_failed',
       'stream_dropped',
+    ])
+  })
+})
+
+describe('the Call copilot_quiet_reason column', () => {
+  test('is a nullable text column listing why the card panel is quiet', () => {
+    const column = getTableConfig(voiceCalls).columns.find((c) => c.name === 'copilot_quiet_reason')
+    expect(column?.dataType).toBe('string')
+    expect(column?.notNull).toBe(false)
+    expect(VOICE_COPILOT_QUIET_REASONS).toEqual([
+      'not_enough_won_moments',
+      'below_minimum_evidence',
+      'playbook_unavailable',
     ])
   })
 })

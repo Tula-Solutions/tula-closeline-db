@@ -1,0 +1,2 @@
+ALTER TABLE "voice"."calls" ADD COLUMN "copilot_quiet_reason" text;--> statement-breakpoint
+ALTER TABLE "voice"."calls" ADD CONSTRAINT "calls_copilot_quiet_reason_known" CHECK ("voice"."calls"."copilot_quiet_reason" is null or "voice"."calls"."copilot_quiet_reason" in ('not_enough_won_moments', 'below_minimum_evidence', 'playbook_unavailable'));
