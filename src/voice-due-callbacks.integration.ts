@@ -6,7 +6,7 @@ import { integrationEnv, migrateUp } from './integration-support'
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 const env = integrationEnv()
 const SETTING = 'app.organization_id'
-const SIG = 'voice.orgs_with_due_callbacks(integer)'
+const SIG = 'voice.orgs_with_due_callbacks(text, integer)'
 const newId = (prefix: string): string => `${prefix}_${randomBytes(16).toString('hex')}`
 
 describe('voice.orgs_with_due_callbacks', () => {
@@ -66,12 +66,16 @@ describe('voice.orgs_with_due_callbacks', () => {
     return orgId
   }
 
-  const due = async (pool: Pool, limit: number | null): Promise<string[]> =>
+  const due = async (
+    pool: Pool,
+    limit: number | null,
+    after: string | null = null
+  ): Promise<string[]> =>
     (
       await scoped(pool, null, (c) =>
         c.query<{ organization_id: string }>(
-          'select * from voice.orgs_with_due_callbacks($1::int)',
-          [limit]
+          'select * from voice.orgs_with_due_callbacks($1::text, $2::int)',
+          [after, limit]
         )
       )
     ).rows.map((r) => r.organization_id)
@@ -116,9 +120,30 @@ describe('voice.orgs_with_due_callbacks', () => {
     expect((await due(voice, 1_000_000)).length).toBeLessThanOrEqual(500)
   })
 
+  test('pages by keyset: every due Organization is visited across pages, once', async () => {
+    const mine = new Set<string>()
+    for (let i = 0; i < 5; i++) {
+      mine.add(await inquiry('pending'))
+    }
+    const seen: string[] = []
+    let after: string | null = null
+    for (;;) {
+      const page: string[] = await due(voice, 2, after)
+      if (page.length === 0) {
+        break
+      }
+      expect(page.every((id) => after === null || id > after)).toBe(true)
+      seen.push(...page)
+      after = page[page.length - 1] ?? null
+    }
+    expect(seen).toEqual([...seen].sort())
+    expect(new Set(seen).size).toBe(seen.length)
+    expect([...mine].filter((id) => !seen.includes(id))).toEqual([])
+  })
+
   test('returns Organization ids only, and only closeline_voice may execute it', async () => {
     const r = await scoped(voice, null, (c) =>
-      c.query('select * from voice.orgs_with_due_callbacks(5)')
+      c.query('select * from voice.orgs_with_due_callbacks(null, 5)')
     )
     expect(r.fields.map((f) => f.name)).toEqual(['organization_id'])
     const run = async (role: string) =>

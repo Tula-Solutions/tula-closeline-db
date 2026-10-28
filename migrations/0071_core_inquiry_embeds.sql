@@ -52,30 +52,33 @@ ALTER FUNCTION "core"."inquiry_embed_for_key_hash"(text) OWNER TO closeline_core
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA "core" FROM closeline_core_key_lookup;
 --> statement-breakpoint
--- voice.orgs_with_due_callbacks: up to p_limit distinct Organization ids (ascending, cut to 500; a
--- null or smaller-than-one limit gives no row) that hold an Inquiry whose callback is due now: still
+-- voice.orgs_with_due_callbacks: up to p_limit distinct Organization ids (ascending, strictly after
+-- p_after; null starts from the beginning; cut to 500; a null or smaller-than-one limit gives no row;
+-- page by passing the last id back as p_after, as orgs_with_stale_ringing does) that hold an Inquiry whose callback is due now: still
 -- 'pending', or 'no_answer' with a retry time that has passed. Ids only. Owned by the existing
--- purge-scan definer role, which gets SELECT on three columns of voice.inquiries.
+-- purge-scan definer role, which gets SELECT on three columns of voice.inquiries. The origins CHECK
+-- on core.inquiry_embeds bounds only the count; core validates each origin at its edge.
 GRANT SELECT ("organization_id", "callback_state", "callback_next_attempt_at") ON "voice"."inquiries" TO closeline_voice_purge_scan;
 --> statement-breakpoint
-CREATE FUNCTION "voice"."orgs_with_due_callbacks"(p_limit integer)
+CREATE FUNCTION "voice"."orgs_with_due_callbacks"(p_after text, p_limit integer)
 RETURNS TABLE ("organization_id" text)
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
   SELECT DISTINCT i."organization_id"
     FROM "voice"."inquiries" i
-   WHERE i."callback_state" = 'pending'
-      OR (i."callback_state" = 'no_answer' AND i."callback_next_attempt_at" <= now())
+   WHERE (i."callback_state" = 'pending'
+          OR (i."callback_state" = 'no_answer' AND i."callback_next_attempt_at" <= now()))
+     AND (p_after IS NULL OR i."organization_id" > p_after)
    ORDER BY i."organization_id"
    LIMIT CASE WHEN p_limit >= 1 THEN least(p_limit, 500) ELSE 0 END
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION "voice"."orgs_with_due_callbacks"(integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "voice"."orgs_with_due_callbacks"(text, integer) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION "voice"."orgs_with_due_callbacks"(integer) TO closeline_voice;
+GRANT EXECUTE ON FUNCTION "voice"."orgs_with_due_callbacks"(text, integer) TO closeline_voice;
 --> statement-breakpoint
 GRANT CREATE ON SCHEMA "voice" TO closeline_voice_purge_scan;
 --> statement-breakpoint
-ALTER FUNCTION "voice"."orgs_with_due_callbacks"(integer) OWNER TO closeline_voice_purge_scan;
+ALTER FUNCTION "voice"."orgs_with_due_callbacks"(text, integer) OWNER TO closeline_voice_purge_scan;
 --> statement-breakpoint
 REVOKE CREATE ON SCHEMA "voice" FROM closeline_voice_purge_scan;
