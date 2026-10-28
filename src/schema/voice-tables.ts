@@ -78,6 +78,11 @@ export const CALL_END_REASONS = [
 ] as const
 /** The states of a Call's Transcript. Mirrors the contract's `VOICE_TRANSCRIPT_STATES`. */
 export const VOICE_TRANSCRIPT_STATES = ['pending', 'ready', 'deleted'] as const
+/** Why a Call's live Transcript stopped; null on the Call while it runs. Mirrors the voice service. */
+export const VOICE_TRANSCRIPT_UNAVAILABLE_REASONS = [
+  'speech_to_text_failed',
+  'stream_dropped',
+] as const
 /** The longest a Call can last, in seconds. Mirrors the contract's `MAX_CALL_DURATION_SECONDS`. */
 export const MAX_CALL_DURATION_SECONDS = 43_200
 /** The longest wrap-up note, in characters. Mirrors the contract's `MAX_WRAP_UP_NOTE_LENGTH`. */
@@ -261,7 +266,8 @@ export const voiceLineDirectory = voiceSchema.table(
  * applied to the rows one of those reads. `calls_stale_ringing_idx` is the one cross-Organization
  * read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing; `voice.orgs_with_stale_outbound` (migration 0071) finds outbound
  * Calls still ringing or connecting (`calls_stale_outbound_idx`). `copilot` is set when voice places
- * the Call and never changes.
+ * the Call and never changes; `transcript_unavailable` is set when the live Transcript's speech-to-text
+ * fails, so any instance can tell the Rep's stream.
  */
 export const voiceCalls = voiceSchema.table(
   'calls',
@@ -294,6 +300,9 @@ export const voiceCalls = voiceSchema.table(
     transcriptState: text('transcript_state', { enum: VOICE_TRANSCRIPT_STATES })
       .notNull()
       .default('pending'),
+    transcriptUnavailable: text('transcript_unavailable', {
+      enum: VOICE_TRANSCRIPT_UNAVAILABLE_REASONS,
+    }),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
   (t) => [
@@ -317,6 +326,10 @@ export const voiceCalls = voiceSchema.table(
     check(
       'calls_failure_reason_known',
       sql`${t.failureReason} is null or ${t.failureReason} in (${list(VOICE_CALL_FAILURE_REASONS)})`
+    ),
+    check(
+      'calls_transcript_unavailable_known',
+      sql`${t.transcriptUnavailable} is null or ${t.transcriptUnavailable} in (${list(VOICE_TRANSCRIPT_UNAVAILABLE_REASONS)})`
     ),
     check(
       'calls_transcript_state_known',
