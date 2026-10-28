@@ -547,6 +547,13 @@
       "when": 1793222427218,
       "tag": "0077_voice_chat_rate_counters",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793222888151,
+      "tag": "0078_outbound_draft_request_key",
+      "breakpoints": true
     }
   ]
 }

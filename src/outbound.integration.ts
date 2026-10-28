@@ -471,6 +471,34 @@ describe('outbound tables', () => {
       }
     })
 
+    test('request, regeneration and variant keys have a bounded shape and a request key is unique per Organization', async () => {
+      const a = await seed()
+      const b = await seed()
+      const key = 'draft-key-000000001'
+      const setKey = (orgId: string, draftId: string, value: string, column = 'request_key') =>
+        run(orgId, `update outbound.drafts set ${column} = $2 where id = $1`, [draftId, value])
+      const other = await addDraft(a.orgId, a.voiceId, a.prospectId)
+      await setKey(a.orgId, a.draftId, key)
+      expect((await refusal(setKey(a.orgId, other, key))).code).toBe(UNIQUE_VIOLATION)
+      await setKey(b.orgId, b.draftId, key)
+      expect((await refusal(setKey(a.orgId, other, 'too-short'))).code).toBe(CHECK_VIOLATION)
+      const setKeys = (value: string[]) =>
+        run(a.orgId, 'update outbound.drafts set regenerate_keys = $2 where id = $1', [
+          other,
+          value,
+        ])
+      await setKeys([key, 'draft-key-000000002'])
+      expect((await refusal(setKeys([key, 'too-short']))).code).toBe(CHECK_VIOLATION)
+      expect(
+        (await refusal(setKeys(Array.from({ length: 33 }, (_, i) => `draft-key-${i + 1000000}`))))
+          .code
+      ).toBe(CHECK_VIOLATION)
+      const setVariant = (value: string) =>
+        run(a.orgId, 'update outbound.drafts set variant_key = $2 where id = $1', [other, value])
+      await setVariant('variant-a')
+      expect((await refusal(setVariant('Not A Key'))).code).toBe(CHECK_VIOLATION)
+    })
+
     test('deleting a Draft takes its Citations and checks along', async () => {
       const a = await seed()
       const draftId = await addDraft(a.orgId, a.voiceId, a.prospectId)
