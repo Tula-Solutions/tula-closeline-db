@@ -75,8 +75,9 @@ describe('voice.agent_calls', () => {
       line_id: newId('line'),
       requested_by_membership_id: newId('mem'),
       state: 'dialing',
+      // Fixed steps back from now, so created <= dialed <= ended however the clock ticks between helpers.
       created_at: new Date(Date.now() - 5000),
-      dialed_at: new Date(),
+      dialed_at: new Date(Date.now() - 4000),
       number_hash: hash(),
       ...over,
     }
@@ -92,7 +93,7 @@ describe('voice.agent_calls', () => {
   const endedRow = (result: string, over: Row = {}): Row => ({
     state: 'ended',
     result,
-    ended_at: new Date(),
+    ended_at: new Date(Date.now() - 1000),
     ...(result === 'answered' ? { end_reason: 'agent_ended' } : {}),
     ...over,
   })
