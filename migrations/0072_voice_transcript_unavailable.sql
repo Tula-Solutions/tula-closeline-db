@@ -1,0 +1,2 @@
+ALTER TABLE "voice"."calls" ADD COLUMN "transcript_unavailable" text;--> statement-breakpoint
+ALTER TABLE "voice"."calls" ADD CONSTRAINT "calls_transcript_unavailable_known" CHECK ("voice"."calls"."transcript_unavailable" is null or "voice"."calls"."transcript_unavailable" in ('speech_to_text_failed', 'stream_dropped'));

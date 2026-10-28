@@ -21,6 +21,7 @@ import {
   VOICE_CALL_STATES,
   VOICE_RECORDING_STATES,
   VOICE_TRANSCRIPT_STATES,
+  VOICE_TRANSCRIPT_UNAVAILABLE_REASONS,
   voiceCallEvents,
   voiceCalls,
   voiceLines,
@@ -188,5 +189,19 @@ describe('the Call end reason and Agent cost columns', () => {
     expect(columns.agent_cost_micro_cents?.columnType).toBe('PgBigInt53')
     expect(columns.agent_cost_micro_cents?.notNull).toBe(true)
     expect(columns.agent_cost_micro_cents?.default).toBe(0)
+  })
+})
+
+describe('the Call transcript_unavailable column', () => {
+  test('is a nullable text column listing the reasons the Transcript stops', () => {
+    const column = getTableConfig(voiceCalls).columns.find(
+      (c) => c.name === 'transcript_unavailable'
+    )
+    expect(column?.dataType).toBe('string')
+    expect(column?.notNull).toBe(false)
+    expect(VOICE_TRANSCRIPT_UNAVAILABLE_REASONS).toEqual([
+      'speech_to_text_failed',
+      'stream_dropped',
+    ])
   })
 })
