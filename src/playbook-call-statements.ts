@@ -96,7 +96,8 @@ where organization_id = $1`
  *
  * One row, whose `result` says what happened, decided in this order and in one statement (so the
  * rights check, the duplicate check, the quota and the insert see one snapshot under the upload
- * lock): `rights_required` (no confirmation at exactly that version: nothing else is read or
+ * lock): `rights_required` (no confirmation at exactly that version, unless `$20` is `rep`, a Call the
+ * platform recorded itself, which the rights confirmation does not cover: nothing else is read or
  * written); `existing` (the same content is already stored under **this** Deal: the row carries
  * that Call's `id`, `state` and `failure_reason`; restore it with {@link CALL_RESTORE_FOR_UPLOAD} if
  * `deleted`, {@link CALL_REQUEUE} it if `failed`, else answer with it as it is); `other_deal` (the
@@ -106,8 +107,8 @@ where organization_id = $1`
  * among Calls whose purge has not started and that erasure has not barred from restore.
  */
 export const CALL_INSERT = `with rights as (
-  select exists (select 1 from playbook.rights_confirmations
-                 where organization_id = $1 and wording_version = $19::int) as ok),
+  select (coalesce($20::text = 'rep', false) or exists (select 1 from playbook.rights_confirmations
+                 where organization_id = $1 and wording_version = $19::int)) as ok),
 dup as (
   select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal
   ${FROM_CALL}

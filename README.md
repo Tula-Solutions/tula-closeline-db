@@ -2030,8 +2030,8 @@ first; callers retry SQLSTATE `40P01` and `40001` with a bounded, jittered retry
 
     ```sql
     with rights as (
-      select exists (select 1 from playbook.rights_confirmations
-                     where organization_id = $1 and wording_version = $19::int) as ok),
+      select (coalesce($20::text = 'rep', false) or exists (select 1 from playbook.rights_confirmations
+                     where organization_id = $1 and wording_version = $19::int)) as ok),
     dup as (
       select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal
       from playbook.calls c join playbook.deals d on d.organization_id = c.organization_id and d.id = c.deal_record_id
@@ -3857,5 +3857,33 @@ Three additions for the approval queue (hub issue 285) and Agent-origin learning
     from playbook.suggestions
     where organization_id = $1 and status = 'accepted' and (created_at, id) < ($2::timestamptz, $3::text)
     order by created_at desc, id desc
+    limit least(greatest(coalesce($4::int, 1), 1), 100)
+    ```
+
+    `LIVE_CALL_WAIT_RECORD`:
+
+    ```sql
+    insert into playbook.live_call_waits
+      (organization_id, call_id, direction, ended_at)
+    values ($1, $2, $3, $4::timestamptz)
+    on conflict (organization_id, call_id) do nothing
+    returning call_id
+    ```
+
+    `LIVE_CALL_WAIT_CLEAR`:
+
+    ```sql
+    delete from playbook.live_call_waits
+    where organization_id = $1 and call_id = $2
+    returning call_id
+    ```
+
+    `LIVE_CALL_WAIT_LIST`:
+
+    ```sql
+    select call_id, direction, ended_at, created_at, created_at::text as cursor_at
+    from playbook.live_call_waits
+    where organization_id = $1 and (created_at, call_id) > ($2::timestamptz, $3::text)
+    order by created_at, call_id
     limit least(greatest(coalesce($4::int, 1), 1), 100)
     ```

@@ -505,6 +505,13 @@
       "when": 1793207324253,
       "tag": "0071_voice_stale_outbound_orgs",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1793211329505,
+      "tag": "0072_playbook_live_call_waits",
+      "breakpoints": true
     }
   ]
 }

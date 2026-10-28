@@ -29,6 +29,7 @@ const salesMigration = read('0015_playbook_sales_history.sql')
 const callsMigration = read('0016_playbook_calls.sql') + read('0018_call_vendor_sends.sql')
 const sweepEmbedMigration = read('0032_playbook_sweep_cursor_embed_usage.sql')
 const analyticsMigration = read('0038_core_analytics_playbook_suggestions.sql')
+const liveCallWaitsMigration = read('0072_playbook_live_call_waits.sql')
 
 const NAMES = [
   'call_jobs',
@@ -43,6 +44,7 @@ const NAMES = [
   'idempotency_keys',
   'index_settings',
   'ingestion_jobs',
+  'live_call_waits',
   'organization_usage',
   'orphan_sweeps',
   'rights_confirmations',
@@ -50,7 +52,7 @@ const NAMES = [
 ]
 
 describe('the playbook schema', () => {
-  test('has the sixteen tenant tables and the work registry, and nothing else', () => {
+  test('has the seventeen tenant tables and the work registry, and nothing else', () => {
     expect(tables.map((t) => t.name).sort()).toEqual([...NAMES, 'work_hints'].sort())
   })
 
@@ -73,7 +75,8 @@ describe('the playbook schema', () => {
       salesMigration +
       callsMigration +
       sweepEmbedMigration +
-      analyticsMigration
+      analyticsMigration +
+      liveCallWaitsMigration
     for (const statement of tenantRlsStatements('playbook', name)) {
       expect(sql).toContain(statement)
     }

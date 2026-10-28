@@ -19,10 +19,9 @@ const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`
 const hex = (): string => crypto.randomUUID().replaceAll('-', '')
 
 /** CALL_INSERT as it was before the `origin` column existed: this test runs at an old schema. */
-const CALL_INSERT_BEFORE_ORIGIN = CALL_INSERT.replace(', origin)', ')').replace(
-  ",\n    coalesce($20::text, 'imported')",
-  ''
-)
+const CALL_INSERT_BEFORE_ORIGIN = CALL_INSERT.replace(', origin)', ')')
+  .replace(",\n    coalesce($20::text, 'imported')", '')
+  .replace("coalesce($20::text = 'rep', false) or ", '')
 
 describe('migration 0018 on data that exists before it', () => {
   let admin: Pool

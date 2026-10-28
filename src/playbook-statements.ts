@@ -1,4 +1,5 @@
 import { CALL_STATEMENTS } from './playbook-call-statements'
+import { LIVE_CALL_STATEMENTS } from './playbook-live-call-statements'
 import {
   BATCH,
   CLAMP,
@@ -1821,4 +1822,5 @@ export const PLAYBOOK_STATEMENTS = {
   ORGANIZATIONS_WITH_WORK,
   ...CALL_STATEMENTS,
   ...SUGGESTION_STATEMENTS,
+  ...LIVE_CALL_STATEMENTS,
 } as const
