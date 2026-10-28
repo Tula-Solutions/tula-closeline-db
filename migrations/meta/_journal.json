@@ -449,6 +449,13 @@
       "when": 1793156566008,
       "tag": "0063_core_booking_manage_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793189345566,
+      "tag": "0064_outbound_linkedin",
+      "breakpoints": true
     }
   ]
 }
