@@ -2208,6 +2208,7 @@ var prospectFields2 = coreSchema2.table("prospect_fields", { ...fieldHistoryColu
   }).onDelete("cascade"),
   uniqueIndex4("prospect_fields_current_key").on(t.organizationId, t.prospectId, t.fieldName).where(sql20`${t.state} = 'current'`),
   index25("prospect_fields_history_idx").on(t.organizationId, t.prospectId, t.fieldName, t.setAt.desc(), t.seq.desc()),
+  index25("prospect_fields_value_idx").on(t.organizationId, t.fieldName, t.value).where(sql20`${t.state} <> 'current'`),
   index25("prospect_fields_value_trgm_idx").using("gin", t.value.op("gin_trgm_ops")).where(sql20`${t.state} = 'current'`)
 ]);
 var prospectCompanyFields2 = coreSchema2.table("prospect_company_fields", { ...fieldHistoryColumns(), companyId: text34("company_id").notNull() }, (t) => [

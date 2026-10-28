@@ -1,0 +1,1 @@
+CREATE INDEX "prospect_fields_value_idx" ON "core"."prospect_fields" USING btree ("organization_id","field_name","value") WHERE "core"."prospect_fields"."state" <> 'current';

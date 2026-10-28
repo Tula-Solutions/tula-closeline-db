@@ -429,6 +429,10 @@ export const prospectFields = coreSchema.table(
       t.setAt.desc(),
       t.seq.desc()
     ),
+    // Serves duplicate suggestions: an earlier or suggested value looked up by its text.
+    index('prospect_fields_value_idx')
+      .on(t.organizationId, t.fieldName, t.value)
+      .where(sql`${t.state} <> 'current'`),
     // Serves the Prospect list filter `q` (`value ilike '%text%'` on current values); see 0029.
     index('prospect_fields_value_trgm_idx')
       .using('gin', t.value.op('gin_trgm_ops'))

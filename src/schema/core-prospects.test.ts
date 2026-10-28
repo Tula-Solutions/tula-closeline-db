@@ -145,3 +145,24 @@ describe('the prospect tables', () => {
     expect(linkedin.test('linkedin.com/in/ada?x=1')).toBe(false)
   })
 })
+
+describe('duplicate suggestions', () => {
+  test('earlier values are indexed by field and text, outside the current ones', () => {
+    const index = getTableConfig(prospectFields).indexes.find(
+      (i) => i.config.name === 'prospect_fields_value_idx'
+    )
+
+    expect(index?.config.columns.map((c) => ('name' in c ? c.name : ''))).toEqual([
+      'organization_id',
+      'field_name',
+      'value',
+    ])
+    expect(index?.config.where).toBeDefined()
+    expect(
+      readFileSync(
+        new URL('../../migrations/0065_core_prospect_fields_value_idx.sql', import.meta.url),
+        'utf8'
+      )
+    ).toContain(`WHERE "core"."prospect_fields"."state" <> 'current'`)
+  })
+})
