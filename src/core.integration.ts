@@ -1923,6 +1923,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
     /** name: [SECURITY DEFINER, trigger function, closeline_core may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       api_key_for_hash: [true, false, true],
+      inquiry_embed_for_key_hash: [true, false, true],
       audit_events_extend_chain: [false, true, false],
       booking_for_manage_token: [true, false, true],
       booking_type_for_token: [true, false, true],
@@ -2020,8 +2021,9 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         // The CRM webhook lookup (0033) is owned by its own bypass role and pinned to
         // 'pg_catalog, core, pg_temp'; core-crm-webhook-lookup.integration.ts pins the rest.
         const crmFn = fn.name === 'crm_connection_for_account'
-        // The API key lookup (0035) likewise, with its own role and the same pinned path.
-        const keyFn = fn.name === 'api_key_for_hash'
+        // The API key lookup (0035) likewise, with its own role and the same pinned path; the Inquiry
+        // embed lookup shares the role but schema-qualifies every name, so it pins pg_catalog only.
+        const keyFn = fn.name === 'api_key_for_hash' || fn.name === 'inquiry_embed_for_key_hash'
         // The outbox drain (0039) has its own role too, with the same pinned path.
         const outboxFn = fn.name.startsWith('outbox_')
         const expectedOwner = outboxFn
@@ -2041,7 +2043,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
           fn.name,
           searchFn
             ? ['search_path=pg_catalog, core, public, pg_temp', 'plan_cache_mode=force_custom_plan']
-            : crmFn || keyFn || outboxFn
+            : crmFn || (keyFn && fn.name === 'api_key_for_hash') || outboxFn
               ? ['search_path=pg_catalog, core, pg_temp']
               : planPinned
                 ? ['search_path=pg_catalog, pg_temp', 'plan_cache_mode=force_custom_plan']
@@ -2061,6 +2063,7 @@ describe('the core schema: Organizations, memberships, Teams and invitations', (
         booking_type_for_token: 's',
         crm_connection_for_account: 's',
         api_key_for_hash: 's',
+        inquiry_embed_for_key_hash: 's',
         consent_channels_valid: 'i',
         reply_labels_valid: 'i',
         has_expired: 'i',

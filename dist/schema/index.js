@@ -300,6 +300,9 @@ import {
   approvalDecisions2,
   approvalPolicies2,
   escalationRules2,
+  MAX_INQUIRY_EMBED_ORIGINS2,
+  MAX_INQUIRY_CONSENT_WORDING_LENGTH2,
+  inquiryEmbeds2,
   OUTBOX_MAX_ATTEMPTS2,
   OUTBOX_TOPIC_MAX_LENGTH2,
   OUTBOX_DEDUPE_KEY_MAX_LENGTH2,
@@ -645,7 +648,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-mtdxfhq7.js";
+} from "../shared/chunk-yedx4wp4.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -917,6 +920,8 @@ export {
   MAX_HANDOFF_ATTEMPTS2 as MAX_HANDOFF_ATTEMPTS,
   MAX_HEALTH_COMPONENTS2 as MAX_HEALTH_COMPONENTS,
   MAX_HEALTH_COUNT2 as MAX_HEALTH_COUNT,
+  MAX_INQUIRY_CONSENT_WORDING_LENGTH2 as MAX_INQUIRY_CONSENT_WORDING_LENGTH,
+  MAX_INQUIRY_EMBED_ORIGINS2 as MAX_INQUIRY_EMBED_ORIGINS,
   MAX_LINE_LABEL_LENGTH2 as MAX_LINE_LABEL_LENGTH,
   MAX_LINKEDIN_PROVIDER_REFERENCE_LENGTH2 as MAX_LINKEDIN_PROVIDER_REFERENCE_LENGTH,
   MAX_LINKEDIN_TYPED_NAME_LENGTH2 as MAX_LINKEDIN_TYPED_NAME_LENGTH,
@@ -1184,6 +1189,7 @@ export {
   identities2 as identities,
   indexSettings2 as indexSettings,
   ingestionJobs2 as ingestionJobs,
+  inquiryEmbeds2 as inquiryEmbeds,
   instanceAuditLogs2 as instanceAuditLogs,
   invitationDirectory2 as invitationDirectory,
   invitations2 as invitations,
