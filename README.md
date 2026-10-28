@@ -3752,6 +3752,17 @@ GRANT closeline_voice_purge_scan TO closeline_owner WITH SET TRUE, INHERIT FALSE
 The migration fails naming the role if it is missing or wrongly configured. Locally
 `docker/postgres/init.sql` does this; a volume created before v0.45.0 lacks the role, so recreate it.
 
+## Outbound Call sweep (v0.73.0, migration `0071`)
+
+- **`voice.calls.copilot`** (boolean, not null, default false): voice sets it when it places a
+  Call and never changes it. No trigger guards it, like `ai_assisted`.
+- **`voice.orgs_with_stale_outbound(p_before timestamptz, p_after text, p_limit integer)`**: the
+  distinct `organization_id`s with an outbound Call in `ringing` or `connecting` and `created_at <
+  p_before`. Same rules as `orgs_with_stale_ringing` below (limit cut to 500, ids only, EXECUTE for
+  `closeline_voice` alone, owned by `closeline_voice_purge_scan`). Index `calls_stale_outbound_idx`.
+- One `UPDATE` to `state = 'failed'` with a `failure_reason` and `ended_at` satisfies
+  `calls_failed_has_reason` and `calls_final_has_end`.
+
 ## Organizations with stale ringing Calls (v0.60.0, migration `0058`)
 
 `voice.orgs_with_stale_ringing(p_before timestamptz, p_after text, p_limit integer)` returns the

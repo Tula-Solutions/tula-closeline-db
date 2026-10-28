@@ -34670,7 +34670,9 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g63<{
 * (`calls_state_list_idx`); of one Prospect (`calls_prospect_list_idx`); of one Line
 * (`calls_line_list_idx`, also the foreign key's index). A direction or time-range filter is
 * applied to the rows one of those reads. `calls_stale_ringing_idx` is the one cross-Organization
-* read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing.
+* read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing; `voice.orgs_with_stale_outbound` (migration 0071) finds outbound
+* Calls still ringing or connecting (`calls_stale_outbound_idx`). `copilot` is set when voice places
+* the Call and never changes.
 */
 declare const voiceCalls: PgTableWithColumns_a5zn0g63<{
 	name: "calls";
@@ -34899,6 +34901,23 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g63<{
 		}, {}, {}>;
 		aiAssisted: PgColumn_ffrhhp63<{
 			name: "ai_assisted";
+			tableName: "calls";
+			dataType: "boolean";
+			columnType: "PgBoolean";
+			data: boolean;
+			driverParam: boolean;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		copilot: PgColumn_ffrhhp63<{
+			name: "copilot";
 			tableName: "calls";
 			dataType: "boolean";
 			columnType: "PgBoolean";

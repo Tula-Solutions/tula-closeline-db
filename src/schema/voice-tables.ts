@@ -259,7 +259,9 @@ export const voiceLineDirectory = voiceSchema.table(
  * (`calls_state_list_idx`); of one Prospect (`calls_prospect_list_idx`); of one Line
  * (`calls_line_list_idx`, also the foreign key's index). A direction or time-range filter is
  * applied to the rows one of those reads. `calls_stale_ringing_idx` is the one cross-Organization
- * read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing.
+ * read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing; `voice.orgs_with_stale_outbound` (migration 0071) finds outbound
+ * Calls still ringing or connecting (`calls_stale_outbound_idx`). `copilot` is set when voice places
+ * the Call and never changes.
  */
 export const voiceCalls = voiceSchema.table(
   'calls',
@@ -278,6 +280,7 @@ export const voiceCalls = voiceSchema.table(
     disclosureWordingVersion: integer('disclosure_wording_version'),
     disclosurePlayedAt: ts('disclosure_played_at'),
     aiAssisted: boolean('ai_assisted').notNull().default(false),
+    copilot: boolean('copilot').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     answeredAt: ts('answered_at'),
     endedAt: ts('ended_at'),
@@ -405,6 +408,9 @@ export const voiceCalls = voiceSchema.table(
     index('calls_stale_ringing_idx')
       .on(t.createdAt, t.organizationId)
       .where(sql`${t.state} = 'ringing' and ${t.direction} = 'inbound'`),
+    index('calls_stale_outbound_idx')
+      .on(t.createdAt, t.organizationId)
+      .where(sql`${t.direction} = 'outbound' and ${t.state} in ('ringing', 'connecting')`),
     index('calls_prospect_list_idx')
       .on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc())
       .where(sql`${t.prospectId} is not null`),
