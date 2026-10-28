@@ -1,0 +1,3 @@
+ALTER TABLE "outbound"."briefs" ADD COLUMN "request_key" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "briefs_request_key" ON "outbound"."briefs" USING btree ("organization_id","request_key");--> statement-breakpoint
+ALTER TABLE "outbound"."briefs" ADD CONSTRAINT "briefs_request_key_shape" CHECK ("outbound"."briefs"."request_key" is null or (char_length("outbound"."briefs"."request_key") between 16 and 128 and "outbound"."briefs"."request_key" ~ '^[A-Za-z0-9_.:-]+$'));

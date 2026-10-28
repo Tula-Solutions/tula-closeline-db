@@ -350,6 +350,23 @@ describe('outbound tables', () => {
       expect(error.code).toBe(CHECK_VIOLATION)
     })
 
+    test('a request key builds one Brief per Organization and has a bounded shape', async () => {
+      const a = await seed()
+      const b = await seed()
+      const insert = (orgId: string, key: string) =>
+        run(
+          orgId,
+          `insert into outbound.briefs (id, organization_id, prospect_id, angle_text, angle_origin, prospect_updated_at, language, model, expires_at, request_key)
+           values ($1, $2, $3, 'x', 'won_deals', now(), 'en', 'm', now() + interval '1 day', $4)`,
+          [newId('brf'), orgId, newId('prs'), key]
+        )
+      const key = 'idem-key-0000000001'
+      await insert(a.orgId, key)
+      expect((await refusal(insert(a.orgId, key))).code).toBe(UNIQUE_VIOLATION)
+      await insert(b.orgId, key)
+      expect((await refusal(insert(a.orgId, 'too-short'))).code).toBe(CHECK_VIOLATION)
+    })
+
     test('a statement needs text and a source, an angle source has no text', async () => {
       const a = await seed()
       const noText = await refusal(
