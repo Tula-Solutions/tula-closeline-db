@@ -1,5 +1,5 @@
 {
-  "id": "3bd478cd-0d40-42c6-9bb8-e7a069e197a7",
+  "id": "498a1643-7a23-454e-ba16-92cd7a2a939d",
   "prevId": "73f2331a-ab55-4cd6-9de3-769b747fe854",
   "version": "7",
   "dialect": "postgresql",
@@ -15251,166 +15251,6 @@
       },
       "isRLSEnabled": false
     },
-    "core.inquiry_embeds": {
-      "name": "inquiry_embeds",
-      "schema": "core",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "publishable_key": {
-          "name": "publishable_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "publishable_key_hash": {
-          "name": "publishable_key_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "allowed_origins": {
-          "name": "allowed_origins",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "consent_wording_id": {
-          "name": "consent_wording_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consent_wording_version": {
-          "name": "consent_wording_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consent_wording_text": {
-          "name": "consent_wording_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "inquiry_embeds_key_hash_key": {
-          "name": "inquiry_embeds_key_hash_key",
-          "columns": [
-            {
-              "expression": "publishable_key_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "inquiry_embeds_organization_id_organizations_organization_id_fk": {
-          "name": "inquiry_embeds_organization_id_organizations_organization_id_fk",
-          "tableFrom": "inquiry_embeds",
-          "tableTo": "organizations",
-          "schemaTo": "core",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "organization_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "inquiry_embeds_wording_fk": {
-          "name": "inquiry_embeds_wording_fk",
-          "tableFrom": "inquiry_embeds",
-          "tableTo": "consent_wording",
-          "schemaTo": "core",
-          "columnsFrom": [
-            "organization_id",
-            "consent_wording_id"
-          ],
-          "columnsTo": [
-            "organization_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "inquiry_embeds_pkey": {
-          "name": "inquiry_embeds_pkey",
-          "columns": [
-            "organization_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "inquiry_embeds_organization_id_shape": {
-          "name": "inquiry_embeds_organization_id_shape",
-          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "inquiry_embeds_organization_not_global": {
-          "name": "inquiry_embeds_organization_not_global",
-          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "inquiry_embeds_key_shape": {
-          "name": "inquiry_embeds_key_shape",
-          "value": "\"core\".\"inquiry_embeds\".\"publishable_key\" ~ '^[A-Za-z0-9_-]{32,64}$'"
-        },
-        "inquiry_embeds_key_hash_shape": {
-          "name": "inquiry_embeds_key_hash_shape",
-          "value": "\"core\".\"inquiry_embeds\".\"publishable_key_hash\" ~ '^[0-9a-f]{64}$'"
-        },
-        "inquiry_embeds_origins_bounds": {
-          "name": "inquiry_embeds_origins_bounds",
-          "value": "cardinality(\"core\".\"inquiry_embeds\".\"allowed_origins\") between 0 and 20"
-        },
-        "inquiry_embeds_wording_all_or_none": {
-          "name": "inquiry_embeds_wording_all_or_none",
-          "value": "(\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null) = (\"core\".\"inquiry_embeds\".\"consent_wording_version\" is null) and (\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null) = (\"core\".\"inquiry_embeds\".\"consent_wording_text\" is null)"
-        },
-        "inquiry_embeds_wording_id_shape": {
-          "name": "inquiry_embeds_wording_id_shape",
-          "value": "\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null or \"core\".\"inquiry_embeds\".\"consent_wording_id\" ~ '^cwd_[0-9a-f]{32}$'"
-        },
-        "inquiry_embeds_wording_version": {
-          "name": "inquiry_embeds_wording_version",
-          "value": "\"core\".\"inquiry_embeds\".\"consent_wording_version\" >= 1"
-        },
-        "inquiry_embeds_wording_text_shape": {
-          "name": "inquiry_embeds_wording_text_shape",
-          "value": "char_length(\"core\".\"inquiry_embeds\".\"consent_wording_text\") between 1 and 5000"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "core.outbox": {
       "name": "outbox",
       "schema": "core",
@@ -24701,9 +24541,36 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "request_key": {
+          "name": "request_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
+        "briefs_request_key": {
+          "name": "briefs_request_key",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "briefs_prospect_idx": {
           "name": "briefs_prospect_idx",
           "columns": [
@@ -24842,6 +24709,10 @@
         "briefs_expires_after_created": {
           "name": "briefs_expires_after_created",
           "value": "\"outbound\".\"briefs\".\"expires_at\" > \"outbound\".\"briefs\".\"created_at\""
+        },
+        "briefs_request_key_shape": {
+          "name": "briefs_request_key_shape",
+          "value": "\"outbound\".\"briefs\".\"request_key\" is null or (char_length(\"outbound\".\"briefs\".\"request_key\") between 16 and 128 and \"outbound\".\"briefs\".\"request_key\" ~ '^[A-Za-z0-9_.:-]+$')"
         }
       },
       "isRLSEnabled": false

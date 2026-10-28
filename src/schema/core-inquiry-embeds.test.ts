@@ -4,7 +4,7 @@ import { getTableConfig } from 'drizzle-orm/pg-core'
 import { inquiryEmbeds } from './core-inquiry-embeds'
 
 const migration = readFileSync(
-  new URL('../../migrations/0075_core_inquiry_embeds.sql', import.meta.url),
+  new URL('../../migrations/0077_core_inquiry_embeds.sql', import.meta.url),
   'utf8'
 )
 
