@@ -18,6 +18,7 @@ import {
   type AuthRegion,
   adminUrl,
   dropStaleTestObjects,
+  dropTestDatabase,
   inAuthEnvironment,
   integrationEnv,
   migrateUp,
@@ -980,13 +981,13 @@ describe('auth.abandon_cases', () => {
         "select datname from pg_database where datname like 'it\\_migrate\\_%'"
       )
       for (const { datname } of stale.rows) {
-        await admin.query(`drop database if exists "${datname}" with (force)`)
+        await dropTestDatabase(admin, datname)
       }
     })
 
     afterAll(async () => {
       for (const name of databases) {
-        await admin.query(`drop database if exists "${name}" with (force)`)
+        await dropTestDatabase(admin, name)
       }
       await admin.end()
       rmSync(folder, { recursive: true, force: true })

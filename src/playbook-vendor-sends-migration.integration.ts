@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Pool, type PoolClient } from 'pg'
-import { adminUrl, integrationEnv, rejectionOf } from './integration-support'
+import { adminUrl, dropTestDatabase, integrationEnv, rejectionOf } from './integration-support'
 import { runMigrations } from './migrate'
 import { CALL_INSERT } from './playbook-call-statements'
 import { QUOTA_LOCK, RIGHTS_CONFIRM } from './playbook-statements'
@@ -113,13 +113,13 @@ describe('migration 0018 on data that exists before it', () => {
       "select datname from pg_database where datname like 'it\\_vendor18\\_%'"
     )
     for (const { datname } of stale.rows) {
-      await admin.query(`drop database if exists "${datname}" with (force)`)
+      await dropTestDatabase(admin, datname)
     }
   })
 
   afterAll(async () => {
     for (const name of databases) {
-      await admin.query(`drop database if exists "${name}" with (force)`)
+      await dropTestDatabase(admin, name)
     }
     await admin.end()
     rmSync(folder, { recursive: true, force: true })
