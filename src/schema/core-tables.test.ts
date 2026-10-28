@@ -54,6 +54,8 @@ const CONSENT_TABLES = [
   'contact_check_log',
   'contact_consent_event',
   'suppression_entry',
+  'suppression_import_rows',
+  'suppression_imports',
 ]
 const CRM_TABLES = [
   'crm_connection',
@@ -112,7 +114,7 @@ const CALENDAR_TABLES = [
 ]
 
 describe('the core schema', () => {
-  test('has the six tenant tables, the eight prospect tables, the five consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table, the demo rate counter, the outbox, the seven inbox tables and the eight calendar tables, and nothing else', () => {
+  test('has the six tenant tables, the eight prospect tables, the seven consent tables, the five CRM tables, the eight agent control, audit, export and API key tables, the six analytics, assessment and summary tables, the three directories, the status table, the Demo Request table, the demo rate counter, the outbox, the seven inbox tables and the eight calendar tables, and nothing else', () => {
     expect(coreTables.map((config) => config.name).sort()).toEqual(
       [
         ...NO_ACCESS,
