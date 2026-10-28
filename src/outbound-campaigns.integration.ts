@@ -652,8 +652,9 @@ describe('outbound campaign tables', () => {
       }
     })
 
-    test('work_hints is the only outbound table on the allowlist and holds a kind, an id and a time', async () => {
+    test('the unsubscribe rate counter and work_hints are the only outbound tables on the allowlist, and work_hints holds a kind, an id and a time', async () => {
       expect(NON_TENANT_TABLES.filter((t) => t.startsWith('outbound.'))).toEqual([
+        'outbound.unsubscribe_rate_counter',
         'outbound.work_hints',
       ])
       const columns = await owner.query(
