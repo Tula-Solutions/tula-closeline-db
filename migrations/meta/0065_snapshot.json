@@ -1,5 +1,5 @@
 {
-  "id": "d8f76522-52c7-4166-88df-2991fa5d128b",
+  "id": "80f52968-9638-41cb-9066-ebe17be86738",
   "prevId": "3b114587-d0c5-4acb-b255-5c5b02e6a8a9",
   "version": "7",
   "dialect": "postgresql",
@@ -10308,351 +10308,6 @@
         "suppression_entry_only_removable_removed": {
           "name": "suppression_entry_only_removable_removed",
           "value": "\"core\".\"suppression_entry\".\"removed_at\" is null or \"core\".\"suppression_entry\".\"removable\""
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "core.suppression_import_rows": {
-      "name": "suppression_import_rows",
-      "schema": "core",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "import_id": {
-          "name": "import_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "row_number": {
-          "name": "row_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "result": {
-          "name": "result",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "suppression_import_rows_result_idx": {
-          "name": "suppression_import_rows_result_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "import_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "result",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "row_number",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "suppression_import_rows_import_fk": {
-          "name": "suppression_import_rows_import_fk",
-          "tableFrom": "suppression_import_rows",
-          "tableTo": "suppression_imports",
-          "schemaTo": "core",
-          "columnsFrom": [
-            "organization_id",
-            "import_id"
-          ],
-          "columnsTo": [
-            "organization_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "suppression_import_rows_pkey": {
-          "name": "suppression_import_rows_pkey",
-          "columns": [
-            "organization_id",
-            "import_id",
-            "row_number"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "suppression_import_rows_organization_id_shape": {
-          "name": "suppression_import_rows_organization_id_shape",
-          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "suppression_import_rows_organization_not_global": {
-          "name": "suppression_import_rows_organization_not_global",
-          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "suppression_import_rows_import_id_shape": {
-          "name": "suppression_import_rows_import_id_shape",
-          "value": "\"import_id\" ~ '^simp_[0-9a-f]{32}$'"
-        },
-        "suppression_import_rows_row_number_bounds": {
-          "name": "suppression_import_rows_row_number_bounds",
-          "value": "\"core\".\"suppression_import_rows\".\"row_number\" between 2 and 50001"
-        },
-        "suppression_import_rows_result_known": {
-          "name": "suppression_import_rows_result_known",
-          "value": "\"core\".\"suppression_import_rows\".\"result\" in ('added', 'already_suppressed', 'invalid')"
-        },
-        "suppression_import_rows_reason_matches_result": {
-          "name": "suppression_import_rows_reason_matches_result",
-          "value": "(\"core\".\"suppression_import_rows\".\"result\" = 'invalid') = (\"core\".\"suppression_import_rows\".\"reason\" is not null)\n        and (\"core\".\"suppression_import_rows\".\"reason\" is null or \"core\".\"suppression_import_rows\".\"reason\" in ('unreadable_address', 'unsupported_address'))"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "core.suppression_imports": {
-      "name": "suppression_imports",
-      "schema": "core",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'uploaded'"
-        },
-        "failure_reason": {
-          "name": "failure_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_hash": {
-          "name": "content_hash",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "object_key": {
-          "name": "object_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "processed_rows": {
-          "name": "processed_rows",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "total_rows": {
-          "name": "total_rows",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "added_rows": {
-          "name": "added_rows",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "already_suppressed_rows": {
-          "name": "already_suppressed_rows",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "invalid_rows": {
-          "name": "invalid_rows",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by_user_id": {
-          "name": "created_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "suppression_imports_list_idx": {
-          "name": "suppression_imports_list_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "suppression_imports_organization_id_organizations_organization_id_fk": {
-          "name": "suppression_imports_organization_id_organizations_organization_id_fk",
-          "tableFrom": "suppression_imports",
-          "tableTo": "organizations",
-          "schemaTo": "core",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "organization_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "suppression_imports_pkey": {
-          "name": "suppression_imports_pkey",
-          "columns": [
-            "organization_id",
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "suppression_imports_id_shape": {
-          "name": "suppression_imports_id_shape",
-          "value": "\"id\" ~ '^simp_[0-9a-f]{32}$'"
-        },
-        "suppression_imports_organization_id_shape": {
-          "name": "suppression_imports_organization_id_shape",
-          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "suppression_imports_organization_not_global": {
-          "name": "suppression_imports_organization_not_global",
-          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "suppression_imports_created_by_user_id_shape": {
-          "name": "suppression_imports_created_by_user_id_shape",
-          "value": "\"created_by_user_id\" ~ '^usr_[0-9a-f]{32}$'"
-        },
-        "suppression_imports_state_known": {
-          "name": "suppression_imports_state_known",
-          "value": "\"core\".\"suppression_imports\".\"state\" in ('uploaded', 'processing', 'completed', 'failed')"
-        },
-        "suppression_imports_failure_reason_known": {
-          "name": "suppression_imports_failure_reason_known",
-          "value": "\"core\".\"suppression_imports\".\"failure_reason\" in ('too_many_rows', 'unreadable')"
-        },
-        "suppression_imports_failed_has_reason": {
-          "name": "suppression_imports_failed_has_reason",
-          "value": "(\"core\".\"suppression_imports\".\"state\" = 'failed') = (\"core\".\"suppression_imports\".\"failure_reason\" is not null)"
-        },
-        "suppression_imports_size_bounds": {
-          "name": "suppression_imports_size_bounds",
-          "value": "\"core\".\"suppression_imports\".\"size_bytes\" between 1 and 10485760"
-        },
-        "suppression_imports_content_hash_length": {
-          "name": "suppression_imports_content_hash_length",
-          "value": "octet_length(\"core\".\"suppression_imports\".\"content_hash\") = 32"
-        },
-        "suppression_imports_object_key_shape": {
-          "name": "suppression_imports_object_key_shape",
-          "value": "char_length(\"core\".\"suppression_imports\".\"object_key\") between 1 and 1024 and \"core\".\"suppression_imports\".\"object_key\" collate \"C\" ~ '^[!-~]+$'"
-        },
-        "suppression_imports_processed_rows_bounds": {
-          "name": "suppression_imports_processed_rows_bounds",
-          "value": "\"core\".\"suppression_imports\".\"processed_rows\" between 0 and 50000"
-        },
-        "suppression_imports_counts_when_completed": {
-          "name": "suppression_imports_counts_when_completed",
-          "value": "(\"core\".\"suppression_imports\".\"state\" = 'completed') = (\"core\".\"suppression_imports\".\"total_rows\" is not null)\n        and (\"core\".\"suppression_imports\".\"total_rows\" is null) = (\"core\".\"suppression_imports\".\"added_rows\" is null)\n        and (\"core\".\"suppression_imports\".\"total_rows\" is null) = (\"core\".\"suppression_imports\".\"already_suppressed_rows\" is null)\n        and (\"core\".\"suppression_imports\".\"total_rows\" is null) = (\"core\".\"suppression_imports\".\"invalid_rows\" is null)\n        and (\"core\".\"suppression_imports\".\"total_rows\" is null) = (\"core\".\"suppression_imports\".\"completed_at\" is null)"
-        },
-        "suppression_imports_counts_add_up": {
-          "name": "suppression_imports_counts_add_up",
-          "value": "\"core\".\"suppression_imports\".\"total_rows\" is null or (\"core\".\"suppression_imports\".\"added_rows\" >= 0 and \"core\".\"suppression_imports\".\"already_suppressed_rows\" >= 0\n        and \"core\".\"suppression_imports\".\"invalid_rows\" >= 0\n        and \"core\".\"suppression_imports\".\"total_rows\" <= 50000\n        and \"core\".\"suppression_imports\".\"total_rows\" = \"core\".\"suppression_imports\".\"added_rows\" + \"core\".\"suppression_imports\".\"already_suppressed_rows\" + \"core\".\"suppression_imports\".\"invalid_rows\")"
         }
       },
       "isRLSEnabled": false
@@ -23750,6 +23405,215 @@
         "mailboxes_health_effect_needs_score": {
           "name": "mailboxes_health_effect_needs_score",
           "value": "\"outbound\".\"mailboxes\".\"health_effect\" = 'none' or \"outbound\".\"mailboxes\".\"health_score\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "outbound.fit_scores": {
+      "name": "fit_scores",
+      "schema": "outbound",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prospect_id": {
+          "name": "prospect_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_score": {
+          "name": "max_score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "matches": {
+          "name": "matches",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criteria_version": {
+          "name": "criteria_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scored_at": {
+          "name": "scored_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "fit_scores_list_idx": {
+          "name": "fit_scores_list_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "score",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "prospect_id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "fit_scores_pkey": {
+          "name": "fit_scores_pkey",
+          "columns": [
+            "organization_id",
+            "prospect_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "fit_scores_organization_id_shape": {
+          "name": "fit_scores_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "fit_scores_organization_not_global": {
+          "name": "fit_scores_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
+        },
+        "fit_scores_prospect_id_shape": {
+          "name": "fit_scores_prospect_id_shape",
+          "value": "\"prospect_id\" ~ '^prs_[0-9a-f]{32}$'"
+        },
+        "fit_scores_score_range": {
+          "name": "fit_scores_score_range",
+          "value": "\"outbound\".\"fit_scores\".\"score\" between 0 and \"outbound\".\"fit_scores\".\"max_score\""
+        },
+        "fit_scores_criteria_version_positive": {
+          "name": "fit_scores_criteria_version_positive",
+          "value": "\"outbound\".\"fit_scores\".\"criteria_version\" >= 1"
+        },
+        "fit_scores_matches_shape": {
+          "name": "fit_scores_matches_shape",
+          "value": "jsonb_typeof(\"outbound\".\"fit_scores\".\"matches\") = 'array'\n        and octet_length(\"outbound\".\"fit_scores\".\"matches\"::text) <= 16384"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "outbound.signal_settings": {
+      "name": "signal_settings",
+      "schema": "outbound",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kinds": {
+          "name": "kinds",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "criteria_version": {
+          "name": "criteria_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "webhook_secret_ciphertext": {
+          "name": "webhook_secret_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_key_id": {
+          "name": "webhook_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_rotated_at": {
+          "name": "webhook_rotated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "signal_settings_pkey": {
+          "name": "signal_settings_pkey",
+          "columns": [
+            "organization_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "signal_settings_organization_id_shape": {
+          "name": "signal_settings_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "signal_settings_organization_not_global": {
+          "name": "signal_settings_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
+        },
+        "signal_settings_kinds_shape": {
+          "name": "signal_settings_kinds_shape",
+          "value": "jsonb_typeof(\"outbound\".\"signal_settings\".\"kinds\") = 'array'\n        and octet_length(\"outbound\".\"signal_settings\".\"kinds\"::text) <= 4096"
+        },
+        "signal_settings_versions_positive": {
+          "name": "signal_settings_versions_positive",
+          "value": "\"outbound\".\"signal_settings\".\"version\" >= 1 and \"outbound\".\"signal_settings\".\"criteria_version\" >= 1"
+        },
+        "signal_settings_webhook_shape": {
+          "name": "signal_settings_webhook_shape",
+          "value": "(\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\" is null or octet_length(\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\") between 1 and 2048)\n        and (\"outbound\".\"signal_settings\".\"webhook_key_id\" is null or char_length(\"outbound\".\"signal_settings\".\"webhook_key_id\") between 1 and 128)\n        and (\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\" is null) = (\"outbound\".\"signal_settings\".\"webhook_key_id\" is null)\n        and (\"outbound\".\"signal_settings\".\"webhook_secret_ciphertext\" is null) = (\"outbound\".\"signal_settings\".\"webhook_rotated_at\" is null)"
         }
       },
       "isRLSEnabled": false
