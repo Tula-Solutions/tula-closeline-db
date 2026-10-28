@@ -132,6 +132,8 @@ describe('the core schema', () => {
         ...INBOX_TABLES,
         // The calendar, routing and Booking tables (0055); core-calendars.test.ts pins them.
         ...CALENDAR_TABLES,
+        // Inquiry embed settings; core-inquiry-embeds.test.ts pins them.
+        'inquiry_embeds',
       ].sort()
     )
   })

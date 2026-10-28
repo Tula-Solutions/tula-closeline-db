@@ -488,7 +488,10 @@ describe('closeline_core_key_lookup, the role that owns the API key lookup (0035
         order by 1`
     )
     expect(tables.rows.filter((r) => r.writes || r.column_writes || r.whole_table)).toEqual([])
-    expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual(['core.api_keys'])
+    expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual([
+      'core.api_keys',
+      'core.inquiry_embeds',
+    ])
     const columns = await owner.query(
       `select a.attname from pg_attribute a
         where a.attrelid = 'core.api_keys'::regclass and a.attnum > 0 and not a.attisdropped
@@ -507,7 +510,10 @@ describe('closeline_core_key_lookup, the role that owns the API key lookup (0035
       `select p.oid::regprocedure::text as name from pg_proc p
         where p.proowner = 'closeline_core_key_lookup'::regrole order by 1`
     )
-    expect(owned.rows.map((r) => r.name)).toEqual(['core.api_key_for_hash(text)'])
+    expect(owned.rows.map((r) => r.name)).toEqual([
+      'core.api_key_for_hash(text)',
+      'core.inquiry_embed_for_key_hash(text)',
+    ])
   })
 })
 
@@ -676,6 +682,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
     expect(tables.rows.filter((r) => r.writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual([
       'voice.calls',
+      'voice.inquiries',
       'voice.recordings',
       'voice.twilio_calls',
       'voice.twilio_placements',
@@ -685,6 +692,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
         where p.proowner = 'closeline_voice_purge_scan'::regrole order by 1`
     )
     expect(owned.rows.map((r) => r.name)).toEqual([
+      'voice.orgs_with_due_callbacks(text,integer)',
       'voice.orgs_with_due_recordings(timestamp with time zone,text,integer)',
       'voice.orgs_with_stale_outbound(timestamp with time zone,text,integer)',
       'voice.orgs_with_stale_ringing(timestamp with time zone,text,integer)',

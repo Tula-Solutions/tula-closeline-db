@@ -526,6 +526,13 @@
       "when": 1793215905306,
       "tag": "0074_playbook_live_call_waits",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793219938068,
+      "tag": "0075_core_inquiry_embeds",
+      "breakpoints": true
     }
   ]
 }
