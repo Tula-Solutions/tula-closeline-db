@@ -29,7 +29,7 @@ const salesMigration = read('0015_playbook_sales_history.sql')
 const callsMigration = read('0016_playbook_calls.sql') + read('0018_call_vendor_sends.sql')
 const sweepEmbedMigration = read('0032_playbook_sweep_cursor_embed_usage.sql')
 const analyticsMigration = read('0038_core_analytics_playbook_suggestions.sql')
-const liveCallWaitsMigration = read('0072_playbook_live_call_waits.sql')
+const liveCallWaitsMigration = read('0073_playbook_live_call_waits.sql')
 
 const NAMES = [
   'call_jobs',

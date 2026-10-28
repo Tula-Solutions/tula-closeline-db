@@ -10,6 +10,7 @@ import { createDb, type DbHandle } from './client'
 import {
   adminUrl,
   dropStaleTestObjects,
+  dropTestDatabase,
   integrationEnv,
   migrateUp,
   pinColumnStats,
@@ -3226,7 +3227,7 @@ describe('the playbook schema', () => {
 
     afterAll(async () => {
       for (const name of databases) {
-        await admin.query(`drop database if exists "${name}" with (force)`)
+        await dropTestDatabase(admin, name)
       }
       await admin.end()
       rmSync(folder, { recursive: true, force: true })

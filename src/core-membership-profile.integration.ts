@@ -7,6 +7,7 @@ import { Pool, type PoolClient } from 'pg'
 import {
   adminUrl,
   dropStaleTestObjects,
+  dropTestDatabase,
   integrationEnv,
   migrateUp,
   rejectionOf,
@@ -277,13 +278,13 @@ describe('core.memberships email and name', () => {
         "select datname from pg_database where datname like 'it\\_migrate\\_%'"
       )
       for (const { datname } of stale.rows) {
-        await admin.query(`drop database if exists "${datname}" with (force)`)
+        await dropTestDatabase(admin, datname)
       }
     })
 
     afterAll(async () => {
       for (const name of databases) {
-        await admin.query(`drop database if exists "${name}" with (force)`)
+        await dropTestDatabase(admin, name)
       }
       await admin.end()
       rmSync(folder, { recursive: true, force: true })

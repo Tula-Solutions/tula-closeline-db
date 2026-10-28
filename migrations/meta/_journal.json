@@ -509,8 +509,15 @@
     {
       "idx": 72,
       "version": "7",
-      "when": 1793211329505,
-      "tag": "0072_playbook_live_call_waits",
+      "when": 1793211114391,
+      "tag": "0072_voice_transcript_unavailable",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793213742617,
+      "tag": "0073_playbook_live_call_waits",
       "breakpoints": true
     }
   ]
