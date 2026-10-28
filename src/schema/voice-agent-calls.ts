@@ -208,6 +208,7 @@ export const voiceAgentCalls = voiceSchema.table(
       sql`(${t.dialedAt} is not null)
         = (${t.state} in ('dialing', 'live') or (${t.state} = 'ended' and ${t.result} <> 'blocked'))`
     ),
+    check('agent_calls_dialed_has_line', sql`${t.dialedAt} is null or ${t.lineId} is not null`),
     check(
       'agent_calls_dialed_has_number_hash',
       sql`${t.dialedAt} is null or ${t.numberHash} is not null`

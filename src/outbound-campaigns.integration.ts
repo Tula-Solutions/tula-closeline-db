@@ -498,6 +498,21 @@ describe('outbound campaign tables', () => {
       )
       expect(orphan.code).toBe(FOREIGN_KEY_VIOLATION)
     })
+
+    test('a call_result event carries its result, and no other kind does', async () => {
+      const a = await seed()
+      const insert = (kind: string, result: string | null) =>
+        run(
+          a.orgId,
+          `insert into outbound.enrollment_events (id, organization_id, enrollment_id, kind, call_result)
+           values ($1, $2, $3, $4, $5)`,
+          [newId('eev'), a.orgId, a.enrollmentId, kind, result]
+        )
+      await insert('call_result', 'voicemail')
+      expect((await refusal(insert('call_result', null))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('sent', 'voicemail'))).code).toBe(CHECK_VIOLATION)
+      expect((await refusal(insert('call_result', 'hung_up'))).code).toBe(CHECK_VIOLATION)
+    })
   })
 
   describe('work discovery for due steps', () => {

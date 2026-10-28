@@ -20695,8 +20695,8 @@ declare const outboundEnrollments: PgTableWithColumns_a5zn0g44<{
 /**
 * What happened to an Enrollment, in order: an append-only history (the service role cannot
 * update a row). `send_id` names the send decision of a `sent`, `deferred` or `refused` event;
-* `stop_reason` is set exactly on a `stopped` event; `call_result` exactly on a `call_result` event; `actor_membership_id` names the Rep who
-* caused it, when one did.
+* `stop_reason` is set exactly on a `stopped` event and `call_result` exactly on a `call_result`
+* event; `actor_membership_id` names the Rep who caused it, when one did.
 *
 * Lists served (oldest first, `LIMIT` a page): an Enrollment's history
 * (`enrollment_events_enrollment_idx`).

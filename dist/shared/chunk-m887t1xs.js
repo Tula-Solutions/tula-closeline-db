@@ -5890,6 +5890,7 @@ var voiceAgentCalls2 = voiceSchema2.table("agent_calls", {
   check30("agent_calls_duration_needs_call", sql35`${t.durationSeconds} is null or ${t.callId} is not null`),
   check30("agent_calls_dialed_at_iff_dialed", sql35`(${t.dialedAt} is not null)
         = (${t.state} in ('dialing', 'live') or (${t.state} = 'ended' and ${t.result} <> 'blocked'))`),
+  check30("agent_calls_dialed_has_line", sql35`${t.dialedAt} is null or ${t.lineId} is not null`),
   check30("agent_calls_dialed_has_number_hash", sql35`${t.dialedAt} is null or ${t.numberHash} is not null`),
   check30("agent_calls_source_shape", sql35`(${t.source} = 'campaign_step'
           and ${t.enrollmentId} is not null and ${t.stepKey} is not null

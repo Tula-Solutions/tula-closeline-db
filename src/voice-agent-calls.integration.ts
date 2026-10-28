@@ -201,6 +201,7 @@ describe('voice.agent_calls', () => {
       ['a dialed row without a dial time', { dialed_at: null }],
       ['a blocked row with a dial time', endedRow('blocked', { gate_code: 'agent.paused' })],
       ['a dialed row without a number hash', { number_hash: null }],
+      ['a dialed row without a Line', { line_id: null }],
       ['a short number hash', { number_hash: Buffer.alloc(8) }],
       [
         'an unknown gate code',
