@@ -319,6 +319,7 @@ describe('the voice line lookup', () => {
     /** name: [SECURITY DEFINER, trigger function, closeline_voice may execute it]. */
     const FUNCTIONS: Record<string, [boolean, boolean, boolean]> = {
       line_for_number: [true, false, true],
+      orgs_with_due_agent_calls: [true, false, true],
       orgs_with_due_recordings: [true, false, true],
       orgs_with_stale_ringing: [true, false, true],
       orgs_with_stale_outbound: [true, false, true],
@@ -379,6 +380,7 @@ describe('the voice line lookup', () => {
           fn.name === 'twilio_orgs_with_expired' ||
           fn.name === 'orgs_with_stale_ringing' ||
           fn.name === 'orgs_with_stale_outbound' ||
+          fn.name === 'orgs_with_due_agent_calls' ||
           fn.name === 'orgs_with_due_recordings'
             ? 'closeline_voice_purge_scan'
             : 'closeline_owner',
@@ -393,6 +395,7 @@ describe('the voice line lookup', () => {
           fn.name === 'twilio_orgs_with_expired' ||
           fn.name === 'orgs_with_stale_ringing' ||
           fn.name === 'orgs_with_stale_outbound' ||
+          fn.name === 'orgs_with_due_agent_calls' ||
           fn.name === 'orgs_with_due_recordings'
             ? 's'
             : 'v',
