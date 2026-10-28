@@ -213,6 +213,14 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
            from generate_series(1, $2::int) n`,
         [orgId, PROSPECTS]
       )
+      // Earlier values for the first 5,000 Prospects: what a duplicate suggestion looks up by text.
+      await c.query(
+        `insert into core.prospect_fields (organization_id, prospect_id, field_name, state, value, source, set_at)
+         select $1, 'prs_' || md5(n::text), 'email', 'superseded', 'old' || n || '@mail.test',
+                'manual', now() - interval '1 day'
+           from generate_series(1, 5000) n`,
+        [orgId]
+      )
       for (const table of ['prospect_companies', 'prospects', 'prospect_fields']) {
         await c.query(`alter table core.${table} enable trigger user`)
       }
@@ -280,6 +288,17 @@ describe('the Prospect list filter q uses the trigram indexes', () => {
     expect(plan.nodes).toContain('Bitmap Index Scan')
     expect(plan.nodes).not.toContain('Seq Scan')
     expect((await scoped((c) => c.query(FIELD_QUERY, [orgId, '%zyxquux%']))).rowCount).toBe(1)
+  })
+
+  const EARLIER_QUERY = `select prospect_id from core.prospect_fields
+    where organization_id = $1 and field_name = $2 and value = $3 and state <> 'current'`
+
+  test('an earlier value looked up by its text is an index scan of the partial value index', async () => {
+    const args = [orgId, 'email', 'old42@mail.test']
+    const plan = await explainWithoutPolicy('prospect_fields', EARLIER_QUERY, args)
+    expect(plan.indexes).toEqual(['prospect_fields_value_idx'])
+    expect(plan.nodes).not.toContain('Seq Scan')
+    expect((await scoped((c) => c.query(EARLIER_QUERY, args))).rowCount).toBe(1)
   })
 
   test('a rare term in a Company name is a bitmap scan of the trigram index', async () => {

@@ -653,7 +653,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
     expect(message).toContain('permission denied to set role "closeline_voice_purge_scan"')
   })
 
-  test('it holds USAGE on voice, column grants on the two purge tables only, and owns the one function', async () => {
+  test('it holds USAGE on voice, column grants on its scan tables only, and owns its scan functions', async () => {
     const schemas = await owner.query(
       `select n.nspname,
               has_schema_privilege('closeline_voice_purge_scan', n.oid, 'USAGE') as usage,
@@ -676,6 +676,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
     expect(tables.rows.filter((r) => r.writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual([
       'voice.calls',
+      'voice.recordings',
       'voice.twilio_calls',
       'voice.twilio_placements',
     ])
@@ -684,6 +685,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
         where p.proowner = 'closeline_voice_purge_scan'::regrole order by 1`
     )
     expect(owned.rows.map((r) => r.name)).toEqual([
+      'voice.orgs_with_due_recordings(timestamp with time zone,text,integer)',
       'voice.orgs_with_stale_ringing(timestamp with time zone,text,integer)',
       'voice.twilio_orgs_with_expired(timestamp with time zone,text,integer)',
     ])

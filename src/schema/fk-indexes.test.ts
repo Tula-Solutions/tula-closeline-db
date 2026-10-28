@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 import { crmSyncRuns } from './core-crm'
-import { linkedinUsage } from './outbound-linkedin'
+import { linkedinSends, linkedinUsage } from './outbound-linkedin'
 import { outboundDrafts } from './outbound-tables'
 
 /** True when an index on the table starts with exactly the foreign key's columns, in order. */
@@ -36,5 +36,8 @@ describe('foreign keys that are checked on delete have an index', () => {
   })
   test('linkedin usage account', () => {
     expect(fkIsIndexed(linkedinUsage, 'linkedin_usage_account_fk')).toBe(true)
+  })
+  test('linkedin sends account', () => {
+    expect(fkIsIndexed(linkedinSends, 'linkedin_sends_account_fk')).toBe(true)
   })
 })

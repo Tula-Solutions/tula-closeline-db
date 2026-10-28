@@ -160,7 +160,7 @@ describe('duplicate suggestions', () => {
     expect(index?.config.where).toBeDefined()
     expect(
       readFileSync(
-        new URL('../../migrations/0065_core_prospect_fields_value_idx.sql', import.meta.url),
+        new URL('../../migrations/0070_core_prospect_fields_value_idx.sql', import.meta.url),
         'utf8'
       )
     ).toContain(`WHERE "core"."prospect_fields"."state" <> 'current'`)

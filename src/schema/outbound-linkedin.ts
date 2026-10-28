@@ -234,3 +234,52 @@ export const linkedinUsage = outboundSchema.table(
     }).onDelete('cascade'),
   ]
 )
+
+/** The kinds of LinkedIn send: a connection request or a message. */
+export const LINKEDIN_SEND_KINDS = ['connection', 'message'] as const
+/** The states of a LinkedIn send: `sending` (reserved, outcome not yet known) and `sent`. */
+export const LINKEDIN_SEND_STATES = ['sending', 'sent'] as const
+/** The longest send key, in characters. */
+export const MAX_LINKEDIN_SEND_KEY_LENGTH = 200
+
+/**
+ * One LinkedIn send, keyed by the caller's idempotency key: written in the same transaction as the
+ * quota reservation, so a retried job finds it and never sends or counts twice. A row left in
+ * `sending` means the outcome is unknown and is never sent again. Ids and times only.
+ *
+ * Lookups served: by key (the primary key); an account's latest send (`linkedin_sends_account_idx`).
+ */
+export const linkedinSends = outboundSchema.table(
+  'linkedin_sends',
+  {
+    organizationId: text('organization_id').notNull(),
+    sendKey: text('send_key').notNull(),
+    accountId: text('account_id').notNull(),
+    kind: text('kind').notNull(),
+    state: text('state').notNull().default('sending'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    sentAt: ts('sent_at'),
+  },
+  (t) => [
+    primaryKey({ name: 'linkedin_sends_pkey', columns: [t.organizationId, t.sendKey] }),
+    check('linkedin_sends_organization_id_shape', orgShape),
+    check('linkedin_sends_organization_not_global', notGlobal),
+    check('linkedin_sends_account_id_shape', idShape('account_id', 'lia')),
+    check(
+      'linkedin_sends_send_key_length',
+      sql`char_length(${t.sendKey}) between 1 and ${num(MAX_LINKEDIN_SEND_KEY_LENGTH)}`
+    ),
+    check('linkedin_sends_kind_known', sql`${t.kind} in (${list(LINKEDIN_SEND_KINDS)})`),
+    check('linkedin_sends_state_known', sql`${t.state} in (${list(LINKEDIN_SEND_STATES)})`),
+    check(
+      'linkedin_sends_sent_matches_state',
+      sql`(${t.state} = 'sent') = (${t.sentAt} is not null)`
+    ),
+    foreignKey({
+      name: 'linkedin_sends_account_fk',
+      columns: [t.organizationId, t.accountId],
+      foreignColumns: [linkedinAccounts.organizationId, linkedinAccounts.id],
+    }).onDelete('cascade'),
+    index('linkedin_sends_account_idx').on(t.organizationId, t.accountId, t.createdAt.desc()),
+  ]
+)

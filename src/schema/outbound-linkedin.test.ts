@@ -11,6 +11,7 @@ import {
   linkedinAccounts,
   linkedinChannelSettings,
   linkedinRiskAcceptances,
+  linkedinSends,
   linkedinUsage,
   MAX_LINKEDIN_TYPED_NAME_LENGTH,
 } from './outbound-linkedin'
@@ -18,16 +19,19 @@ import {
 const migrationFile = readdirSync(new URL('../../migrations/', import.meta.url)).find((f) =>
   f.startsWith('0064_')
 )
-const migration = readFileSync(
-  new URL(`../../migrations/${migrationFile ?? 'missing'}`, import.meta.url),
-  'utf8'
+const sendsFile = readdirSync(new URL('../../migrations/', import.meta.url)).find((f) =>
+  f.startsWith('0069_')
 )
+const migration = [migrationFile, sendsFile]
+  .map((f) => readFileSync(new URL(`../../migrations/${f ?? 'missing'}`, import.meta.url), 'utf8'))
+  .join('\n')
 
 const TABLES = {
   linkedin_accounts: linkedinAccounts,
   linkedin_risk_acceptances: linkedinRiskAcceptances,
   linkedin_channel_settings: linkedinChannelSettings,
   linkedin_usage: linkedinUsage,
+  linkedin_sends: linkedinSends,
 }
 
 describe('the outbound LinkedIn tables', () => {
