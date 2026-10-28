@@ -498,6 +498,13 @@
       "when": 1793206433636,
       "tag": "0070_voice_line_assignment_role",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793207324253,
+      "tag": "0071_voice_stale_outbound_orgs",
+      "breakpoints": true
     }
   ]
 }
