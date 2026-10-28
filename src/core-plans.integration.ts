@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { Pool, type PoolClient } from 'pg'
-import { adminUrl, assertLocalTestDatabase, integrationEnv, migrateUp } from './integration-support'
+import {
+  adminUrl,
+  assertLocalTestDatabase,
+  dropTestDatabase,
+  integrationEnv,
+  migrateUp,
+} from './integration-support'
 
 // Needs Postgres with docker/postgres/init.sql applied; run with `bun run test:integration`.
 //
@@ -41,7 +47,7 @@ describe('deleting a large Organization does a bounded amount of work per member
     for (const { name } of stale.rows) {
       const createdAt = Number(name.split('_')[2])
       if (Number.isFinite(createdAt) && Date.now() - createdAt > STALE_AFTER_MS) {
-        await admin.query(`drop database if exists "${name}" with (force)`)
+        await dropTestDatabase(admin, name)
       }
     }
     await admin.query(`create database "${database}" owner closeline_owner`)
@@ -59,7 +65,7 @@ describe('deleting a large Organization does a bounded amount of work per member
 
   afterAll(async () => {
     await Promise.all([core?.end(), owner?.end()])
-    await admin.query(`drop database if exists "${database}" with (force)`)
+    await dropTestDatabase(admin, database)
     await admin.end()
   })
 
@@ -229,7 +235,9 @@ describe('listing and counting invitations by state reads the state index', () =
 
   afterAll(async () => {
     await Promise.all([core?.end(), owner?.end()])
-    await admin?.query(`drop database if exists "${planDatabase}" with (force)`)
+    if (admin) {
+      await dropTestDatabase(admin, planDatabase)
+    }
     await admin?.end()
   })
 
@@ -386,7 +394,9 @@ describe('looking up and purging idempotency keys read one index each, in a boun
 
   afterAll(async () => {
     await Promise.all([core?.end(), owner?.end()])
-    await admin?.query(`drop database if exists "${planDatabase}" with (force)`)
+    if (admin) {
+      await dropTestDatabase(admin, planDatabase)
+    }
     await admin?.end()
   })
 

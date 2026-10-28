@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Pool, type PoolClient } from 'pg'
-import { adminUrl, integrationEnv } from './integration-support'
+import { adminUrl, dropTestDatabase, integrationEnv } from './integration-support'
 import { runMigrations } from './migrate'
 import { DB_TYPES } from './pg-types'
 import { QUOTA_LOCK } from './playbook-statements'
@@ -58,13 +58,13 @@ describe('migration 0020: a closing date is a calendar date', () => {
       "select datname from pg_database where datname like 'it\\_closed\\_at\\_%'"
     )
     for (const { datname } of stale.rows) {
-      await admin.query(`drop database if exists "${datname}" with (force)`)
+      await dropTestDatabase(admin, datname)
     }
   })
 
   afterAll(async () => {
     for (const name of databases) {
-      await admin.query(`drop database if exists "${name}" with (force)`)
+      await dropTestDatabase(admin, name)
     }
     await admin.end()
     rmSync(folder, { recursive: true, force: true })
