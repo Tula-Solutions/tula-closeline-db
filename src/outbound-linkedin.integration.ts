@@ -21,6 +21,7 @@ const TABLES = [
   'linkedin_risk_acceptances',
   'linkedin_channel_settings',
   'linkedin_usage',
+  'linkedin_sends',
 ]
 
 describe('outbound LinkedIn tables', () => {
@@ -117,6 +118,12 @@ describe('outbound LinkedIn tables', () => {
       [orgId]
     )
     await addUsage(orgId, accountId)
+    await run(
+      orgId,
+      `insert into outbound.linkedin_sends (organization_id, send_key, account_id, kind)
+       values ($1, 'seed', $2, 'connection')`,
+      [orgId, accountId]
+    )
     return { orgId, accountId, acceptanceId }
   }
 
@@ -352,6 +359,52 @@ describe('outbound LinkedIn tables', () => {
       const a = await seed()
       await scoped(a.orgId, (c) => c.query('delete from outbound.linkedin_accounts'), owner)
       expect(await countOf(a.orgId, 'linkedin_usage')).toBe(0)
+    })
+  })
+
+  describe('linkedin_sends', () => {
+    const addSend = (orgId: string, accountId: string, key: string, state = 'sending') =>
+      run(
+        orgId,
+        `insert into outbound.linkedin_sends (organization_id, send_key, account_id, kind, state, sent_at)
+         values ($1, $2, $3, 'connection', $4, case when $4 = 'sent' then now() else null end)`,
+        [orgId, key, accountId, state]
+      )
+
+    test('one row per key, and a second insert is a conflict the caller can skip', async () => {
+      const a = await seed()
+      await addSend(a.orgId, a.accountId, 'k1')
+      expect((await refusal(addSend(a.orgId, a.accountId, 'k1'))).code).toBe(UNIQUE_VIOLATION)
+      const again = await run(
+        a.orgId,
+        `insert into outbound.linkedin_sends (organization_id, send_key, account_id, kind)
+         values ($1, 'k1', $2, 'message') on conflict do nothing`,
+        [a.orgId, a.accountId]
+      )
+      expect(again.rowCount).toBe(0)
+    })
+
+    test('a sent row needs its time and a sending row cannot have one', async () => {
+      const a = await seed()
+      const error = await refusal(
+        run(
+          a.orgId,
+          `insert into outbound.linkedin_sends (organization_id, send_key, account_id, kind, state)
+           values ($1, 'k2', $2, 'message', 'sent')`,
+          [a.orgId, a.accountId]
+        )
+      )
+      expect(error.code).toBe(CHECK_VIOLATION)
+    })
+
+    test('the key is bounded and removing the account takes its sends along', async () => {
+      const a = await seed()
+      expect((await refusal(addSend(a.orgId, a.accountId, 'x'.repeat(201)))).code).toBe(
+        CHECK_VIOLATION
+      )
+      await addSend(a.orgId, a.accountId, 'k3', 'sent')
+      await scoped(a.orgId, (c) => c.query('delete from outbound.linkedin_accounts'), owner)
+      expect(await countOf(a.orgId, 'linkedin_sends')).toBe(0)
     })
   })
 })
