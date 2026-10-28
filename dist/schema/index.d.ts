@@ -18875,7 +18875,7 @@ declare const ENROLLMENT_STATES: readonly ["active", "completed", "stopped"];
 /** Why an Enrollment stopped. Mirrors the contract's `ENROLLMENT_STOP_REASONS`. */
 declare const ENROLLMENT_STOP_REASONS: readonly ["replied", "hard_bounce", "unsubscribed", "complaint", "suppressed", "no_consent", "unverified_address", "removed_by_rep", "meeting_booked", "prospect_erased", "campaign_archived"];
 /** What an Enrollment event records. Mirrors the contract's `ENROLLMENT_EVENT_KINDS`. */
-declare const ENROLLMENT_EVENT_KINDS: readonly ["enrolled", "step_entered", "sent", "deferred", "refused", "rep_task_created", "branch_taken", "stopped", "completed"];
+declare const ENROLLMENT_EVENT_KINDS: readonly ["enrolled", "step_entered", "sent", "deferred", "refused", "rep_task_created", "call_result", "branch_taken", "stopped", "completed"];
 /** What a Play is for. Mirrors the contract's `PLAY_INTENTS`. */
 declare const PLAY_INTENTS: readonly ["cold_intro", "closed_lost_reengagement", "post_event_follow_up", "nurture"];
 /** Where a Play came from. Mirrors the contract's `PLAY_SOURCES`. */
@@ -20512,7 +20512,7 @@ declare const outboundEnrollments: PgTableWithColumns_a5zn0g44<{
 /**
 * What happened to an Enrollment, in order: an append-only history (the service role cannot
 * update a row). `send_id` names the send decision of a `sent`, `deferred` or `refused` event;
-* `stop_reason` is set exactly on a `stopped` event; `actor_membership_id` names the Rep who
+* `stop_reason` is set exactly on a `stopped` event; `call_result` exactly on a `call_result` event; `actor_membership_id` names the Rep who
 * caused it, when one did.
 *
 * Lists served (oldest first, `LIMIT` a page): an Enrollment's history
@@ -20578,14 +20578,14 @@ declare const outboundEnrollmentEvents: PgTableWithColumns_a5zn0g44<{
 			tableName: "enrollment_events";
 			dataType: "string";
 			columnType: "PgText";
-			data: "branch_taken" | "completed" | "deferred" | "enrolled" | "refused" | "rep_task_created" | "sent" | "step_entered" | "stopped";
+			data: "branch_taken" | "call_result" | "completed" | "deferred" | "enrolled" | "refused" | "rep_task_created" | "sent" | "step_entered" | "stopped";
 			driverParam: string;
 			notNull: true;
 			hasDefault: false;
 			isPrimaryKey: false;
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
-			enumValues: ["enrolled", "step_entered", "sent", "deferred", "refused", "rep_task_created", "branch_taken", "stopped", "completed"];
+			enumValues: ["enrolled", "step_entered", "sent", "deferred", "refused", "rep_task_created", "call_result", "branch_taken", "stopped", "completed"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -20654,6 +20654,23 @@ declare const outboundEnrollmentEvents: PgTableWithColumns_a5zn0g44<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: ["replied", "hard_bounce", "unsubscribed", "complaint", "suppressed", "no_consent", "unverified_address", "removed_by_rep", "meeting_booked", "prospect_erased", "campaign_archived"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		callResult: PgColumn_ffrhhp44<{
+			name: "call_result";
+			tableName: "enrollment_events";
+			dataType: "string";
+			columnType: "PgText";
+			data: "answered" | "blocked" | "busy" | "failed" | "no_answer" | "voicemail";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["answered", "voicemail", "no_answer", "busy", "failed", "blocked"];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;
@@ -32144,6 +32161,418 @@ declare const voiceHandoffs: PgTableWithColumns_a5zn0g58<{
 }>;
 import { PgTableWithColumns as PgTableWithColumns_a5zn0g59 } from "drizzle-orm/pg-core";
 import { PgColumn as PgColumn_ffrhhp59 } from "drizzle-orm/pg-core";
+/** What became of one placed Call. Mirrors the contract's `CALL_RESULTS`. */
+declare const CALL_RESULTS: readonly ["answered", "voicemail", "no_answer", "busy", "failed", "blocked"];
+/** Why an answered Call ended. Mirrors the contract's `CALL_END_REASONS`. */
+declare const AGENT_CALL_END_REASONS: readonly ["booked", "handed_off", "not_interested", "not_now", "opted_out", "prospect_hung_up", "cap_reached", "agent_ended"];
+/** Why the gate refused a Call. Mirrors the contract's `CALL_GATE_CODES`. */
+declare const CALL_GATE_CODES: readonly ["agent.paused", "consent.missing", "consent.withdrawn", "consent.suppressed", "consent.unavailable", "agent.timezone_unknown", "agent.outside_hours", "agent_call.attempts_exhausted", "agent_call.line_cap_reached"];
+/** Who asked for the Call. Mirrors the contract's `AGENT_CALL_SOURCES`. */
+declare const AGENT_CALL_SOURCES: readonly ["campaign_step", "rep_request"];
+/** The states of an Agent Call. Mirrors the contract's `AGENT_CALL_STATES`. */
+declare const AGENT_CALL_STATES: readonly ["queued", "dialing", "live", "ended"];
+/** The most attempts of a call Step. Mirrors the contract's `MAX_CALL_ATTEMPTS`. */
+declare const MAX_CALL_ATTEMPTS = 3;
+/** The length of a number hash, in bytes (SHA-256). */
+declare const AGENT_CALL_NUMBER_HASH_BYTES = 32;
+/**
+* One request that the Outbound Agent place a Call, and what came of it: the record `voice` keeps
+* for the gate, the Sequence branch and the audit. Ids, closed values, a number hash and times
+* only: never the number, the words said or the Transcript (the Call, by `call_id`, holds those).
+*
+* The checks restate the contract's `agentCallSchema`: `result` and `ended_at` are set exactly on an
+* `ended` row; an answered row has an `end_reason`; a blocked row has its `gate_code`, and only a
+* blocked or `queued` (deferred) row has one; `retry_at` is set exactly on a `queued` row; a live
+* row has its Call and a queued or blocked row has none; a Step request names its Enrollment, Step
+* and the key `<enrollment id>:<step key>:<attempt>`, a Rep request names the Rep. `dialed_at` is
+* set exactly on a row that was dialed (dialing, live, or ended with a result other than
+* `blocked`), and a dialed row has its `number_hash`.
+*
+* `number_hash` is a keyed SHA-256 of the dialed number (the same key for every row, chosen by
+* `voice`), so per-number counts need no number. Ended rows are final (trigger
+* `agent_calls_ended_final`), nothing deletes a row, and nothing truncates the table.
+*
+* Unique: Organization and idempotency key (`agent_calls_key`); and at most one `queued`, `dialing`
+* or `live` row per Prospect (`agent_calls_prospect_open_key`).
+*
+* Counts served, each an index range scan, never the table:
+* - dials of one number since an instant (one per calendar day in the Prospect's zone, three per
+*   rolling 7 days): `agent_calls_number_dials_idx` on (organization, number hash, dialed_at);
+* - dials from one Line in the last 24 hours (cap 150): `agent_calls_line_dials_idx` on
+*   (organization, line, dialed_at);
+* - Calls open on one Line now (cap 3): `agent_calls_line_open_idx`, partial over `dialing`/`live`;
+* - the attempts of one Step: `agent_calls_enrollment_idx`.
+* Lists (keyset `(created_at, id)` newest first, `LIMIT` a page): all (`agent_calls_list_idx`), one
+* Prospect's (`agent_calls_prospect_idx`).
+*/
+declare const voiceAgentCalls: PgTableWithColumns_a5zn0g59<{
+	name: "agent_calls";
+	schema: "voice";
+	columns: {
+		id: PgColumn_ffrhhp59<{
+			name: "id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		organizationId: PgColumn_ffrhhp59<{
+			name: "organization_id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		idempotencyKey: PgColumn_ffrhhp59<{
+			name: "idempotency_key";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		source: PgColumn_ffrhhp59<{
+			name: "source";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "campaign_step" | "rep_request";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["campaign_step", "rep_request"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		prospectId: PgColumn_ffrhhp59<{
+			name: "prospect_id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		lineId: PgColumn_ffrhhp59<{
+			name: "line_id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		enrollmentId: PgColumn_ffrhhp59<{
+			name: "enrollment_id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		stepKey: PgColumn_ffrhhp59<{
+			name: "step_key";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		requestedByMembershipId: PgColumn_ffrhhp59<{
+			name: "requested_by_membership_id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		attempt: PgColumn_ffrhhp59<{
+			name: "attempt";
+			tableName: "agent_calls";
+			dataType: "number";
+			columnType: "PgSmallInt";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		state: PgColumn_ffrhhp59<{
+			name: "state";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "dialing" | "ended" | "live" | "queued";
+			driverParam: string;
+			notNull: true;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["queued", "dialing", "live", "ended"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		result: PgColumn_ffrhhp59<{
+			name: "result";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "answered" | "blocked" | "busy" | "failed" | "no_answer" | "voicemail";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["answered", "voicemail", "no_answer", "busy", "failed", "blocked"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		endReason: PgColumn_ffrhhp59<{
+			name: "end_reason";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "agent_ended" | "booked" | "cap_reached" | "handed_off" | "not_interested" | "not_now" | "opted_out" | "prospect_hung_up";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["booked", "handed_off", "not_interested", "not_now", "opted_out", "prospect_hung_up", "cap_reached", "agent_ended"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		gateCode: PgColumn_ffrhhp59<{
+			name: "gate_code";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: "agent.outside_hours" | "agent.paused" | "agent.timezone_unknown" | "agent_call.attempts_exhausted" | "agent_call.line_cap_reached" | "consent.missing" | "consent.suppressed" | "consent.unavailable" | "consent.withdrawn";
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: ["agent.paused", "consent.missing", "consent.withdrawn", "consent.suppressed", "consent.unavailable", "agent.timezone_unknown", "agent.outside_hours", "agent_call.attempts_exhausted", "agent_call.line_cap_reached"];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		retryAt: PgColumn_ffrhhp59<{
+			name: string;
+			tableName: "agent_calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		callId: PgColumn_ffrhhp59<{
+			name: "call_id";
+			tableName: "agent_calls";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		durationSeconds: PgColumn_ffrhhp59<{
+			name: "duration_seconds";
+			tableName: "agent_calls";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		numberHash: PgColumn_ffrhhp59<{
+			name: "number_hash";
+			tableName: "agent_calls";
+			dataType: "custom";
+			columnType: "PgCustomColumn";
+			data: Buffer<ArrayBufferLike>;
+			driverParam: Buffer<ArrayBufferLike>;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {
+			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
+		}>;
+		createdAt: PgColumn_ffrhhp59<{
+			name: string;
+			tableName: "agent_calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dialedAt: PgColumn_ffrhhp59<{
+			name: string;
+			tableName: "agent_calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		endedAt: PgColumn_ffrhhp59<{
+			name: string;
+			tableName: "agent_calls";
+			dataType: "date";
+			columnType: "PgTimestamp";
+			data: Date;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+	};
+	dialect: "pg";
+}>;
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g60 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp60 } from "drizzle-orm/pg-core";
 /** The tracks a Call's audio is split into: who spoke. Mirrors the contract's `transcriptSpeakerSchema`. */
 declare const CALL_TURN_TRACKS: readonly ["rep", "prospect"];
 /** The longest text of one turn. Mirrors the contract's `MAX_TRANSCRIPT_TURN_LENGTH`. */
@@ -32191,11 +32620,11 @@ interface StoredQuote extends StoredMomentRef {
 * Lists served: the turns of one Call in time order, the last few for a search window
 * (`call_turns_time_idx`); one track in order (the primary key).
 */
-declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
+declare const voiceCallTurns: PgTableWithColumns_a5zn0g60<{
 	name: "call_turns";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp59<{
+		organizationId: PgColumn_ffrhhp60<{
 			name: "organization_id";
 			tableName: "call_turns";
 			dataType: "string";
@@ -32212,7 +32641,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp59<{
+		callId: PgColumn_ffrhhp60<{
 			name: "call_id";
 			tableName: "call_turns";
 			dataType: "string";
@@ -32229,7 +32658,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		track: PgColumn_ffrhhp59<{
+		track: PgColumn_ffrhhp60<{
 			name: "track";
 			tableName: "call_turns";
 			dataType: "string";
@@ -32246,7 +32675,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sequence: PgColumn_ffrhhp59<{
+		sequence: PgColumn_ffrhhp60<{
 			name: "sequence";
 			tableName: "call_turns";
 			dataType: "number";
@@ -32263,7 +32692,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		text: PgColumn_ffrhhp59<{
+		text: PgColumn_ffrhhp60<{
 			name: "text";
 			tableName: "call_turns";
 			dataType: "string";
@@ -32280,7 +32709,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		startMs: PgColumn_ffrhhp59<{
+		startMs: PgColumn_ffrhhp60<{
 			name: "start_ms";
 			tableName: "call_turns";
 			dataType: "number";
@@ -32297,7 +32726,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		endMs: PgColumn_ffrhhp59<{
+		endMs: PgColumn_ffrhhp60<{
 			name: "end_ms";
 			tableName: "call_turns";
 			dataType: "number";
@@ -32314,7 +32743,7 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp59<{
+		createdAt: PgColumn_ffrhhp60<{
 			name: string;
 			tableName: "call_turns";
 			dataType: "date";
@@ -32351,11 +32780,11 @@ declare const voiceCallTurns: PgTableWithColumns_a5zn0g59<{
 * Lists served: the cards of a Call oldest first, keyset by `sequence` (the unique index);
 * the cards shown in a time range for one Call (`copilot_cards_shown_idx`).
 */
-declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
+declare const voiceCopilotCards: PgTableWithColumns_a5zn0g60<{
 	name: "copilot_cards";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp59<{
+		id: PgColumn_ffrhhp60<{
 			name: "id";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32372,7 +32801,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp59<{
+		organizationId: PgColumn_ffrhhp60<{
 			name: "organization_id";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32389,7 +32818,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp59<{
+		callId: PgColumn_ffrhhp60<{
 			name: "call_id";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32406,7 +32835,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sequence: PgColumn_ffrhhp59<{
+		sequence: PgColumn_ffrhhp60<{
 			name: "sequence";
 			tableName: "copilot_cards";
 			dataType: "number";
@@ -32423,7 +32852,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp59<{
+		kind: PgColumn_ffrhhp60<{
 			name: "kind";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32440,7 +32869,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		evidenceMoments: PgColumn_ffrhhp59<{
+		evidenceMoments: PgColumn_ffrhhp60<{
 			name: "evidence_moments";
 			tableName: "copilot_cards";
 			dataType: "number";
@@ -32457,7 +32886,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		evidenceDeals: PgColumn_ffrhhp59<{
+		evidenceDeals: PgColumn_ffrhhp60<{
 			name: "evidence_deals";
 			tableName: "copilot_cards";
 			dataType: "number";
@@ -32474,7 +32903,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		citedMoments: PgColumn_ffrhhp59<{
+		citedMoments: PgColumn_ffrhhp60<{
 			name: "cited_moments";
 			tableName: "copilot_cards";
 			dataType: "json";
@@ -32493,7 +32922,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 		}, {}, {
 			$type: StoredMomentRef[];
 		}>;
-		quotes: PgColumn_ffrhhp59<{
+		quotes: PgColumn_ffrhhp60<{
 			name: "quotes";
 			tableName: "copilot_cards";
 			dataType: "json";
@@ -32512,7 +32941,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 		}, {}, {
 			$type: StoredQuote[];
 		}>;
-		objectionType: PgColumn_ffrhhp59<{
+		objectionType: PgColumn_ffrhhp60<{
 			name: "objection_type";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32529,7 +32958,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		response: PgColumn_ffrhhp59<{
+		response: PgColumn_ffrhhp60<{
 			name: "response";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32546,7 +32975,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		nextStep: PgColumn_ffrhhp59<{
+		nextStep: PgColumn_ffrhhp60<{
 			name: "next_step";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32563,7 +32992,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentId: PgColumn_ffrhhp59<{
+		documentId: PgColumn_ffrhhp60<{
 			name: "document_id";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32580,7 +33009,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentPage: PgColumn_ffrhhp59<{
+		documentPage: PgColumn_ffrhhp60<{
 			name: "document_page";
 			tableName: "copilot_cards";
 			dataType: "number";
@@ -32597,7 +33026,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		documentPassage: PgColumn_ffrhhp59<{
+		documentPassage: PgColumn_ffrhhp60<{
 			name: "document_passage";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32614,7 +33043,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		shownAt: PgColumn_ffrhhp59<{
+		shownAt: PgColumn_ffrhhp60<{
 			name: string;
 			tableName: "copilot_cards";
 			dataType: "date";
@@ -32631,7 +33060,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		rating: PgColumn_ffrhhp59<{
+		rating: PgColumn_ffrhhp60<{
 			name: "rating";
 			tableName: "copilot_cards";
 			dataType: "string";
@@ -32648,7 +33077,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dismissed: PgColumn_ffrhhp59<{
+		dismissed: PgColumn_ffrhhp60<{
 			name: "dismissed";
 			tableName: "copilot_cards";
 			dataType: "boolean";
@@ -32665,7 +33094,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		pinned: PgColumn_ffrhhp59<{
+		pinned: PgColumn_ffrhhp60<{
 			name: "pinned";
 			tableName: "copilot_cards";
 			dataType: "boolean";
@@ -32682,7 +33111,7 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp59<{
+		updatedAt: PgColumn_ffrhhp60<{
 			name: string;
 			tableName: "copilot_cards";
 			dataType: "date";
@@ -32708,11 +33137,11 @@ declare const voiceCopilotCards: PgTableWithColumns_a5zn0g59<{
 * above moments). There is deliberately no column for the Disclosure or the Recording: they are
 * not settings (ADR 0003). A missing row means the Copilot is off with the default minimums.
 */
-declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
+declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g60<{
 	name: "copilot_settings";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp59<{
+		organizationId: PgColumn_ffrhhp60<{
 			name: "organization_id";
 			tableName: "copilot_settings";
 			dataType: "string";
@@ -32729,7 +33158,7 @@ declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		enabled: PgColumn_ffrhhp59<{
+		enabled: PgColumn_ffrhhp60<{
 			name: "enabled";
 			tableName: "copilot_settings";
 			dataType: "boolean";
@@ -32746,7 +33175,7 @@ declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		minMoments: PgColumn_ffrhhp59<{
+		minMoments: PgColumn_ffrhhp60<{
 			name: "min_moments";
 			tableName: "copilot_settings";
 			dataType: "number";
@@ -32763,7 +33192,7 @@ declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		minDeals: PgColumn_ffrhhp59<{
+		minDeals: PgColumn_ffrhhp60<{
 			name: "min_deals";
 			tableName: "copilot_settings";
 			dataType: "number";
@@ -32780,7 +33209,7 @@ declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp59<{
+		updatedAt: PgColumn_ffrhhp60<{
 			name: string;
 			tableName: "copilot_settings";
 			dataType: "date";
@@ -32797,7 +33226,7 @@ declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedByMembershipId: PgColumn_ffrhhp59<{
+		updatedByMembershipId: PgColumn_ffrhhp60<{
 			name: "updated_by_membership_id";
 			tableName: "copilot_settings";
 			dataType: "string";
@@ -32817,8 +33246,8 @@ declare const voiceCopilotSettings: PgTableWithColumns_a5zn0g59<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g60 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp60 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g61 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp61 } from "drizzle-orm/pg-core";
 /**
 * The outcome of one public `POST` of the voice service that has an effect worth not repeating
 * (`addLine` buys a number), per Organization, user, route and client key: playbook's
@@ -32830,11 +33259,11 @@ import { PgColumn as PgColumn_ffrhhp60 } from "drizzle-orm/pg-core";
 * contract's idempotency conflict. The purge is per Organization and bounded, on
 * `idempotency_keys_purge_idx` (`organization_id`, `created_at`).
 */
-declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
+declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g61<{
 	name: "idempotency_keys";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp60<{
+		organizationId: PgColumn_ffrhhp61<{
 			name: "organization_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -32851,7 +33280,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		userId: PgColumn_ffrhhp60<{
+		userId: PgColumn_ffrhhp61<{
 			name: "user_id";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -32868,7 +33297,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		route: PgColumn_ffrhhp60<{
+		route: PgColumn_ffrhhp61<{
 			name: "route";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -32885,7 +33314,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		key: PgColumn_ffrhhp60<{
+		key: PgColumn_ffrhhp61<{
 			name: "key";
 			tableName: "idempotency_keys";
 			dataType: "string";
@@ -32902,7 +33331,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestHash: PgColumn_ffrhhp60<{
+		requestHash: PgColumn_ffrhhp61<{
 			name: "request_hash";
 			tableName: "idempotency_keys";
 			dataType: "custom";
@@ -32921,7 +33350,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 		}, {}, {
 			pgColumnBuilderBrand: "PgCustomColumnBuilderBrand";
 		}>;
-		status: PgColumn_ffrhhp60<{
+		status: PgColumn_ffrhhp61<{
 			name: "status";
 			tableName: "idempotency_keys";
 			dataType: "number";
@@ -32938,7 +33367,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		response: PgColumn_ffrhhp60<{
+		response: PgColumn_ffrhhp61<{
 			name: "response";
 			tableName: "idempotency_keys";
 			dataType: "json";
@@ -32957,7 +33386,7 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 		}, {}, {
 			$type: unknown;
 		}>;
-		createdAt: PgColumn_ffrhhp60<{
+		createdAt: PgColumn_ffrhhp61<{
 			name: "created_at";
 			tableName: "idempotency_keys";
 			dataType: "date";
@@ -32977,12 +33406,20 @@ declare const voiceIdempotencyKeys: PgTableWithColumns_a5zn0g60<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g61 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp61 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g62 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp62 } from "drizzle-orm/pg-core";
 /** The states of a Line. Mirrors the contract's `LINE_STATES`. */
 declare const LINE_STATES: readonly ["porting", "active", "released"];
 /** Who inbound Calls on a Line ring. Mirrors the `kind` of the contract's `lineAssignmentSchema`. */
 declare const LINE_ASSIGNMENT_KINDS: readonly ["unassigned", "team", "rep"];
+/** The default concurrent Agent Calls on a Line (ADR 0030 decision 4). */
+declare const DEFAULT_LINE_CONCURRENT_AGENT_CALLS = 3;
+/** The default Agent dials on a Line in a rolling 24 hours (ADR 0030 decision 4). */
+declare const DEFAULT_LINE_DAILY_AGENT_DIAL_CAP = 150;
+/** The highest a Line's concurrent cap may be set; the Organization's own cap is at most 50. */
+declare const MAX_LINE_CONCURRENT_AGENT_CALLS = 50;
+/** The highest a Line's daily dial cap may be set. */
+declare const MAX_LINE_DAILY_AGENT_DIAL_CAP = 1e3;
 /** The longest Line label, in characters. Mirrors the contract's `MAX_LINE_LABEL_LENGTH`. */
 declare const MAX_LINE_LABEL_LENGTH = 100;
 /** The directions of a Call. Mirrors the contract's `VOICE_CALL_DIRECTIONS`. */
@@ -33024,17 +33461,19 @@ declare const MAX_VOICE_IDEMPOTENCY_KEY_LENGTH = 255;
 * (`lines_number_live_key`, over every state but `released`). Assignment is one of three shapes,
 * tied by a check: nobody (both ids null), a Team (`assignment_team_id`) or a Rep
 * (`assignment_membership_id`); a released Line is unassigned and has its release time.
-* `provider_sid` is the telephony provider's id for the number.
+* `provider_sid` is the telephony provider's id for the number. `max_concurrent_agent_calls` and
+* `daily_agent_dial_cap` are the Line's caps on Agent Calls (3 at once, 150 dials per rolling 24
+* hours by default); the counts come from `voice.agent_calls`.
 *
 * Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page): all Lines
 * (`lines_list_idx`), one state (`lines_state_list_idx`); the Lines of a Team or a Rep
 * (`lines_team_idx`, `lines_rep_idx`).
 */
-declare const voiceLines: PgTableWithColumns_a5zn0g61<{
+declare const voiceLines: PgTableWithColumns_a5zn0g62<{
 	name: "lines";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp61<{
+		id: PgColumn_ffrhhp62<{
 			name: "id";
 			tableName: "lines";
 			dataType: "string";
@@ -33051,7 +33490,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp61<{
+		organizationId: PgColumn_ffrhhp62<{
 			name: "organization_id";
 			tableName: "lines";
 			dataType: "string";
@@ -33068,7 +33507,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		number: PgColumn_ffrhhp61<{
+		number: PgColumn_ffrhhp62<{
 			name: "number";
 			tableName: "lines";
 			dataType: "string";
@@ -33085,7 +33524,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		country: PgColumn_ffrhhp61<{
+		country: PgColumn_ffrhhp62<{
 			name: "country";
 			tableName: "lines";
 			dataType: "string";
@@ -33102,7 +33541,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		label: PgColumn_ffrhhp61<{
+		label: PgColumn_ffrhhp62<{
 			name: "label";
 			tableName: "lines";
 			dataType: "string";
@@ -33119,7 +33558,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp61<{
+		state: PgColumn_ffrhhp62<{
 			name: "state";
 			tableName: "lines";
 			dataType: "string";
@@ -33136,7 +33575,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		assignmentKind: PgColumn_ffrhhp61<{
+		assignmentKind: PgColumn_ffrhhp62<{
 			name: "assignment_kind";
 			tableName: "lines";
 			dataType: "string";
@@ -33153,7 +33592,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		assignmentTeamId: PgColumn_ffrhhp61<{
+		assignmentTeamId: PgColumn_ffrhhp62<{
 			name: "assignment_team_id";
 			tableName: "lines";
 			dataType: "string";
@@ -33170,7 +33609,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		assignmentMembershipId: PgColumn_ffrhhp61<{
+		assignmentMembershipId: PgColumn_ffrhhp62<{
 			name: "assignment_membership_id";
 			tableName: "lines";
 			dataType: "string";
@@ -33187,7 +33626,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerSid: PgColumn_ffrhhp61<{
+		providerSid: PgColumn_ffrhhp62<{
 			name: "provider_sid";
 			tableName: "lines";
 			dataType: "string";
@@ -33204,7 +33643,41 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp61<{
+		maxConcurrentAgentCalls: PgColumn_ffrhhp62<{
+			name: "max_concurrent_agent_calls";
+			tableName: "lines";
+			dataType: "number";
+			columnType: "PgSmallInt";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		dailyAgentDialCap: PgColumn_ffrhhp62<{
+			name: "daily_agent_dial_cap";
+			tableName: "lines";
+			dataType: "number";
+			columnType: "PgInteger";
+			data: number;
+			driverParam: string | number;
+			notNull: true;
+			hasDefault: true;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		createdAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "lines";
 			dataType: "date";
@@ -33221,7 +33694,7 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		releasedAt: PgColumn_ffrhhp61<{
+		releasedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "lines";
 			dataType: "date";
@@ -33251,11 +33724,11 @@ declare const voiceLines: PgTableWithColumns_a5zn0g61<{
 * trigger `lines_sync_directory` on `lines` keeps it, and no service role holds any privilege on
 * it.
 */
-declare const voiceLineDirectory: PgTableWithColumns_a5zn0g61<{
+declare const voiceLineDirectory: PgTableWithColumns_a5zn0g62<{
 	name: "line_directory";
 	schema: "voice";
 	columns: {
-		number: PgColumn_ffrhhp61<{
+		number: PgColumn_ffrhhp62<{
 			name: "number";
 			tableName: "line_directory";
 			dataType: "string";
@@ -33272,7 +33745,7 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp61<{
+		organizationId: PgColumn_ffrhhp62<{
 			name: "organization_id";
 			tableName: "line_directory";
 			dataType: "string";
@@ -33289,7 +33762,7 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lineId: PgColumn_ffrhhp61<{
+		lineId: PgColumn_ffrhhp62<{
 			name: "line_id";
 			tableName: "line_directory";
 			dataType: "string";
@@ -33306,7 +33779,7 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp61<{
+		state: PgColumn_ffrhhp62<{
 			name: "state";
 			tableName: "line_directory";
 			dataType: "string";
@@ -33345,11 +33818,11 @@ declare const voiceLineDirectory: PgTableWithColumns_a5zn0g61<{
 * applied to the rows one of those reads. `calls_stale_ringing_idx` is the one cross-Organization
 * read: `voice.orgs_with_stale_ringing` (migration 0058) finds inbound Calls still ringing.
 */
-declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
+declare const voiceCalls: PgTableWithColumns_a5zn0g62<{
 	name: "calls";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp61<{
+		id: PgColumn_ffrhhp62<{
 			name: "id";
 			tableName: "calls";
 			dataType: "string";
@@ -33366,7 +33839,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp61<{
+		organizationId: PgColumn_ffrhhp62<{
 			name: "organization_id";
 			tableName: "calls";
 			dataType: "string";
@@ -33383,7 +33856,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		direction: PgColumn_ffrhhp61<{
+		direction: PgColumn_ffrhhp62<{
 			name: "direction";
 			tableName: "calls";
 			dataType: "string";
@@ -33400,7 +33873,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp61<{
+		state: PgColumn_ffrhhp62<{
 			name: "state";
 			tableName: "calls";
 			dataType: "string";
@@ -33417,7 +33890,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		lineId: PgColumn_ffrhhp61<{
+		lineId: PgColumn_ffrhhp62<{
 			name: "line_id";
 			tableName: "calls";
 			dataType: "string";
@@ -33434,7 +33907,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		repMembershipId: PgColumn_ffrhhp61<{
+		repMembershipId: PgColumn_ffrhhp62<{
 			name: "rep_membership_id";
 			tableName: "calls";
 			dataType: "string";
@@ -33451,7 +33924,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectId: PgColumn_ffrhhp61<{
+		prospectId: PgColumn_ffrhhp62<{
 			name: "prospect_id";
 			tableName: "calls";
 			dataType: "string";
@@ -33468,7 +33941,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		prospectNumber: PgColumn_ffrhhp61<{
+		prospectNumber: PgColumn_ffrhhp62<{
 			name: "prospect_number";
 			tableName: "calls";
 			dataType: "string";
@@ -33485,7 +33958,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerCallSid: PgColumn_ffrhhp61<{
+		providerCallSid: PgColumn_ffrhhp62<{
 			name: "provider_call_sid";
 			tableName: "calls";
 			dataType: "string";
@@ -33502,7 +33975,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		idempotencyKey: PgColumn_ffrhhp61<{
+		idempotencyKey: PgColumn_ffrhhp62<{
 			name: "idempotency_key";
 			tableName: "calls";
 			dataType: "string";
@@ -33519,7 +33992,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		requestFingerprint: PgColumn_ffrhhp61<{
+		requestFingerprint: PgColumn_ffrhhp62<{
 			name: "request_fingerprint";
 			tableName: "calls";
 			dataType: "string";
@@ -33536,7 +34009,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosureWordingVersion: PgColumn_ffrhhp61<{
+		disclosureWordingVersion: PgColumn_ffrhhp62<{
 			name: "disclosure_wording_version";
 			tableName: "calls";
 			dataType: "number";
@@ -33553,7 +34026,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosurePlayedAt: PgColumn_ffrhhp61<{
+		disclosurePlayedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -33570,7 +34043,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		aiAssisted: PgColumn_ffrhhp61<{
+		aiAssisted: PgColumn_ffrhhp62<{
 			name: "ai_assisted";
 			tableName: "calls";
 			dataType: "boolean";
@@ -33587,7 +34060,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp61<{
+		createdAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -33604,7 +34077,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		answeredAt: PgColumn_ffrhhp61<{
+		answeredAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -33621,7 +34094,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		endedAt: PgColumn_ffrhhp61<{
+		endedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -33638,7 +34111,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		durationSeconds: PgColumn_ffrhhp61<{
+		durationSeconds: PgColumn_ffrhhp62<{
 			name: "duration_seconds";
 			tableName: "calls";
 			dataType: "number";
@@ -33655,7 +34128,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		endedBy: PgColumn_ffrhhp61<{
+		endedBy: PgColumn_ffrhhp62<{
 			name: "ended_by";
 			tableName: "calls";
 			dataType: "string";
@@ -33672,7 +34145,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		failureReason: PgColumn_ffrhhp61<{
+		failureReason: PgColumn_ffrhhp62<{
 			name: "failure_reason";
 			tableName: "calls";
 			dataType: "string";
@@ -33689,7 +34162,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		endReason: PgColumn_ffrhhp61<{
+		endReason: PgColumn_ffrhhp62<{
 			name: "end_reason";
 			tableName: "calls";
 			dataType: "string";
@@ -33706,7 +34179,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		agentCostMicroCents: PgColumn_ffrhhp61<{
+		agentCostMicroCents: PgColumn_ffrhhp62<{
 			name: "agent_cost_micro_cents";
 			tableName: "calls";
 			dataType: "number";
@@ -33723,7 +34196,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		dealId: PgColumn_ffrhhp61<{
+		dealId: PgColumn_ffrhhp62<{
 			name: "deal_id";
 			tableName: "calls";
 			dataType: "string";
@@ -33740,7 +34213,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		note: PgColumn_ffrhhp61<{
+		note: PgColumn_ffrhhp62<{
 			name: "note";
 			tableName: "calls";
 			dataType: "string";
@@ -33757,7 +34230,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		transcriptState: PgColumn_ffrhhp61<{
+		transcriptState: PgColumn_ffrhhp62<{
 			name: "transcript_state";
 			tableName: "calls";
 			dataType: "string";
@@ -33774,7 +34247,7 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp61<{
+		updatedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "calls";
 			dataType: "date";
@@ -33808,11 +34281,11 @@ declare const voiceCalls: PgTableWithColumns_a5zn0g61<{
 * Lists served: one Call's log in order, `WHERE organization_id = $1 AND call_id = $2 ORDER BY
 * seq` (`call_events_call_idx`).
 */
-declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
+declare const voiceCallEvents: PgTableWithColumns_a5zn0g62<{
 	name: "call_events";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp61<{
+		id: PgColumn_ffrhhp62<{
 			name: "id";
 			tableName: "call_events";
 			dataType: "string";
@@ -33829,7 +34302,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp61<{
+		organizationId: PgColumn_ffrhhp62<{
 			name: "organization_id";
 			tableName: "call_events";
 			dataType: "string";
@@ -33846,7 +34319,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		seq: PgColumn_ffrhhp61<{
+		seq: PgColumn_ffrhhp62<{
 			name: "seq";
 			tableName: "call_events";
 			dataType: "number";
@@ -33863,7 +34336,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: "always";
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp61<{
+		callId: PgColumn_ffrhhp62<{
 			name: "call_id";
 			tableName: "call_events";
 			dataType: "string";
@@ -33880,7 +34353,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		kind: PgColumn_ffrhhp61<{
+		kind: PgColumn_ffrhhp62<{
 			name: "kind";
 			tableName: "call_events";
 			dataType: "string";
@@ -33897,7 +34370,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		fromState: PgColumn_ffrhhp61<{
+		fromState: PgColumn_ffrhhp62<{
 			name: "from_state";
 			tableName: "call_events";
 			dataType: "string";
@@ -33914,7 +34387,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		toState: PgColumn_ffrhhp61<{
+		toState: PgColumn_ffrhhp62<{
 			name: "to_state";
 			tableName: "call_events";
 			dataType: "string";
@@ -33931,7 +34404,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerEventId: PgColumn_ffrhhp61<{
+		providerEventId: PgColumn_ffrhhp62<{
 			name: "provider_event_id";
 			tableName: "call_events";
 			dataType: "string";
@@ -33948,7 +34421,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		occurredAt: PgColumn_ffrhhp61<{
+		occurredAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "call_events";
 			dataType: "date";
@@ -33965,7 +34438,7 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordedAt: PgColumn_ffrhhp61<{
+		recordedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "call_events";
 			dataType: "date";
@@ -33996,11 +34469,11 @@ declare const voiceCallEvents: PgTableWithColumns_a5zn0g61<{
 * Lookups served: by Call (`recordings_call_key`); by storage key (`recordings_storage_key_key`);
 * deleted Recordings due for purge, oldest first (`recordings_purge_idx`).
 */
-declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
+declare const voiceRecordings: PgTableWithColumns_a5zn0g62<{
 	name: "recordings";
 	schema: "voice";
 	columns: {
-		id: PgColumn_ffrhhp61<{
+		id: PgColumn_ffrhhp62<{
 			name: "id";
 			tableName: "recordings";
 			dataType: "string";
@@ -34017,7 +34490,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp61<{
+		organizationId: PgColumn_ffrhhp62<{
 			name: "organization_id";
 			tableName: "recordings";
 			dataType: "string";
@@ -34034,7 +34507,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp61<{
+		callId: PgColumn_ffrhhp62<{
 			name: "call_id";
 			tableName: "recordings";
 			dataType: "string";
@@ -34051,7 +34524,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		storageKey: PgColumn_ffrhhp61<{
+		storageKey: PgColumn_ffrhhp62<{
 			name: "storage_key";
 			tableName: "recordings";
 			dataType: "string";
@@ -34068,7 +34541,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		sizeBytes: PgColumn_ffrhhp61<{
+		sizeBytes: PgColumn_ffrhhp62<{
 			name: "size_bytes";
 			tableName: "recordings";
 			dataType: "number";
@@ -34085,7 +34558,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		channels: PgColumn_ffrhhp61<{
+		channels: PgColumn_ffrhhp62<{
 			name: "channels";
 			tableName: "recordings";
 			dataType: "number";
@@ -34102,7 +34575,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		state: PgColumn_ffrhhp61<{
+		state: PgColumn_ffrhhp62<{
 			name: "state";
 			tableName: "recordings";
 			dataType: "string";
@@ -34119,7 +34592,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp61<{
+		createdAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -34136,7 +34609,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		storedAt: PgColumn_ffrhhp61<{
+		storedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -34153,7 +34626,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		deletedAt: PgColumn_ffrhhp61<{
+		deletedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -34170,7 +34643,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		purgeDueAt: PgColumn_ffrhhp61<{
+		purgeDueAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -34187,7 +34660,7 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp61<{
+		updatedAt: PgColumn_ffrhhp62<{
 			name: string;
 			tableName: "recordings";
 			dataType: "date";
@@ -34207,8 +34680,8 @@ declare const voiceRecordings: PgTableWithColumns_a5zn0g61<{
 	};
 	dialect: "pg";
 }>;
-import { PgTableWithColumns as PgTableWithColumns_a5zn0g62 } from "drizzle-orm/pg-core";
-import { PgColumn as PgColumn_ffrhhp62 } from "drizzle-orm/pg-core";
+import { PgTableWithColumns as PgTableWithColumns_a5zn0g63 } from "drizzle-orm/pg-core";
+import { PgColumn as PgColumn_ffrhhp63 } from "drizzle-orm/pg-core";
 import { Column as Column_xh1aba9 } from "drizzle-orm";
 import { PgColumnBuilder as PgColumnBuilder_r7cy329 } from "drizzle-orm/pg-core";
 import { ColumnBuilderExtraConfig as ColumnBuilderExtraConfig_359rmb9 } from "drizzle-orm";
@@ -34241,11 +34714,11 @@ declare const TWILIO_DIRECTORY_KINDS: readonly ["call", "recording"];
 * CONFLICT DO NOTHING` on it. A provider call id that another Organization already holds is
 * refused by the directory (unique violation on `twilio_directory_pkey`).
 */
-declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
+declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g63<{
 	name: "twilio_calls";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp62<{
+		organizationId: PgColumn_ffrhhp63<{
 			name: "organization_id";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34262,7 +34735,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerCallId: PgColumn_ffrhhp62<{
+		providerCallId: PgColumn_ffrhhp63<{
 			name: "provider_call_id";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34279,7 +34752,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		callId: PgColumn_ffrhhp62<{
+		callId: PgColumn_ffrhhp63<{
 			name: "call_id";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34296,7 +34769,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		direction: PgColumn_ffrhhp62<{
+		direction: PgColumn_ffrhhp63<{
 			name: "direction";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34313,7 +34786,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosureWordingVersion: PgColumn_ffrhhp62<{
+		disclosureWordingVersion: PgColumn_ffrhhp63<{
 			name: "disclosure_wording_version";
 			tableName: "twilio_calls";
 			dataType: "number";
@@ -34330,7 +34803,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosureAiAssisted: PgColumn_ffrhhp62<{
+		disclosureAiAssisted: PgColumn_ffrhhp63<{
 			name: "disclosure_ai_assisted";
 			tableName: "twilio_calls";
 			dataType: "boolean";
@@ -34347,7 +34820,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosurePlayedAt: PgColumn_ffrhhp62<{
+		disclosurePlayedAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_calls";
 			dataType: "date";
@@ -34364,7 +34837,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		disclosureStarted: PgColumn_ffrhhp62<{
+		disclosureStarted: PgColumn_ffrhhp63<{
 			name: "disclosure_started";
 			tableName: "twilio_calls";
 			dataType: "boolean";
@@ -34381,7 +34854,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		bridgedTo: PgColumn_ffrhhp62<{
+		bridgedTo: PgColumn_ffrhhp63<{
 			name: "bridged_to";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34398,7 +34871,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		ringIdentities: PgColumn_ffrhhp62<{
+		ringIdentities: PgColumn_ffrhhp63<{
 			name: "ring_identities";
 			tableName: "twilio_calls";
 			dataType: "array";
@@ -34441,7 +34914,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			}, {}, {}, ColumnBuilderExtraConfig_359rmb9>;
 			size: undefined;
 		}>;
-		recordingId: PgColumn_ffrhhp62<{
+		recordingId: PgColumn_ffrhhp63<{
 			name: "recording_id";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34458,7 +34931,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		streamId: PgColumn_ffrhhp62<{
+		streamId: PgColumn_ffrhhp63<{
 			name: "stream_id";
 			tableName: "twilio_calls";
 			dataType: "string";
@@ -34475,7 +34948,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp62<{
+		createdAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_calls";
 			dataType: "date";
@@ -34492,7 +34965,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		updatedAt: PgColumn_ffrhhp62<{
+		updatedAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_calls";
 			dataType: "date";
@@ -34509,7 +34982,7 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		expiresAt: PgColumn_ffrhhp62<{
+		expiresAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_calls";
 			dataType: "date";
@@ -34536,11 +35009,11 @@ declare const voiceTwilioCalls: PgTableWithColumns_a5zn0g62<{
 * UPDATE. `expires_at` follows the call's. Lookups served: by Recording id, through
 * `voice.twilio_owner` before the Organization is known, then the primary key.
 */
-declare const voiceTwilioRecordings: PgTableWithColumns_a5zn0g62<{
+declare const voiceTwilioRecordings: PgTableWithColumns_a5zn0g63<{
 	name: "twilio_recordings";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp62<{
+		organizationId: PgColumn_ffrhhp63<{
 			name: "organization_id";
 			tableName: "twilio_recordings";
 			dataType: "string";
@@ -34557,7 +35030,7 @@ declare const voiceTwilioRecordings: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		recordingId: PgColumn_ffrhhp62<{
+		recordingId: PgColumn_ffrhhp63<{
 			name: "recording_id";
 			tableName: "twilio_recordings";
 			dataType: "string";
@@ -34574,7 +35047,7 @@ declare const voiceTwilioRecordings: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerCallId: PgColumn_ffrhhp62<{
+		providerCallId: PgColumn_ffrhhp63<{
 			name: "provider_call_id";
 			tableName: "twilio_recordings";
 			dataType: "string";
@@ -34591,7 +35064,7 @@ declare const voiceTwilioRecordings: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp62<{
+		createdAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_recordings";
 			dataType: "date";
@@ -34618,11 +35091,11 @@ declare const voiceTwilioRecordings: PgTableWithColumns_a5zn0g62<{
 * `expires_at` is when the key may be forgotten (purge on `twilio_placements_purge_idx`, per
 * Organization and bounded). Lookups served: by key (the primary key).
 */
-declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
+declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g63<{
 	name: "twilio_placements";
 	schema: "voice";
 	columns: {
-		organizationId: PgColumn_ffrhhp62<{
+		organizationId: PgColumn_ffrhhp63<{
 			name: "organization_id";
 			tableName: "twilio_placements";
 			dataType: "string";
@@ -34639,7 +35112,7 @@ declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		idempotencyKey: PgColumn_ffrhhp62<{
+		idempotencyKey: PgColumn_ffrhhp63<{
 			name: "idempotency_key";
 			tableName: "twilio_placements";
 			dataType: "string";
@@ -34656,7 +35129,7 @@ declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerCallId: PgColumn_ffrhhp62<{
+		providerCallId: PgColumn_ffrhhp63<{
 			name: "provider_call_id";
 			tableName: "twilio_placements";
 			dataType: "string";
@@ -34673,7 +35146,7 @@ declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		fingerprint: PgColumn_ffrhhp62<{
+		fingerprint: PgColumn_ffrhhp63<{
 			name: "fingerprint";
 			tableName: "twilio_placements";
 			dataType: "string";
@@ -34690,7 +35163,7 @@ declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		createdAt: PgColumn_ffrhhp62<{
+		createdAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_placements";
 			dataType: "date";
@@ -34707,7 +35180,7 @@ declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		expiresAt: PgColumn_ffrhhp62<{
+		expiresAt: PgColumn_ffrhhp63<{
 			name: string;
 			tableName: "twilio_placements";
 			dataType: "date";
@@ -34738,11 +35211,11 @@ declare const voiceTwilioPlacements: PgTableWithColumns_a5zn0g62<{
 * `twilio_recordings_sync_directory` keep it, and no service role holds any privilege on it. The
 * primary key makes a provider id belong to one Organization for good.
 */
-declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g62<{
+declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g63<{
 	name: "twilio_directory";
 	schema: "voice";
 	columns: {
-		kind: PgColumn_ffrhhp62<{
+		kind: PgColumn_ffrhhp63<{
 			name: "kind";
 			tableName: "twilio_directory";
 			dataType: "string";
@@ -34759,7 +35232,7 @@ declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		refId: PgColumn_ffrhhp62<{
+		refId: PgColumn_ffrhhp63<{
 			name: "ref_id";
 			tableName: "twilio_directory";
 			dataType: "string";
@@ -34776,7 +35249,7 @@ declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		organizationId: PgColumn_ffrhhp62<{
+		organizationId: PgColumn_ffrhhp63<{
 			name: "organization_id";
 			tableName: "twilio_directory";
 			dataType: "string";
@@ -34793,7 +35266,7 @@ declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g62<{
 			identity: undefined;
 			generated: undefined;
 		}, {}, {}>;
-		providerCallId: PgColumn_ffrhhp62<{
+		providerCallId: PgColumn_ffrhhp63<{
 			name: "provider_call_id";
 			tableName: "twilio_directory";
 			dataType: "string";
@@ -34813,4 +35286,4 @@ declare const voiceTwilioDirectory: PgTableWithColumns_a5zn0g62<{
 	};
 	dialect: "pg";
 }>;
-export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, AGENT_KINDS, AGENT_SETTING_CHANNELS, AGENT_TOOLS, AGENT_TURN_ROLES, AGENT_VOICE_STYLES, ANGLE_ORIGINS, API_KEY_KINDS, API_KEY_ROLE_CEILINGS, API_KEY_SCOPES, APPROVAL_MODES, ASSESSMENT_JUDGE_SOURCES, ASSESSMENT_SUBJECT_KINDS, ASSESSMENT_VERDICTS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, ATTEMPT_FAILURES, ATTEMPT_OUTCOMES, AUDIT_ACTOR_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BOOKING_MODES, BOOKING_ORIGINS, BOOKING_STATES, BRIEF_ENTRY_ROLES, BackupCode, CALENDAR_CONNECTION_STATES, CALENDAR_PROVIDERS, CALL_CHANNELS, CALL_END_REASONS, CALL_FAILURE_REASONS, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_ORIGINS, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_TURN_TRACKS, CALL_VENDOR_ID_PATTERN, CAMPAIGN_APPROVAL_MODES, CAMPAIGN_STATES, CHAT_STATES, CHAT_TOKEN_HASH_BYTES, CITATION_KINDS, CITATION_PROSPECT_FIELDS, CLASSIFICATION_DECIDERS, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CONTROL_LEVELS, CONVERSATION_CONTROLLERS, CONVERSATION_OUTCOME_LABELS, CONVERSATION_STATES, COPILOT_CARD_KINDS, COPILOT_OBJECTION_TYPES, COPILOT_RATINGS, CREDENTIAL_TYPES, CRM_CONNECTION_STATES, CRM_DIRECTIONS, CRM_FIELD_KEYS, CRM_MAPPING_KINDS, CRM_OBJECT_KINDS, CRM_PROVIDERS, CRM_REF_STATES, CRM_RUN_ERROR_CODES, CRM_RUN_STATES, CRM_RUN_TRIGGERS, CRM_SCOPE_LEVELS, CRM_SKIP_REASON_COUNT, CRM_STAGE_OUTCOMES, CRM_WEBHOOK_WINDOW_SECONDS, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DECISION_KINDS, DEFAULT_CHANNEL, DEFAULT_COPILOT_MIN_DEALS, DEFAULT_COPILOT_MIN_MOMENTS, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DRAFT_AUTHORS, DRAFT_CHANNELS, DRAFT_CHECKS, DRAFT_CHECK_RESULTS, DRAFT_HOLD_REASONS, DRAFT_SOURCE_KINDS, DRAFT_STATUSES, DRAFT_TEXT_SOURCES, DemoRateCounter, DemoRequest, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, ENROLLMENT_EVENT_KINDS, ENROLLMENT_STATES, ENROLLMENT_STOP_REASONS, ENVIRONMENT_KINDS, ESCALATION_TARGETS, ESCALATION_TRIGGERS, EVENT_RETENTION_FLOOR, EXPORT_ACTIVE_STATES, EXPORT_FAILURE_REASONS, EXPORT_FORMATS, EXPORT_KINDS, EXPORT_PART_FAILURE_REASONS, EXPORT_PART_STATES, EXPORT_SERVICES, EXPORT_STATES, Environment, EnvironmentSettingsRow, Event, FIELD_GROUPS, FIELD_HISTORY_STATES, FINAL_RUN_STATUSES, FINDING_CATEGORIES, FINDING_FEEDBACKS, FINDING_SEVERITIES, FIT_FIELDS, FIT_OPERATORS, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HANDOFF_CHANNELS, HANDOFF_REASONS, HANDOFF_RESULTS, HANDOFF_STATES, HEALTH_COMPONENT_KINDS, HEALTH_EFFECTS, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INBOX_CHANNELS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INQUIRY_CALLBACK_STATES, INQUIRY_SKIP_REASONS, INQUIRY_SOURCES, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LINKEDIN_ACCOUNT_STATUSES, LINKEDIN_DAILY_CONNECTION_CEILING, LINKEDIN_DAILY_MESSAGE_CEILING, LINKEDIN_PAUSE_REASONS, LINKEDIN_WEEKLY_CONNECTION_CEILING, LOGGED_DENIAL_CODES, MAILBOX_KINDS, MAILBOX_PROVIDERS, MAILBOX_STATES, MAILBOX_STATE_REASONS, MAIL_EVENT_KINDS, MAX_AGENT_CALL_COST_USD_CENTS, MAX_AGENT_CALL_SECONDS, MAX_AGENT_CONCURRENCY, MAX_AGENT_GREETING_LENGTH, MAX_AGENT_HOURS_DAYS, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH, MAX_AGENT_INSTRUCTION_LENGTH, MAX_ANGLE_LENGTH, MAX_ANSWER_LENGTH, MAX_API_KEY_NAME_LENGTH, MAX_ASSESSED_NUMBER, MAX_ATTEMPTS_PER_RUN, MAX_ATTEMPT_DURATION_MS, MAX_ATTEMPT_EPOCH, MAX_AUDIT_METADATA_BYTES, MAX_BANNED_PHRASES, MAX_BRANCH_ARMS, MAX_BRIEF_STATEMENTS, MAX_BRIEF_STATEMENT_LENGTH, MAX_CALLBACK_ATTEMPTS, MAX_CALLER_LENGTH, MAX_CALL_DURATION_SECONDS, MAX_CALL_TURN_TEXT_LENGTH, MAX_CAMPAIGN_NAME_LENGTH, MAX_CAMPAIGN_VERSION, MAX_CHECK_COUNT, MAX_CITATION_DOCUMENT_PAGE, MAX_CITATION_URL_LENGTH, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_COPILOT_CARDS_PER_CALL, MAX_COPILOT_CARD_TEXT_LENGTH, MAX_COPILOT_CITED_MOMENTS, MAX_COPILOT_EVIDENCE, MAX_COPILOT_MIN_EVIDENCE, MAX_COPILOT_QUOTE_LENGTH, MAX_CREDENTIAL_CIPHERTEXT_BYTES, MAX_CREDENTIAL_KEY_ID_LENGTH, MAX_CRM_CURSOR_LENGTH, MAX_CRM_EXTERNAL_ID_LENGTH, MAX_CRM_KEY_ID_LENGTH, MAX_CRM_LABEL_LENGTH, MAX_CRM_LOCAL_ID_LENGTH, MAX_CRM_RUN_COUNT, MAX_CRM_RUN_FAILURES, MAX_CRM_SEALED_TOKEN_BYTES, MAX_CRM_WRITE_KEY_LENGTH, MAX_DAILY_CAP, MAX_DECISION_NOTE_LENGTH, MAX_DOCUMENT_PAGES, MAX_DRAFT_BODY_LENGTH, MAX_DRAFT_CHECKS, MAX_DRAFT_CITATIONS, MAX_DRAFT_GOAL_LENGTH, MAX_DRAFT_REVISION, MAX_DRAFT_SUBJECT_LENGTH, MAX_DROPPED_COUNT, MAX_ESCALATION_RULES, MAX_EVIDENCE_COUNT, MAX_EVIDENCE_REF_LENGTH, MAX_EXCEPT_LABELS, MAX_EXPORT_PART_BYTES, MAX_EXPORT_PART_FILES, MAX_EXPORT_PREFIX_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FINDING_EXPLANATION_LENGTH, MAX_FINDING_SPAN_OFFSET, MAX_FIT_CONDITION_BYTES, MAX_FIT_NAME_LENGTH, MAX_FIT_VALUES, MAX_FIT_WEIGHT, MAX_FORM_TOKEN_LENGTH, MAX_HANDOFF_ATTEMPTS, MAX_HEALTH_COMPONENTS, MAX_HEALTH_COUNT, MAX_LINE_LABEL_LENGTH, MAX_LINKEDIN_PROVIDER_REFERENCE_LENGTH, MAX_LINKEDIN_TYPED_NAME_LENGTH, MAX_LINKEDIN_WORDING_VERSION_LENGTH, MAX_MAILBOX_NAME_LENGTH, MAX_MAILBOX_TEAMS, MAX_MAIL_PROVIDER_MESSAGE_ID_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_MESSAGE_BODY_LENGTH, MAX_MICRO_DOLLARS, MAX_MIN_GAP_SECONDS, MAX_MODEL_NAME_LENGTH, MAX_PENDING_DRAFT_COUNT, MAX_PLAY_CITATIONS, MAX_PLAY_EVIDENCE, MAX_PLAY_STEPS, MAX_PREFERRED_WORDS, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_COMPANY_TECHNOLOGIES, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH, MAX_PROSPECT_COMPANY_TEXT_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH, MAX_PROVIDERS, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_PROVIDER_KEY_LENGTH, MAX_PROVIDER_MESSAGE_ID_LENGTH, MAX_PROVIDER_REFERENCE_LENGTH, MAX_QUALIFICATION_QUESTIONS, MAX_QUALIFICATION_SUMMARY_LENGTH, MAX_QUESTION_CHOICES, MAX_QUESTION_PROMPT_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_RESERVATION_HOLD_KEY_LENGTH, MAX_ROLLUP_COUNT, MAX_ROLLUP_GROUP_KEY_LENGTH, MAX_ROUTING_POOL_MEMBERS, MAX_ROUTING_RULES, MAX_RUN_FIELDS, MAX_RUN_REQUEST_ID_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SENDS_PER_DAY, MAX_SENDS_PER_HOUR, MAX_SEQUENCE_STEP, MAX_SEQUENCE_STEPS, MAX_SIGNAL_DETAIL_BYTES, MAX_SIGN_OFF_LENGTH, MAX_SKIP_CONDITIONS, MAX_SOURCE_DEALS, MAX_SOURCE_KEY_LENGTH, MAX_SOURCE_REF_LENGTH, MAX_SOURCE_URL_LENGTH, MAX_STEP_HOURS, MAX_STEP_KEY_LENGTH, MAX_STRATEGY_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUGGESTION_MOMENTS, MAX_SUGGESTION_TEXT_LENGTH, MAX_SUMMARY_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_TASK_INSTRUCTION_LENGTH, MAX_TOKEN_CIPHERTEXT_BYTES, MAX_TONE_LENGTH, MAX_TOUCH_SOURCES, MAX_TURN_SOURCES, MAX_TURN_TEXT_LENGTH, MAX_TWILIO_FINGERPRINT_LENGTH, MAX_TWILIO_PLACEMENT_KEY_LENGTH, MAX_TWILIO_PROVIDER_ID_LENGTH, MAX_TWILIO_RING_IDENTITIES, MAX_VARIANT_ANGLE_LENGTH, MAX_VARIANT_LABEL_LENGTH, MAX_VARIANT_WEIGHT, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_VOICE_LENGTH_CHARACTERS, MAX_VOICE_TERM_LENGTH, MAX_VOICE_VERSION, MAX_WON_DEAL_COUNT, MAX_WORKING_WINDOWS, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MESSAGE_AUTHOR_KINDS, MESSAGE_DIRECTIONS, MIN_AGENT_IDEMPOTENCY_KEY_LENGTH, MIN_COPILOT_MIN_EVIDENCE, MIN_FORM_TOKEN_LENGTH, MIN_QUESTION_CHOICES, MIN_VOICE_LENGTH_CHARACTERS, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_AGENT_KIND, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, OUTBOUND_LANGUAGES, OUTBOUND_WORK_KINDS, OUTBOX_DEDUPE_KEY_MAX_LENGTH, OUTBOX_ERROR_CODE_MAX_LENGTH, OUTBOX_MAX_ATTEMPTS, OUTBOX_MAX_BATCH, OUTBOX_MAX_LEASE_MS, OUTBOX_MAX_RETRY_DELAY_MS, OUTBOX_MIN_LEASE_MS, OUTBOX_PAYLOAD_MAX_BYTES, OUTBOX_TOPIC_MAX_LENGTH, OutboxRow, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PLAY_CITATION_KINDS, PLAY_INTENTS, PLAY_SOURCES, PLAY_STATUSES, PROMOTION_SOURCES, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, QUALIFICATION_QUESTION_KINDS, QualificationJsonValue, REFRESH_SEALED_NEXT_TOKEN_MAX_BYTES, REPLY_LABELS, RIGHTS_MAX_WORDING_VERSION, ROLLUP_GROUP_KINDS, ROLLUP_METRICS, ROUTING_PURPOSES, ROUTING_TARGET_KINDS, RUN_STATUSES, RefreshToken, SEND_CHECKS, SEND_DEFERRING_REASONS, SEND_REFUSAL_REASONS, SEND_STATES, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNAL_KINDS, SIGNAL_SOURCE_TYPES, SIGNING_KEY_STATUSES, SKIPPED_ATTEMPT_OUTCOMES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KINDS, SOURCE_KIND_PATTERN, SOURCE_OUTCOMES, SOURCE_PERFORMANCE_FLAGS, STEP_KINDS, STEP_TASKS, STOP_REASONS, SUGGESTION_FINGERPRINT_BYTES, SUGGESTION_KINDS, SUGGESTION_STATUSES, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, StoredMomentRef, StoredQuote, StoredSkipCondition, StoredWorkingDay, TOUCH_AGENT_KINDS, TOUCH_CHANNELS, TOUCH_KINDS, TWILIO_DIRECTORY_KINDS, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WEEKDAYS, WINDOW_ZONES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, agentInstructionPointers, agentInstructionVersions, agentSettings, analyticsEvents, apiKeyUsage, apiKeys, approvalDecisions, approvalPolicies, assessmentFindings, assessments, attemptCounters, auditEvents, auditLogs, authSchema, backupCodes, bookingManageDirectory, bookingTypeDirectory, bookingTypes, bookings, busyBlocks, calendarConnections, callJobs, callReuploadRequeues, callVendorSends, calls, consentFormDirectory, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, conversationSummaries, conversations, coreApiKeys, coreSchema, credentials, crmConnections, crmExternalRefs, crmMappings, crmSyncRuns, crmWebhookReceipts, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, draftSources, drafts, enrichmentAttempts, enrichmentReservations, enrichmentRuns, enrichmentSpend, environmentSettings, environments, escalationRules2 as escalationRules, events, exportJobs, exportParts, fitCriteria, flowAttempts, healthDaily, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, linkedinAccounts, linkedinChannelSettings, linkedinRiskAcceptances, linkedinUsage, mailEvents, mailMessages, mailboxConnectAttempts, mailboxLimits, mailboxTestSends, mailboxes, membershipDirectory, memberships, messages, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, outboundBrandVoices, outboundBriefStatements, outboundBriefs, outboundCampaigns, outboundDraftChecks, outboundDraftCitations, outboundDrafts, outboundEnrollmentEvents, outboundEnrollments, outboundModelUsage, outboundPlayCitations, outboundPlays, outboundSchema, outboundSendDecisions, outboundSequences, outboundSteps, outboundVariants, outboundWorkHints, outbox, passkeyChallenges, passkeys, passwordHistory, playbookEmbedUsage, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, providerSettings, refreshTokens, repChangeAllowed, rightsConfirmations, rollupDaily, routingDecisions, routingRules, routingState, sessions, signals, signingKeys, smsCodeCounts, sourcePerformance, suggestions, suppressionEntries, teamMembers, teams, touches, userFactors, users, verificationTokens, voiceAgentSettings, voiceAgentTurnSources, voiceAgentTurns, voiceCallEvents, voiceCallTurns, voiceCalls, voiceChats, voiceCopilotCards, voiceCopilotSettings, voiceHandoffs, voiceIdempotencyKeys, voiceInquiries, voiceLineDirectory, voiceLines, voiceQualificationAnswers, voiceQualificationQuestions, voiceRecordings, voiceSchema, voiceTwilioCalls, voiceTwilioDirectory, voiceTwilioPlacements, voiceTwilioRecordings, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workingHours, workspaces };
+export { ABANDON_CASE_MAX_ATTEMPTS, ABANDON_CASE_OUTCOMES, ADDRESS_HASH_BYTES, AGENT_CALL_END_REASONS, AGENT_CALL_NUMBER_HASH_BYTES, AGENT_CALL_SOURCES, AGENT_CALL_STATES, AGENT_KINDS, AGENT_SETTING_CHANNELS, AGENT_TOOLS, AGENT_TURN_ROLES, AGENT_VOICE_STYLES, ANGLE_ORIGINS, API_KEY_KINDS, API_KEY_ROLE_CEILINGS, API_KEY_SCOPES, APPROVAL_MODES, ASSESSMENT_JUDGE_SOURCES, ASSESSMENT_SUBJECT_KINDS, ASSESSMENT_VERDICTS, ATTEMPT_COUNTER_KEY_HASH_BYTES, ATTEMPT_COUNTER_KINDS, ATTEMPT_COUNTER_MAX_HITS, ATTEMPT_FAILURES, ATTEMPT_OUTCOMES, AUDIT_ACTOR_KINDS, AUDIT_ACTOR_TYPES, AUDIT_RETENTION_FLOOR, AbandonCase, ApiKey, AttemptCounter, AuditLog, BOOKING_MODES, BOOKING_ORIGINS, BOOKING_STATES, BRIEF_ENTRY_ROLES, BackupCode, CALENDAR_CONNECTION_STATES, CALENDAR_PROVIDERS, CALL_CHANNELS, CALL_END_REASONS, CALL_FAILURE_REASONS, CALL_GATE_CODES, CALL_JOB_KINDS, CALL_JOB_MAX_ATTEMPTS, CALL_JOB_STATES, CALL_KINDS, CALL_MAX_MOMENTS, CALL_MAX_RECORDING_BYTES, CALL_MAX_RECORDING_SECONDS, CALL_MAX_SEQ, CALL_MAX_SPEAKERS, CALL_MAX_TRANSCRIPT_BYTES, CALL_MAX_VENDOR_SENDS, CALL_MEDIA_TYPES, CALL_ORIGINS, CALL_PENDING_CLEANUP_PREDICATE, CALL_PURGE_MAX_ATTEMPTS, CALL_REP_BY, CALL_RESULTS, CALL_SPEAKER_LABEL_MAX_BYTES, CALL_SPEAKER_LABEL_MAX_LENGTH, CALL_STATES, CALL_TURN_TRACKS, CALL_VENDOR_ID_PATTERN, CAMPAIGN_APPROVAL_MODES, CAMPAIGN_STATES, CHAT_STATES, CHAT_TOKEN_HASH_BYTES, CITATION_KINDS, CITATION_PROSPECT_FIELDS, CLASSIFICATION_DECIDERS, CONSENT_CHANNELS, CONSENT_EVENT_KINDS, CONSENT_FORM_STATES, CONSENT_GRANT_SOURCES, CONSENT_WITHDRAWAL_SOURCES, CONSUMED_MESSAGE_STATES, CONTACT_ALLOW_BASES, CONTACT_CHECK_RETENTION_DAYS, CONTACT_PURPOSES, CONTROL_LEVELS, CONVERSATION_CONTROLLERS, CONVERSATION_OUTCOME_LABELS, CONVERSATION_STATES, COPILOT_CARD_KINDS, COPILOT_OBJECTION_TYPES, COPILOT_RATINGS, CREDENTIAL_TYPES, CRM_CONNECTION_STATES, CRM_DIRECTIONS, CRM_FIELD_KEYS, CRM_MAPPING_KINDS, CRM_OBJECT_KINDS, CRM_PROVIDERS, CRM_REF_STATES, CRM_RUN_ERROR_CODES, CRM_RUN_STATES, CRM_RUN_TRIGGERS, CRM_SCOPE_LEVELS, CRM_SKIP_REASON_COUNT, CRM_STAGE_OUTCOMES, CRM_WEBHOOK_WINDOW_SECONDS, Credential, DEAL_ID_MAX_BYTES, DEAL_ID_MAX_LENGTH, DEAL_IMPORT_APPLY_BATCH, DEAL_IMPORT_FAILURE_REASONS, DEAL_IMPORT_MAX_ATTEMPTS, DEAL_IMPORT_MAX_BYTES, DEAL_IMPORT_MAX_ROWS, DEAL_IMPORT_ROW_REASONS, DEAL_IMPORT_ROW_REASONS_WITHOUT_DEAL_ID, DEAL_IMPORT_ROW_RESULTS, DEAL_IMPORT_STATES, DEAL_MAX_SEQ, DEAL_NAME_MAX_BYTES, DEAL_NAME_MAX_LENGTH, DEAL_OUTCOMES, DECISION_KINDS, DEFAULT_CHANNEL, DEFAULT_COPILOT_MIN_DEALS, DEFAULT_COPILOT_MIN_MOMENTS, DEFAULT_LINE_CONCURRENT_AGENT_CALLS, DEFAULT_LINE_DAILY_AGENT_DIAL_CAP, DEMO_NOTIFICATION_STATUSES, DEMO_RATE_ADDRESS_HASH_BYTES, DEMO_REQUEST_KEY_LENGTH, DEMO_REQUEST_MESSAGE_MAX, DEMO_REQUEST_NAME_MAX, DEMO_REQUEST_SOURCE_PAGE_MAX, DOCUMENT_FAILURE_REASONS, DOCUMENT_FILE_TYPES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_PAGE_COUNT, DOCUMENT_PURGE_MAX_ATTEMPTS, DOCUMENT_STATES, DRAFT_AUTHORS, DRAFT_CHANNELS, DRAFT_CHECKS, DRAFT_CHECK_RESULTS, DRAFT_HOLD_REASONS, DRAFT_SOURCE_KINDS, DRAFT_STATUSES, DRAFT_TEXT_SOURCES, DemoRateCounter, DemoRequest, EMBED_USAGE_MAX_ADD, EMBED_USAGE_MAX_MOMENTS, ENROLLMENT_EVENT_KINDS, ENROLLMENT_STATES, ENROLLMENT_STOP_REASONS, ENVIRONMENT_KINDS, ESCALATION_TARGETS, ESCALATION_TRIGGERS, EVENT_RETENTION_FLOOR, EXPORT_ACTIVE_STATES, EXPORT_FAILURE_REASONS, EXPORT_FORMATS, EXPORT_KINDS, EXPORT_PART_FAILURE_REASONS, EXPORT_PART_STATES, EXPORT_SERVICES, EXPORT_STATES, Environment, EnvironmentSettingsRow, Event, FIELD_GROUPS, FIELD_HISTORY_STATES, FINAL_RUN_STATUSES, FINDING_CATEGORIES, FINDING_FEEDBACKS, FINDING_SEVERITIES, FIT_FIELDS, FIT_OPERATORS, FORM_TOKEN_PATTERN, FlowAttemptRow, GLOBAL_SCOPE_ORGANIZATION_ID, HANDOFF_CHANNELS, HANDOFF_REASONS, HANDOFF_RESULTS, HANDOFF_STATES, HEALTH_COMPONENT_KINDS, HEALTH_EFFECTS, HookCallCount, HookRow, IDEMPOTENCY_HASH_BYTES, IDEMPOTENCY_KEY_MAX, IDEMPOTENCY_RESPONSE_MAX_BYTES, IDEMPOTENCY_ROUTE_MAX, IDENTITY_PROVIDERS, IDENTITY_VALUE_PATTERNS, INBOX_CHANNELS, INGESTION_JOB_MAX_ATTEMPTS, INGESTION_JOB_STATES, INGESTION_MAX_CHUNKS, INGESTION_STEPS, INQUIRY_CALLBACK_STATES, INQUIRY_SKIP_REASONS, INQUIRY_SOURCES, INTERNAL_CALL_USER_ID, INVITATION_ROLES, INVITATION_STATES, Identity, InstanceAuditLog, LINE_ASSIGNMENT_KINDS, LINE_STATES, LINKEDIN_ACCOUNT_STATUSES, LINKEDIN_DAILY_CONNECTION_CEILING, LINKEDIN_DAILY_MESSAGE_CEILING, LINKEDIN_PAUSE_REASONS, LINKEDIN_WEEKLY_CONNECTION_CEILING, LOGGED_DENIAL_CODES, MAILBOX_KINDS, MAILBOX_PROVIDERS, MAILBOX_STATES, MAILBOX_STATE_REASONS, MAIL_EVENT_KINDS, MAX_AGENT_CALL_COST_USD_CENTS, MAX_AGENT_CALL_SECONDS, MAX_AGENT_CONCURRENCY, MAX_AGENT_GREETING_LENGTH, MAX_AGENT_HOURS_DAYS, MAX_AGENT_IDEMPOTENCY_KEY_LENGTH, MAX_AGENT_INSTRUCTION_LENGTH, MAX_ANGLE_LENGTH, MAX_ANSWER_LENGTH, MAX_API_KEY_NAME_LENGTH, MAX_ASSESSED_NUMBER, MAX_ATTEMPTS_PER_RUN, MAX_ATTEMPT_DURATION_MS, MAX_ATTEMPT_EPOCH, MAX_AUDIT_METADATA_BYTES, MAX_BANNED_PHRASES, MAX_BRANCH_ARMS, MAX_BRIEF_STATEMENTS, MAX_BRIEF_STATEMENT_LENGTH, MAX_CALLBACK_ATTEMPTS, MAX_CALLER_LENGTH, MAX_CALL_ATTEMPTS, MAX_CALL_DURATION_SECONDS, MAX_CALL_TURN_TEXT_LENGTH, MAX_CAMPAIGN_NAME_LENGTH, MAX_CAMPAIGN_VERSION, MAX_CHECK_COUNT, MAX_CITATION_DOCUMENT_PAGE, MAX_CITATION_URL_LENGTH, MAX_CONSENT_FORM_NAME_LENGTH, MAX_CONSENT_WORDING_LENGTH, MAX_COPILOT_CARDS_PER_CALL, MAX_COPILOT_CARD_TEXT_LENGTH, MAX_COPILOT_CITED_MOMENTS, MAX_COPILOT_EVIDENCE, MAX_COPILOT_MIN_EVIDENCE, MAX_COPILOT_QUOTE_LENGTH, MAX_CREDENTIAL_CIPHERTEXT_BYTES, MAX_CREDENTIAL_KEY_ID_LENGTH, MAX_CRM_CURSOR_LENGTH, MAX_CRM_EXTERNAL_ID_LENGTH, MAX_CRM_KEY_ID_LENGTH, MAX_CRM_LABEL_LENGTH, MAX_CRM_LOCAL_ID_LENGTH, MAX_CRM_RUN_COUNT, MAX_CRM_RUN_FAILURES, MAX_CRM_SEALED_TOKEN_BYTES, MAX_CRM_WRITE_KEY_LENGTH, MAX_DAILY_CAP, MAX_DECISION_NOTE_LENGTH, MAX_DOCUMENT_PAGES, MAX_DRAFT_BODY_LENGTH, MAX_DRAFT_CHECKS, MAX_DRAFT_CITATIONS, MAX_DRAFT_GOAL_LENGTH, MAX_DRAFT_REVISION, MAX_DRAFT_SUBJECT_LENGTH, MAX_DROPPED_COUNT, MAX_ESCALATION_RULES, MAX_EVIDENCE_COUNT, MAX_EVIDENCE_REF_LENGTH, MAX_EXCEPT_LABELS, MAX_EXPORT_PART_BYTES, MAX_EXPORT_PART_FILES, MAX_EXPORT_PREFIX_LENGTH, MAX_FIELD_HISTORY_ENTRIES, MAX_FINDING_EXPLANATION_LENGTH, MAX_FINDING_SPAN_OFFSET, MAX_FIT_CONDITION_BYTES, MAX_FIT_NAME_LENGTH, MAX_FIT_VALUES, MAX_FIT_WEIGHT, MAX_FORM_TOKEN_LENGTH, MAX_HANDOFF_ATTEMPTS, MAX_HEALTH_COMPONENTS, MAX_HEALTH_COUNT, MAX_LINE_CONCURRENT_AGENT_CALLS, MAX_LINE_DAILY_AGENT_DIAL_CAP, MAX_LINE_LABEL_LENGTH, MAX_LINKEDIN_PROVIDER_REFERENCE_LENGTH, MAX_LINKEDIN_TYPED_NAME_LENGTH, MAX_LINKEDIN_WORDING_VERSION_LENGTH, MAX_MAILBOX_NAME_LENGTH, MAX_MAILBOX_TEAMS, MAX_MAIL_PROVIDER_MESSAGE_ID_LENGTH, MAX_MASKED_ADDRESS_LENGTH, MAX_MERGED_PROSPECTS, MAX_MERGE_SNAPSHOT_BYTES, MAX_MESSAGE_BODY_LENGTH, MAX_MICRO_DOLLARS, MAX_MIN_GAP_SECONDS, MAX_MODEL_NAME_LENGTH, MAX_PENDING_DRAFT_COUNT, MAX_PLAY_CITATIONS, MAX_PLAY_EVIDENCE, MAX_PLAY_STEPS, MAX_PREFERRED_WORDS, MAX_PROSPECT_COMPANY_NAME_LENGTH, MAX_PROSPECT_COMPANY_TECHNOLOGIES, MAX_PROSPECT_COMPANY_TECHNOLOGY_LENGTH, MAX_PROSPECT_COMPANY_TEXT_LENGTH, MAX_PROSPECT_FIELD_VALUE_LENGTH, MAX_PROSPECT_IMPORT_BYTES, MAX_PROSPECT_IMPORT_ROWS, MAX_PROSPECT_NOTES_LENGTH, MAX_PROSPECT_TAGS, MAX_PROSPECT_TAG_LENGTH, MAX_PROSPECT_TECHNOLOGIES_VALUE_LENGTH, MAX_PROVIDERS, MAX_PROVIDER_EVENT_ID_LENGTH, MAX_PROVIDER_KEY_LENGTH, MAX_PROVIDER_MESSAGE_ID_LENGTH, MAX_PROVIDER_REFERENCE_LENGTH, MAX_QUALIFICATION_QUESTIONS, MAX_QUALIFICATION_SUMMARY_LENGTH, MAX_QUESTION_CHOICES, MAX_QUESTION_PROMPT_LENGTH, MAX_QUEUED_DEAL_IMPORTS, MAX_RECORDING_KEY_LENGTH, MAX_RESERVATION_HOLD_KEY_LENGTH, MAX_ROLLUP_COUNT, MAX_ROLLUP_GROUP_KEY_LENGTH, MAX_ROUTING_POOL_MEMBERS, MAX_ROUTING_RULES, MAX_RUN_FIELDS, MAX_RUN_REQUEST_ID_LENGTH, MAX_SEARCH_STATE_IDS, MAX_SENDS_PER_DAY, MAX_SENDS_PER_HOUR, MAX_SEQUENCE_STEP, MAX_SEQUENCE_STEPS, MAX_SIGNAL_DETAIL_BYTES, MAX_SIGN_OFF_LENGTH, MAX_SKIP_CONDITIONS, MAX_SOURCE_DEALS, MAX_SOURCE_KEY_LENGTH, MAX_SOURCE_REF_LENGTH, MAX_SOURCE_URL_LENGTH, MAX_STEP_HOURS, MAX_STEP_KEY_LENGTH, MAX_STRATEGY_LENGTH, MAX_SUBMISSION_IP_LENGTH, MAX_SUBMISSION_USER_AGENT_LENGTH, MAX_SUGGESTION_MOMENTS, MAX_SUGGESTION_TEXT_LENGTH, MAX_SUMMARY_LENGTH, MAX_SUPPRESSION_NOTE_LENGTH, MAX_SUPPRESSION_SOURCE_REF_LENGTH, MAX_TASK_INSTRUCTION_LENGTH, MAX_TOKEN_CIPHERTEXT_BYTES, MAX_TONE_LENGTH, MAX_TOUCH_SOURCES, MAX_TURN_SOURCES, MAX_TURN_TEXT_LENGTH, MAX_TWILIO_FINGERPRINT_LENGTH, MAX_TWILIO_PLACEMENT_KEY_LENGTH, MAX_TWILIO_PROVIDER_ID_LENGTH, MAX_TWILIO_RING_IDENTITIES, MAX_VARIANT_ANGLE_LENGTH, MAX_VARIANT_LABEL_LENGTH, MAX_VARIANT_WEIGHT, MAX_VOICE_IDEMPOTENCY_KEY_LENGTH, MAX_VOICE_LENGTH_CHARACTERS, MAX_VOICE_TERM_LENGTH, MAX_VOICE_VERSION, MAX_WON_DEAL_COUNT, MAX_WORKING_WINDOWS, MAX_WRAP_UP_NOTE_LENGTH, MEMBERSHIP_ROLES, MEMBER_NAME_MAX, MESSAGE_AUTHOR_KINDS, MESSAGE_DIRECTIONS, MIN_AGENT_IDEMPOTENCY_KEY_LENGTH, MIN_COPILOT_MIN_EVIDENCE, MIN_FORM_TOKEN_LENGTH, MIN_QUESTION_CHOICES, MIN_VOICE_LENGTH_CHARACTERS, NativeAppRow, NewAbandonCase, NewApiKey, NewAttemptCounter, NewAuditLog, NewBackupCode, NewCredential, NewDemoRequest, NewEnvironment, NewEnvironmentSettingsRow, NewEvent, NewFlowAttemptRow, NewHookCallCount, NewHookRow, NewIdentity, NewInstanceAuditLog, NewNativeAppRow, NewOAuthProviderRow, NewPasskey, NewPasskeyChallenge, NewPasswordHistoryEntry, NewProject, NewProposalRow, NewRefreshToken, NewSession, NewSigningKey, NewSmsCodeCount, NewUser, NewUserFactor, NewVerificationToken, NewWebhookDeliveryAttemptRow, NewWebhookDeliveryRow, NewWebhookEndpointRow, NewWorkspace, OAUTH_PROVIDERS, OAuthProviderConfig, OAuthProviderRow, ORGANIZATION_AGENT_KIND, ORGANIZATION_REGIONS, ORGANIZATION_STATUSES, ORPHAN_SWEEP_CURSOR_MAX_BYTES, ORPHAN_SWEEP_MAX_CLAIM_MS, ORPHAN_SWEEP_MIN_CLAIM_MS, OUTBOUND_LANGUAGES, OUTBOUND_WORK_KINDS, OUTBOX_DEDUPE_KEY_MAX_LENGTH, OUTBOX_ERROR_CODE_MAX_LENGTH, OUTBOX_MAX_ATTEMPTS, OUTBOX_MAX_BATCH, OUTBOX_MAX_LEASE_MS, OUTBOX_MAX_RETRY_DELAY_MS, OUTBOX_MIN_LEASE_MS, OUTBOX_PAYLOAD_MAX_BYTES, OUTBOX_TOPIC_MAX_LENGTH, OutboxRow, PASSKEY_CHALLENGE_PURPOSES, PENDING_CLEANUP_PREDICATE, PLAY_CITATION_KINDS, PLAY_INTENTS, PLAY_SOURCES, PLAY_STATUSES, PROMOTION_SOURCES, PROSPECT_COMPANY_FIELD_NAMES, PROSPECT_FIELD_NAMES, PROSPECT_IDENTITY_KINDS, PROSPECT_IMPORT_FAILURE_REASONS, PROSPECT_IMPORT_REJECT_REASONS, PROSPECT_IMPORT_ROW_RESULTS, PROSPECT_IMPORT_SKIP_REASONS, PROSPECT_IMPORT_STATES, PROSPECT_MERGE_STATES, PROSPECT_MERGE_UNDO_DAYS, PROSPECT_STATUSES, Passkey, PasskeyChallenge, PasswordHistoryEntry, Project, ProposalRow, QUALIFICATION_QUESTION_KINDS, QualificationJsonValue, REFRESH_SEALED_NEXT_TOKEN_MAX_BYTES, REPLY_LABELS, RIGHTS_MAX_WORDING_VERSION, ROLLUP_GROUP_KINDS, ROLLUP_METRICS, ROUTING_PURPOSES, ROUTING_TARGET_KINDS, RUN_STATUSES, RefreshToken, SEND_CHECKS, SEND_DEFERRING_REASONS, SEND_REFUSAL_REASONS, SEND_STATES, SESSION_CLIENTS, SESSION_REVOKE_REASONS, SESSION_TYPES, SIGNAL_KINDS, SIGNAL_SOURCE_TYPES, SIGNING_KEY_STATUSES, SKIPPED_ATTEMPT_OUTCOMES, SMS_COUNT_RETENTION_FLOOR_DAYS, SOURCE_KINDS, SOURCE_KIND_PATTERN, SOURCE_OUTCOMES, SOURCE_PERFORMANCE_FLAGS, STEP_KINDS, STEP_TASKS, STOP_REASONS, SUGGESTION_FINGERPRINT_BYTES, SUGGESTION_KINDS, SUGGESTION_STATUSES, SUPPRESSION_ADDRESS_KINDS, SUPPRESSION_REASONS, SUPPRESSION_REMOVABLE_REASONS, Session, SigningKey, SmsCodeCount, StoredMomentRef, StoredQuote, StoredSkipCondition, StoredWorkingDay, TOUCH_AGENT_KINDS, TOUCH_CHANNELS, TOUCH_KINDS, TWILIO_DIRECTORY_KINDS, USER_FACTOR_TYPES, User, UserFactor, VERIFICATION_PURPOSES, VOICE_CALL_DIRECTIONS, VOICE_CALL_ENDED_BY, VOICE_CALL_EVENT_KINDS, VOICE_CALL_FAILURE_REASONS, VOICE_CALL_FINAL_STATES, VOICE_CALL_STATES, VOICE_RECORDING_CHANNELS, VOICE_RECORDING_STATES, VOICE_TRANSCRIPT_STATES, VerificationToken, WEBHOOK_DELIVERY_RETENTION_FLOOR, WEBHOOK_DELIVERY_STATES, WEEKDAYS, WINDOW_ZONES, WORK_KINDS, WebhookDeliveryAttemptRow, WebhookDeliveryRow, WebhookEndpointRow, Workspace, abandonCases, agentInstructionPointers, agentInstructionVersions, agentSettings, analyticsEvents, apiKeyUsage, apiKeys, approvalDecisions, approvalPolicies, assessmentFindings, assessments, attemptCounters, auditEvents, auditLogs, authSchema, backupCodes, bookingManageDirectory, bookingTypeDirectory, bookingTypes, bookings, busyBlocks, calendarConnections, callJobs, callReuploadRequeues, callVendorSends, calls, consentFormDirectory, consentForms, consentWordings, consumedMessage, contactCheckLog, contactConsentEvents, conversationSummaries, conversations, coreApiKeys, coreSchema, credentials, crmConnections, crmExternalRefs, crmMappings, crmSyncRuns, crmWebhookReceipts, dealImportRows, dealImports, deals, demoRateCounters, demoRequests, documents, draftSources, drafts, enrichmentAttempts, enrichmentReservations, enrichmentRuns, enrichmentSpend, environmentSettings, environments, escalationRules2 as escalationRules, events, exportJobs, exportParts, fitCriteria, flowAttempts, healthDaily, hookCallCounts, hooks, idempotencyKeys, identities, indexSettings, ingestionJobs, instanceAuditLogs, invitationDirectory, invitations, linkedinAccounts, linkedinChannelSettings, linkedinRiskAcceptances, linkedinUsage, mailEvents, mailMessages, mailboxConnectAttempts, mailboxLimits, mailboxTestSends, mailboxes, membershipDirectory, memberships, messages, nativeApps, oauthProviders, organizationState, organizationUsage, organizations, outboundBrandVoices, outboundBriefStatements, outboundBriefs, outboundCampaigns, outboundDraftChecks, outboundDraftCitations, outboundDrafts, outboundEnrollmentEvents, outboundEnrollments, outboundModelUsage, outboundPlayCitations, outboundPlays, outboundSchema, outboundSendDecisions, outboundSequences, outboundSteps, outboundVariants, outboundWorkHints, outbox, passkeyChallenges, passkeys, passwordHistory, playbookEmbedUsage, playbookIdempotencyKeys, playbookOrphanSweeps, playbookSchema, playbookWorkHints, projects, proposals, prospectCompanies, prospectCompanyFields, prospectFields, prospectIdentities, prospectImportRows, prospectImports, prospectMerges, prospects, providerSettings, refreshTokens, repChangeAllowed, rightsConfirmations, rollupDaily, routingDecisions, routingRules, routingState, sessions, signals, signingKeys, smsCodeCounts, sourcePerformance, suggestions, suppressionEntries, teamMembers, teams, touches, userFactors, users, verificationTokens, voiceAgentCalls, voiceAgentSettings, voiceAgentTurnSources, voiceAgentTurns, voiceCallEvents, voiceCallTurns, voiceCalls, voiceChats, voiceCopilotCards, voiceCopilotSettings, voiceHandoffs, voiceIdempotencyKeys, voiceInquiries, voiceLineDirectory, voiceLines, voiceQualificationAnswers, voiceQualificationQuestions, voiceRecordings, voiceSchema, voiceTwilioCalls, voiceTwilioDirectory, voiceTwilioPlacements, voiceTwilioRecordings, webhookDeliveries, webhookDeliveryAttempts, webhookEndpoints, workingHours, workspaces };

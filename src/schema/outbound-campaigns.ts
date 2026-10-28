@@ -22,6 +22,7 @@ import {
   SEND_STATES,
 } from './outbound-mail'
 import { MAX_DRAFT_GOAL_LENGTH, MAX_STEP_KEY_LENGTH, OUTBOUND_LANGUAGES } from './outbound-tables'
+import { CALL_RESULTS } from './voice-agent-calls'
 
 /*
  * Milestone 7 (`docs/specs/m07-campaigns-sequences-engine.md` in the hub): Campaigns, their
@@ -67,6 +68,7 @@ export const ENROLLMENT_EVENT_KINDS = [
   'deferred',
   'refused',
   'rep_task_created',
+  'call_result',
   'branch_taken',
   'stopped',
   'completed',
@@ -601,7 +603,7 @@ export const outboundEnrollments = outboundSchema.table(
 /**
  * What happened to an Enrollment, in order: an append-only history (the service role cannot
  * update a row). `send_id` names the send decision of a `sent`, `deferred` or `refused` event;
- * `stop_reason` is set exactly on a `stopped` event; `actor_membership_id` names the Rep who
+ * `stop_reason` is set exactly on a `stopped` event; `call_result` exactly on a `call_result` event; `actor_membership_id` names the Rep who
  * caused it, when one did.
  *
  * Lists served (oldest first, `LIMIT` a page): an Enrollment's history
@@ -618,6 +620,7 @@ export const outboundEnrollmentEvents = outboundSchema.table(
     variantKey: text('variant_key'),
     sendId: text('send_id'),
     stopReason: text('stop_reason', { enum: ENROLLMENT_STOP_REASONS }),
+    callResult: text('call_result', { enum: CALL_RESULTS }),
     actorMembershipId: text('actor_membership_id'),
     occurredAt: ts('occurred_at').notNull().defaultNow(),
   },
@@ -636,6 +639,11 @@ export const outboundEnrollmentEvents = outboundSchema.table(
       'enrollment_events_stop_reason_matches_kind',
       sql`(${t.kind} = 'stopped') = (${t.stopReason} is not null)
         and (${t.stopReason} is null or ${t.stopReason} in (${list(ENROLLMENT_STOP_REASONS)}))`
+    ),
+    check(
+      'enrollment_events_call_result_matches_kind',
+      sql`(${t.kind} = 'call_result') = (${t.callResult} is not null)
+        and (${t.callResult} is null or ${t.callResult} in (${list(CALL_RESULTS)}))`
     ),
     index('enrollment_events_enrollment_idx').on(
       t.organizationId,

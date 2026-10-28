@@ -26,6 +26,14 @@ import { voiceSchema } from './voice'
 export const LINE_STATES = ['porting', 'active', 'released'] as const
 /** Who inbound Calls on a Line ring. Mirrors the `kind` of the contract's `lineAssignmentSchema`. */
 export const LINE_ASSIGNMENT_KINDS = ['unassigned', 'team', 'rep'] as const
+/** The default concurrent Agent Calls on a Line (ADR 0030 decision 4). */
+export const DEFAULT_LINE_CONCURRENT_AGENT_CALLS = 3
+/** The default Agent dials on a Line in a rolling 24 hours (ADR 0030 decision 4). */
+export const DEFAULT_LINE_DAILY_AGENT_DIAL_CAP = 150
+/** The highest a Line's concurrent cap may be set; the Organization's own cap is at most 50. */
+export const MAX_LINE_CONCURRENT_AGENT_CALLS = 50
+/** The highest a Line's daily dial cap may be set. */
+export const MAX_LINE_DAILY_AGENT_DIAL_CAP = 1000
 /** The longest Line label, in characters. Mirrors the contract's `MAX_LINE_LABEL_LENGTH`. */
 export const MAX_LINE_LABEL_LENGTH = 100
 /** The directions of a Call. Mirrors the contract's `VOICE_CALL_DIRECTIONS`. */
@@ -106,7 +114,9 @@ const ts = (name: string) => timestamp(name, { withTimezone: true })
  * (`lines_number_live_key`, over every state but `released`). Assignment is one of three shapes,
  * tied by a check: nobody (both ids null), a Team (`assignment_team_id`) or a Rep
  * (`assignment_membership_id`); a released Line is unassigned and has its release time.
- * `provider_sid` is the telephony provider's id for the number.
+ * `provider_sid` is the telephony provider's id for the number. `max_concurrent_agent_calls` and
+ * `daily_agent_dial_cap` are the Line's caps on Agent Calls (3 at once, 150 dials per rolling 24
+ * hours by default); the counts come from `voice.agent_calls`.
  *
  * Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page): all Lines
  * (`lines_list_idx`), one state (`lines_state_list_idx`); the Lines of a Team or a Rep
@@ -127,6 +137,12 @@ export const voiceLines = voiceSchema.table(
     assignmentTeamId: text('assignment_team_id'),
     assignmentMembershipId: text('assignment_membership_id'),
     providerSid: text('provider_sid'),
+    maxConcurrentAgentCalls: smallint('max_concurrent_agent_calls')
+      .notNull()
+      .default(DEFAULT_LINE_CONCURRENT_AGENT_CALLS),
+    dailyAgentDialCap: integer('daily_agent_dial_cap')
+      .notNull()
+      .default(DEFAULT_LINE_DAILY_AGENT_DIAL_CAP),
     createdAt: ts('created_at').notNull().defaultNow(),
     releasedAt: ts('released_at'),
   },
@@ -156,6 +172,11 @@ export const voiceLines = voiceSchema.table(
     check(
       'lines_provider_sid_shape',
       sql`${t.providerSid} is null or char_length(${t.providerSid}) between 1 and 64`
+    ),
+    check(
+      'lines_agent_call_caps_range',
+      sql`${t.maxConcurrentAgentCalls} between 1 and ${num(MAX_LINE_CONCURRENT_AGENT_CALLS)}
+        and ${t.dailyAgentDialCap} between 1 and ${num(MAX_LINE_DAILY_AGENT_DIAL_CAP)}`
     ),
     check('lines_released_at', sql`(${t.state} = 'released') = (${t.releasedAt} is not null)`),
     check(
