@@ -67,6 +67,12 @@ export {
   NON_TENANT_TABLES,
   TENANT_SCHEMAS,
 } from './isolation'
+export type { UnsubscribeRateLimitHit } from './outbound-unsubscribe-rate'
+export {
+  hitUnsubscribeRateLimit,
+  purgeUnsubscribeRateCounters,
+  UNSUBSCRIBE_RATE_PURGE_BATCH_MAX,
+} from './outbound-unsubscribe-rate'
 export { DB_TYPES } from './pg-types'
 export {
   CALL_CLEANUP_BEGIN,

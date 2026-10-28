@@ -1,5 +1,5 @@
 {
-  "id": "9b448fb0-5ddc-48fa-a534-e88d6bab11ec",
+  "id": "5a26eb7d-e075-4ad5-b88f-056906b2593a",
   "prevId": "d84fb8bc-81bf-4a98-893b-abab4d770768",
   "version": "7",
   "dialect": "postgresql",
@@ -23903,6 +23903,70 @@
       },
       "isRLSEnabled": false
     },
+    "outbound.unsubscribe_rate_counter": {
+      "name": "unsubscribe_rate_counter",
+      "schema": "outbound",
+      "columns": {
+        "key_hash": {
+          "name": "key_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hits": {
+          "name": "hits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "unsubscribe_rate_counters_window_start_idx": {
+          "name": "unsubscribe_rate_counters_window_start_idx",
+          "columns": [
+            {
+              "expression": "window_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "unsubscribe_rate_counter_pkey": {
+          "name": "unsubscribe_rate_counter_pkey",
+          "columns": [
+            "key_hash",
+            "window_start"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "unsubscribe_rate_counter_key_hash_length": {
+          "name": "unsubscribe_rate_counter_key_hash_length",
+          "value": "octet_length(\"outbound\".\"unsubscribe_rate_counter\".\"key_hash\") = 32"
+        },
+        "unsubscribe_rate_counter_hits_positive": {
+          "name": "unsubscribe_rate_counter_hits_positive",
+          "value": "\"outbound\".\"unsubscribe_rate_counter\".\"hits\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "outbound.fit_scores": {
       "name": "fit_scores",
       "schema": "outbound",
@@ -26930,103 +26994,6 @@
         "idempotency_keys_response_size": {
           "name": "idempotency_keys_response_size",
           "value": "octet_length(\"playbook\".\"idempotency_keys\".\"response\"::text) <= 16384"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "playbook.live_call_waits": {
-      "name": "live_call_waits",
-      "schema": "playbook",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "call_id": {
-          "name": "call_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "direction": {
-          "name": "direction",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ended_at": {
-          "name": "ended_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "live_call_waits_list_idx": {
-          "name": "live_call_waits_list_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "call_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "live_call_waits_pkey": {
-          "name": "live_call_waits_pkey",
-          "columns": [
-            "organization_id",
-            "call_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "live_call_waits_call_id_shape": {
-          "name": "live_call_waits_call_id_shape",
-          "value": "\"call_id\" ~ '^call_[0-9a-f]{32}$'"
-        },
-        "live_call_waits_organization_id_shape": {
-          "name": "live_call_waits_organization_id_shape",
-          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "live_call_waits_organization_not_global": {
-          "name": "live_call_waits_organization_not_global",
-          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "live_call_waits_direction_known": {
-          "name": "live_call_waits_direction_known",
-          "value": "\"playbook\".\"live_call_waits\".\"direction\" in ('inbound', 'outbound')"
         }
       },
       "isRLSEnabled": false

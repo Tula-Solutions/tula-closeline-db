@@ -62,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-0afkbrgt.js";
+} from "./shared/chunk-nngzz7c8.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -537,6 +537,7 @@ var NON_TENANT_TABLE_REASONS = {
   "core.organization_state": "an Organization's status, one row per Organization, joined by both core lookups before the Organization is known; written only by a SECURITY DEFINER trigger on core.organizations in the same transaction as the status change, so a change writes one row however large the Organization is, and no service role holds any privilege on it: the two lookups are the only way in",
   "voice.line_directory": "asked before the Organization is known (the inbound webhook receives only the dialled number); holds number, Organization id, Line id and state for Lines that are not released only, is written only by a SECURITY DEFINER trigger on voice.lines, and no service role holds any privilege on it: voice.line_for_number is the only way in",
   "voice.twilio_directory": "asked before the Organization is known (the Twilio adapter receives only a provider call or Recording id from a webhook); holds a kind, the provider id, Organization id and provider call id, is written only by SECURITY DEFINER triggers on voice.twilio_calls and voice.twilio_recordings, and no service role holds any privilege on it: voice.twilio_owner is the only way in",
+  "outbound.unsubscribe_rate_counter": "a per-key request counter for the public unsubscribe route, which is asked before any Organization is known; it holds only an HMAC of a client address or token, a window and a count, is written and read only by SECURITY DEFINER functions and the owner, and no service role holds any privilege on it, so no tenant scope can read it",
   "outbound.work_hints": "asked before the Organization is known (a sweep asks which Organizations have a campaign step due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by a SECURITY DEFINER trigger on outbound.enrollments and the discovery function, and no service role holds any privilege on it: outbound.organizations_with_work is the only way in",
   "playbook.work_hints": "asked before the Organization is known (a sweep asks which Organizations have purge, job or message work due, and row-level security hides every tenant table from it); holds a kind, an Organization id and a due time, is written only by SECURITY DEFINER triggers and the discovery function, and no service role holds any privilege on it: playbook.organizations_with_work is the only way in"
 };
@@ -705,6 +706,32 @@ async function assertTenantIsolation(db, allowlist = NON_TENANT_TABLES) {
 ${lines.join(`
 `)}`);
   }
+}
+// src/outbound-unsubscribe-rate.ts
+import { sql as sql6 } from "drizzle-orm";
+var KEY_HASH_BYTES = 32;
+var WINDOW_SECONDS_MAX = 86400;
+var INT4_MAX2 = 2147483647;
+var UNSUBSCRIBE_RATE_PURGE_BATCH_MAX = 1000;
+async function hitUnsubscribeRateLimit(db, hit) {
+  if (!(hit.keyHash instanceof Uint8Array) || hit.keyHash.length !== KEY_HASH_BYTES) {
+    throw new Error(`hitUnsubscribeRateLimit: keyHash must be ${KEY_HASH_BYTES} bytes`);
+  }
+  if (!Number.isInteger(hit.windowSeconds) || hit.windowSeconds < 1 || hit.windowSeconds > WINDOW_SECONDS_MAX) {
+    throw new Error(`hitUnsubscribeRateLimit: windowSeconds must be a whole number from 1 to ${WINDOW_SECONDS_MAX}`);
+  }
+  if (!Number.isInteger(hit.limit) || hit.limit < 1 || hit.limit > INT4_MAX2) {
+    throw new Error("hitUnsubscribeRateLimit: limit must be a positive integer");
+  }
+  const { rows } = await db.execute(sql6`select outbound.hit_unsubscribe_rate_limit(${Buffer.from(hit.keyHash)}, ${hit.windowSeconds}, ${hit.limit}) as allowed`);
+  return rows[0]?.allowed === true;
+}
+async function purgeUnsubscribeRateCounters(db, limit) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > INT4_MAX2) {
+    throw new Error("purgeUnsubscribeRateCounters: limit must be a positive integer");
+  }
+  const { rows } = await db.execute(sql6`select outbound.purge_unsubscribe_rate_counters(${limit}) as purged`);
+  return Number(rows[0]?.purged ?? 0);
 }
 // src/playbook-sql.ts
 var DOCUMENT_MIN_RETENTION_MS = 3600000;
@@ -2247,13 +2274,13 @@ var PLAYBOOK_STATEMENTS = {
   ...LIVE_CALL_STATEMENTS
 };
 // src/voice-lookups.ts
-import { sql as sql6 } from "drizzle-orm";
+import { sql as sql7 } from "drizzle-orm";
 var E164 = /^\+[1-9][0-9]{6,14}$/;
 async function lineForNumber(db, number) {
   if (!E164.test(number)) {
     return null;
   }
-  const { rows } = await db.execute(sql6`select organization_id, line_id from voice.line_for_number(${number})`);
+  const { rows } = await db.execute(sql7`select organization_id, line_id from voice.line_for_number(${number})`);
   const row = rows[0];
   return row ? { organizationId: row.organization_id, lineId: row.line_id } : null;
 }
@@ -2502,6 +2529,7 @@ export {
   SUGGESTION_ROW_FIELDS,
   SUGGESTION_STATEMENTS,
   TENANT_SCHEMAS,
+  UNSUBSCRIBE_RATE_PURGE_BATCH_MAX,
   VOICE_PURGE_SCAN_ROLE,
   WORK_KINDS2 as WORK_KINDS,
   assertTenantIsolation,
@@ -2514,11 +2542,13 @@ export {
   discoveredOrganizations,
   findTenantIsolationGaps,
   hitDemoRateLimit,
+  hitUnsubscribeRateLimit,
   invitationForToken,
   lineForNumber,
   organizationOfUser,
   purgeDemoRateCounters,
   purgeDemoRequests,
+  purgeUnsubscribeRateCounters,
   repChangeAllowed2 as repChangeAllowed,
   reportConnectionError,
   settleDemoNotice,
