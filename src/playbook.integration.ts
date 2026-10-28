@@ -3271,6 +3271,7 @@ describe('the playbook schema', () => {
             'idempotency_keys',
             'index_settings',
             'ingestion_jobs',
+            'live_call_waits',
             'organization_usage',
             'orphan_sweeps',
             'rights_confirmations',

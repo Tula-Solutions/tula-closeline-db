@@ -62,7 +62,7 @@ import {
   ORPHAN_SWEEP_MAX_CLAIM_MS2,
   WORK_KINDS2,
   exports_schema
-} from "./shared/chunk-nmwen455.js";
+} from "./shared/chunk-nngzz7c8.js";
 
 // src/auth-statements.ts
 var ABANDON_MIN_GRACE_MS = 1e4;
@@ -787,8 +787,8 @@ var CALL_USAGE = `select call_count, recording_byte_count
 from playbook.organization_usage
 where organization_id = $1`;
 var CALL_INSERT = `with rights as (
-  select exists (select 1 from playbook.rights_confirmations
-                 where organization_id = $1 and wording_version = $19::int) as ok),
+  select (coalesce($20::text = 'rep', false) or exists (select 1 from playbook.rights_confirmations
+                 where organization_id = $1 and wording_version = $19::int)) as ok),
 dup as (
   select c.id, c.state, c.failure_reason, (d.deal_id = $3::text) as same_deal
   ${FROM_CALL}
@@ -1383,6 +1383,25 @@ var CALL_STATEMENTS = {
   CALL_RETAGGED,
   DEAL_RETAG_LOCK,
   DEAL_RETAG_DONE
+};
+// src/playbook-live-call-statements.ts
+var LIVE_CALL_WAIT_RECORD = `insert into playbook.live_call_waits
+  (organization_id, call_id, direction, ended_at)
+values ($1, $2, $3, $4::timestamptz)
+on conflict (organization_id, call_id) do nothing
+returning call_id`;
+var LIVE_CALL_WAIT_CLEAR = `delete from playbook.live_call_waits
+where organization_id = $1 and call_id = $2
+returning call_id`;
+var LIVE_CALL_WAIT_LIST = `select call_id, direction, ended_at, created_at, created_at::text as cursor_at
+from playbook.live_call_waits
+where organization_id = $1 and (created_at, call_id) > ($2::timestamptz, $3::text)
+order by created_at, call_id
+limit ${CLAMP("$4", DOCUMENT_LIST_MAX_PAGE)}`;
+var LIVE_CALL_STATEMENTS = {
+  LIVE_CALL_WAIT_RECORD,
+  LIVE_CALL_WAIT_CLEAR,
+  LIVE_CALL_WAIT_LIST
 };
 // src/playbook-suggestion-statements.ts
 var COLUMNS = `id, kind, status, text, deal_record_id, moments, created_at, decided_at,
@@ -2251,7 +2270,8 @@ var PLAYBOOK_STATEMENTS = {
   RIGHTS_CONFIRM,
   ORGANIZATIONS_WITH_WORK,
   ...CALL_STATEMENTS,
-  ...SUGGESTION_STATEMENTS
+  ...SUGGESTION_STATEMENTS,
+  ...LIVE_CALL_STATEMENTS
 };
 // src/voice-lookups.ts
 import { sql as sql7 } from "drizzle-orm";
@@ -2447,6 +2467,10 @@ export {
   INGESTION_JOB_RETRY,
   INGESTION_MAX_RETRY_DELAY_MS,
   KEY_LOOKUP_ROLE,
+  LIVE_CALL_STATEMENTS,
+  LIVE_CALL_WAIT_CLEAR,
+  LIVE_CALL_WAIT_LIST,
+  LIVE_CALL_WAIT_RECORD,
   LOCKOUT_ATTEMPT,
   LOCKOUT_CLEAR,
   LOCKOUT_MIN_RETRY_AFTER_MS,

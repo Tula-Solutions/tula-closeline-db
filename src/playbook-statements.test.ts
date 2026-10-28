@@ -106,6 +106,8 @@ const TAKES_A_TIME = [
   'SUGGESTION_LIST',
   'SUGGESTION_LIST_BY_STATUS',
   'SUGGESTION_LIST_ACCEPTED',
+  'LIVE_CALL_WAIT_RECORD',
+  'LIVE_CALL_WAIT_LIST',
 ]
 
 describe('the documented playbook statements', () => {
