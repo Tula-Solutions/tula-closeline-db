@@ -1,5 +1,5 @@
 {
-  "id": "d19f2452-53ae-44b2-ba4a-b78244e3ff04",
+  "id": "8d110c2b-2933-4216-a00e-bde066027efa",
   "prevId": "ea25461b-986c-440b-be68-b5736dd2739a",
   "version": "7",
   "dialect": "postgresql",
@@ -25301,9 +25301,49 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "request_key": {
+          "name": "request_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regenerate_keys": {
+          "name": "regenerate_keys",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "variant_key": {
+          "name": "variant_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
+        "drafts_request_key": {
+          "name": "drafts_request_key",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "drafts_list_idx": {
           "name": "drafts_list_idx",
           "columns": [
@@ -25612,6 +25652,18 @@
         "drafts_updated_not_before_created": {
           "name": "drafts_updated_not_before_created",
           "value": "\"outbound\".\"drafts\".\"updated_at\" >= \"outbound\".\"drafts\".\"created_at\""
+        },
+        "drafts_request_key_shape": {
+          "name": "drafts_request_key_shape",
+          "value": "\"outbound\".\"drafts\".\"request_key\" is null or (char_length(\"outbound\".\"drafts\".\"request_key\") between 16 and 128 and \"outbound\".\"drafts\".\"request_key\" ~ '^[A-Za-z0-9_.:-]+$')"
+        },
+        "drafts_regenerate_keys_shape": {
+          "name": "drafts_regenerate_keys_shape",
+          "value": "cardinality(\"outbound\".\"drafts\".\"regenerate_keys\") <= 32\n        and (cardinality(\"outbound\".\"drafts\".\"regenerate_keys\") = 0\n          or array_to_string(\"outbound\".\"drafts\".\"regenerate_keys\", ' ') ~ '^[A-Za-z0-9_.:-]{16,128}( [A-Za-z0-9_.:-]{16,128})*$')"
+        },
+        "drafts_variant_key_shape": {
+          "name": "drafts_variant_key_shape",
+          "value": "\"outbound\".\"drafts\".\"variant_key\" is null or (char_length(\"outbound\".\"drafts\".\"variant_key\") between 1 and 40\n        and \"outbound\".\"drafts\".\"variant_key\" ~ '^[a-z][a-z0-9_-]*$')"
         }
       },
       "isRLSEnabled": false
@@ -31352,18 +31404,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "goal": {
-          "name": "goal",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "organization_name": {
-          "name": "organization_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "call_id": {
           "name": "call_id",
           "type": "text",
@@ -31403,28 +31443,6 @@
         }
       },
       "indexes": {
-        "agent_calls_due_idx": {
-          "name": "agent_calls_due_idx",
-          "columns": [
-            {
-              "expression": "retry_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"voice\".\"agent_calls\".\"state\" = 'queued'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "agent_calls_key": {
           "name": "agent_calls_key",
           "columns": [
@@ -31687,14 +31705,6 @@
         "agent_calls_call_id_shape": {
           "name": "agent_calls_call_id_shape",
           "value": "\"call_id\" ~ '^call_[0-9a-f]{32}$'"
-        },
-        "agent_calls_goal_length": {
-          "name": "agent_calls_goal_length",
-          "value": "\"voice\".\"agent_calls\".\"goal\" is null or char_length(\"voice\".\"agent_calls\".\"goal\") between 1 and 500"
-        },
-        "agent_calls_organization_name_length": {
-          "name": "agent_calls_organization_name_length",
-          "value": "\"voice\".\"agent_calls\".\"organization_name\" is null or char_length(\"voice\".\"agent_calls\".\"organization_name\") between 1 and 200"
         },
         "agent_calls_source_known": {
           "name": "agent_calls_source_known",

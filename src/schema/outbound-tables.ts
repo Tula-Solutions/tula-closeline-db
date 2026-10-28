@@ -106,6 +106,9 @@ export const MAX_DRAFT_REVISION = 10_000
 export const MAX_WON_DEAL_COUNT = 100
 /** The most findings one check counts. Mirrors the `count` of the contract's `outreachDraftCheckSchema`. */
 export const MAX_CHECK_COUNT = 1000
+
+/** How many regeneration keys a Draft remembers, newest last. */
+export const MAX_REGENERATE_KEYS = 32
 /** The most statements dropped from a Research Brief. Mirrors the `droppedCount` of `researchBriefSchema`. */
 export const MAX_DROPPED_COUNT = 1000
 
@@ -398,6 +401,12 @@ export const outboundBriefStatements = outboundSchema.table(
  * behind the Draft's Moments at write time. The Brand Voice and Brief are the Organization's own
  * (composite foreign keys), and the voice version is the one of that Brand Voice row.
  *
+ * `request_key` is the `Idempotency-Key` that wrote the Draft (null when none): a retry under it
+ * finds the Draft (`drafts_request_key`). `regenerate_keys` holds the keys of the latest
+ * `MAX_REGENERATE_KEYS` regenerations, so a retried regeneration is recognised and does not raise
+ * the revision twice. `variant_key` is the Campaign Variant the Draft was written for (null when
+ * none), so a later promotion cannot relabel what was sent.
+ *
  * Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page): all Drafts
  * (`drafts_list_idx`), one Prospect (`drafts_prospect_idx`), one Campaign (`drafts_campaign_idx`),
  * ungrounded ones (`drafts_ungrounded_idx`).
@@ -426,6 +435,9 @@ export const outboundDrafts = outboundSchema.table(
     model: text('model').notNull(),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
+    requestKey: text('request_key'),
+    regenerateKeys: text('regenerate_keys').array().notNull().default(sql`'{}'::text[]`),
+    variantKey: text('variant_key'),
   },
   (t) => [
     primaryKey({ name: 'drafts_pkey', columns: [t.organizationId, t.id] }),
@@ -473,6 +485,22 @@ export const outboundDrafts = outboundSchema.table(
       sql`char_length(${t.model}) between 1 and ${num(MAX_MODEL_NAME_LENGTH)}`
     ),
     check('drafts_updated_not_before_created', sql`${t.updatedAt} >= ${t.createdAt}`),
+    check(
+      'drafts_request_key_shape',
+      sql`${t.requestKey} is null or (char_length(${t.requestKey}) between 16 and 128 and ${t.requestKey} ~ '^[A-Za-z0-9_.:-]+$')`
+    ),
+    check(
+      'drafts_regenerate_keys_shape',
+      sql`cardinality(${t.regenerateKeys}) <= ${num(MAX_REGENERATE_KEYS)}
+        and (cardinality(${t.regenerateKeys}) = 0
+          or array_to_string(${t.regenerateKeys}, ' ') ~ '^[A-Za-z0-9_.:-]{16,128}( [A-Za-z0-9_.:-]{16,128})*$')`
+    ),
+    check(
+      'drafts_variant_key_shape',
+      sql`${t.variantKey} is null or (char_length(${t.variantKey}) between 1 and ${num(MAX_STEP_KEY_LENGTH)}
+        and ${t.variantKey} ~ '^[a-z][a-z0-9_-]*$')`
+    ),
+    uniqueIndex('drafts_request_key').on(t.organizationId, t.requestKey),
     foreignKey({
       name: 'drafts_brand_voice_fk',
       columns: [t.organizationId, t.brandVoiceId, t.voiceVersion],
