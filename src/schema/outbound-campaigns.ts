@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -466,6 +467,9 @@ export const outboundVariants = outboundSchema.table(
     promotedSource: text('promoted_source', { enum: PROMOTION_SOURCES }),
     promotedByMembershipId: text('promoted_by_membership_id'),
     promotedAt: ts('promoted_at'),
+    /** Auto-promotion settings of the Step's test, repeated on each of its rows; both null means manual. */
+    promotionMinSample: integer('promotion_min_sample'),
+    promotionMarginPoints: doublePrecision('promotion_margin_points'),
   },
   (t) => [
     primaryKey({
@@ -493,6 +497,12 @@ export const outboundVariants = outboundSchema.table(
       sql`(${t.promotedSource} is null) = (${t.promotedAt} is null)
         and (${t.promotedSource} is null or ${t.promotedSource} in (${list(PROMOTION_SOURCES)}))
         and ((${t.promotedSource} = 'manual') = (${t.promotedByMembershipId} is not null))`
+    ),
+    check(
+      'variants_promotion_policy',
+      sql`(${t.promotionMinSample} is null) = (${t.promotionMarginPoints} is null)
+        and (${t.promotionMinSample} is null or ${t.promotionMinSample} between 100 and 100000)
+        and (${t.promotionMarginPoints} is null or ${t.promotionMarginPoints} between 1 and 50)`
     ),
     uniqueIndex('variants_position_key').on(
       t.organizationId,
@@ -597,6 +607,55 @@ export const outboundEnrollments = outboundSchema.table(
       columns: [t.organizationId, t.campaignId],
       foreignColumns: [outboundCampaigns.organizationId, outboundCampaigns.id],
     }),
+  ]
+)
+
+/**
+ * The running tally of one variant of a Step: how many sends it made and how many Enrollments
+ * that last received it then replied, hard bounced or unsubscribed. The engine adds to it in the
+ * same transaction that records the event, so a results read costs the number of variants (at
+ * most 4) instead of a scan of the Campaign's log.
+ *
+ * Lookups served: a Step's variants (the primary key prefix).
+ */
+export const outboundVariantStats = outboundSchema.table(
+  'variant_stats',
+  {
+    organizationId: text('organization_id').notNull(),
+    campaignId: text('campaign_id').notNull(),
+    version: integer('version').notNull(),
+    stepKey: text('step_key').notNull(),
+    variantKey: text('variant_key').notNull(),
+    sent: integer('sent').notNull().default(0),
+    replied: integer('replied').notNull().default(0),
+    bounced: integer('bounced').notNull().default(0),
+    unsubscribed: integer('unsubscribed').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({
+      name: 'variant_stats_pkey',
+      columns: [t.organizationId, t.campaignId, t.version, t.stepKey, t.variantKey],
+    }),
+    check('variant_stats_organization_id_shape', orgShape),
+    check('variant_stats_organization_not_global', notGlobal),
+    check('variant_stats_campaign_id_shape', idShape('campaign_id', 'cpg')),
+    check('variant_stats_step_key_shape', sql.raw(`"step_key" ~ '${KEY_SHAPE}'`)),
+    check('variant_stats_variant_key_shape', sql.raw(`"variant_key" ~ '${KEY_SHAPE}'`)),
+    check(
+      'variant_stats_counts_not_negative',
+      sql`${t.sent} >= 0 and ${t.replied} >= 0 and ${t.bounced} >= 0 and ${t.unsubscribed} >= 0`
+    ),
+    foreignKey({
+      name: 'variant_stats_variant_fk',
+      columns: [t.organizationId, t.campaignId, t.version, t.stepKey, t.variantKey],
+      foreignColumns: [
+        outboundVariants.organizationId,
+        outboundVariants.campaignId,
+        outboundVariants.version,
+        outboundVariants.stepKey,
+        outboundVariants.key,
+      ],
+    }).onDelete('cascade'),
   ]
 )
 
