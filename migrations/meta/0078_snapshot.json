@@ -1,6 +1,6 @@
 {
-  "id": "c4fbcd94-064f-4d86-8219-02544e952914",
-  "prevId": "affb321c-b98e-4255-9c0f-da6c29a3e46a",
+  "id": "6a1781c1-33fb-4ead-bd00-a46544a5b203",
+  "prevId": "ea25461b-986c-440b-be68-b5736dd2739a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -31901,6 +31901,91 @@
         "agent_calls_times_in_order": {
           "name": "agent_calls_times_in_order",
           "value": "(\"voice\".\"agent_calls\".\"dialed_at\" is null or \"voice\".\"agent_calls\".\"dialed_at\" >= \"voice\".\"agent_calls\".\"created_at\")\n        and (\"voice\".\"agent_calls\".\"ended_at\" is null or \"voice\".\"agent_calls\".\"ended_at\" >= coalesce(\"voice\".\"agent_calls\".\"dialed_at\", \"voice\".\"agent_calls\".\"created_at\"))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "voice.chat_rate_counters": {
+      "name": "chat_rate_counters",
+      "schema": "voice",
+      "columns": {
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hits": {
+          "name": "hits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "chat_rate_counters_window_idx": {
+          "name": "chat_rate_counters_window_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "window_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "chat_rate_counters_pkey": {
+          "name": "chat_rate_counters_pkey",
+          "columns": [
+            "organization_id",
+            "key_hash",
+            "window_start"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chat_rate_counters_organization_id_shape": {
+          "name": "chat_rate_counters_organization_id_shape",
+          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
+        },
+        "chat_rate_counters_organization_not_global": {
+          "name": "chat_rate_counters_organization_not_global",
+          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
+        },
+        "chat_rate_counters_key_hash_length": {
+          "name": "chat_rate_counters_key_hash_length",
+          "value": "octet_length(\"voice\".\"chat_rate_counters\".\"key_hash\") = 32"
+        },
+        "chat_rate_counters_hits_positive": {
+          "name": "chat_rate_counters_hits_positive",
+          "value": "\"voice\".\"chat_rate_counters\".\"hits\" >= 1"
         }
       },
       "isRLSEnabled": false

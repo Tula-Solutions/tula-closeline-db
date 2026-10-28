@@ -643,6 +643,8 @@ import {
   suggestions2,
   WORK_KINDS2,
   playbookWorkHints2,
+  CHAT_RATE_KEY_HASH_BYTES2,
+  voiceChatRateCounters2,
   CALL_TURN_TRACKS2,
   MAX_CALL_TURN_TEXT_LENGTH2,
   COPILOT_CARD_KINDS2,
@@ -669,7 +671,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-zxyvp19w.js";
+} from "../shared/chunk-v1e9t97t.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -733,6 +735,7 @@ export {
   CALL_VENDOR_ID_PATTERN2 as CALL_VENDOR_ID_PATTERN,
   CAMPAIGN_APPROVAL_MODES2 as CAMPAIGN_APPROVAL_MODES,
   CAMPAIGN_STATES2 as CAMPAIGN_STATES,
+  CHAT_RATE_KEY_HASH_BYTES2 as CHAT_RATE_KEY_HASH_BYTES,
   CHAT_STATES2 as CHAT_STATES,
   CHAT_TOKEN_HASH_BYTES2 as CHAT_TOKEN_HASH_BYTES,
   CITATION_KINDS2 as CITATION_KINDS,
@@ -1320,6 +1323,7 @@ export {
   voiceCallEvents2 as voiceCallEvents,
   voiceCallTurns2 as voiceCallTurns,
   voiceCalls2 as voiceCalls,
+  voiceChatRateCounters2 as voiceChatRateCounters,
   voiceChats2 as voiceChats,
   voiceCopilotCards2 as voiceCopilotCards,
   voiceCopilotSettings2 as voiceCopilotSettings,

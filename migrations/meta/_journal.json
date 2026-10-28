@@ -542,9 +542,16 @@
       "breakpoints": true
     },
     {
+      "idx": 77,
+      "version": "7",
+      "when": 1793222427218,
+      "tag": "0077_voice_chat_rate_counters",
+      "breakpoints": true
+    },
+    {
       "idx": 78,
       "version": "7",
-      "when": 1793222401145,
+      "when": 1793222500000,
       "tag": "0078_core_inquiry_embeds",
       "breakpoints": true
     }
