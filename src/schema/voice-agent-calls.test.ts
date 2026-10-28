@@ -17,7 +17,7 @@ import {
 } from './voice-tables'
 
 const migration = readFileSync(
-  new URL('../../migrations/0066_voice_agent_calls.sql', import.meta.url),
+  new URL('../../migrations/0067_voice_agent_calls.sql', import.meta.url),
   'utf8'
 )
 
