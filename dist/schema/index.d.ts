@@ -26490,6 +26490,9 @@ declare const outboundBriefStatements: PgTableWithColumns_a5zn0g49<{
 * model it was written with. `subject` and `body` are model output and the Prospect's message:
 * tenant data, untrusted, never logged, put in an error report, a trace or an event. `revision`
 * starts at 1 and rises with each edit; `source` is `generated` until a person edits the text.
+* `request_key` is the `Idempotency-Key` that wrote the Draft (null when none): a retry under it finds
+* the Draft (`drafts_request_key`). `regenerate_key` is the key of the latest regeneration, so a
+* retried regeneration is recognised and does not raise the revision twice.
 * `ungrounded` is true when no Moment of a won Deal applies, and an ungrounded Draft is never
 * `auto_sendable` (a check); that every check passed is a fact about `draft_checks` rows the
 * service reads and writes together with this row. `won_deal_count` is the count of won Deals
@@ -26857,6 +26860,40 @@ declare const outboundDrafts: PgTableWithColumns_a5zn0g49<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		requestKey: PgColumn_ffrhhp49<{
+			name: "request_key";
+			tableName: "drafts";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		regenerateKey: PgColumn_ffrhhp49<{
+			name: "regenerate_key";
+			tableName: "drafts";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

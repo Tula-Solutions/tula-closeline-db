@@ -4693,7 +4693,9 @@ var outboundDrafts2 = outboundSchema2.table("drafts", {
   briefId: text43("brief_id"),
   model: text43("model").notNull(),
   createdAt: ts9("created_at").notNull().defaultNow(),
-  updatedAt: ts9("updated_at").notNull().defaultNow()
+  updatedAt: ts9("updated_at").notNull().defaultNow(),
+  requestKey: text43("request_key"),
+  regenerateKey: text43("regenerate_key")
 }, (t) => [
   primaryKey14({ name: "drafts_pkey", columns: [t.organizationId, t.id] }),
   check25("drafts_id_shape", idShape10("id", "drf")),
@@ -4719,6 +4721,9 @@ var outboundDrafts2 = outboundSchema2.table("drafts", {
   check25("drafts_brief_id_shape", idShape10("brief_id", "brf")),
   check25("drafts_model_shape", sql30`char_length(${t.model}) between 1 and ${num4(MAX_MODEL_NAME_LENGTH2)}`),
   check25("drafts_updated_not_before_created", sql30`${t.updatedAt} >= ${t.createdAt}`),
+  check25("drafts_request_key_shape", sql30`${t.requestKey} is null or (char_length(${t.requestKey}) between 16 and 128 and ${t.requestKey} ~ '^[A-Za-z0-9_.:-]+$')`),
+  check25("drafts_regenerate_key_shape", sql30`${t.regenerateKey} is null or (char_length(${t.regenerateKey}) between 16 and 128 and ${t.regenerateKey} ~ '^[A-Za-z0-9_.:-]+$')`),
+  uniqueIndex12("drafts_request_key").on(t.organizationId, t.requestKey),
   foreignKey13({
     name: "drafts_brand_voice_fk",
     columns: [t.organizationId, t.brandVoiceId, t.voiceVersion],
