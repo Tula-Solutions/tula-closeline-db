@@ -512,6 +512,13 @@
       "when": 1793211114391,
       "tag": "0072_voice_transcript_unavailable",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793213274199,
+      "tag": "0073_outbound_unsubscribe_rate_counter",
+      "breakpoints": true
     }
   ]
 }
