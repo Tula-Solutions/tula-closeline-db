@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -466,6 +467,9 @@ export const outboundVariants = outboundSchema.table(
     promotedSource: text('promoted_source', { enum: PROMOTION_SOURCES }),
     promotedByMembershipId: text('promoted_by_membership_id'),
     promotedAt: ts('promoted_at'),
+    /** Auto-promotion settings of the Step's test, repeated on each of its rows; both null means manual. */
+    promotionMinSample: integer('promotion_min_sample'),
+    promotionMarginPoints: doublePrecision('promotion_margin_points'),
   },
   (t) => [
     primaryKey({
@@ -493,6 +497,12 @@ export const outboundVariants = outboundSchema.table(
       sql`(${t.promotedSource} is null) = (${t.promotedAt} is null)
         and (${t.promotedSource} is null or ${t.promotedSource} in (${list(PROMOTION_SOURCES)}))
         and ((${t.promotedSource} = 'manual') = (${t.promotedByMembershipId} is not null))`
+    ),
+    check(
+      'variants_promotion_policy',
+      sql`(${t.promotionMinSample} is null) = (${t.promotionMarginPoints} is null)
+        and (${t.promotionMinSample} is null or ${t.promotionMinSample} between 100 and 100000)
+        and (${t.promotionMarginPoints} is null or ${t.promotionMarginPoints} between 1 and 50)`
     ),
     uniqueIndex('variants_position_key').on(
       t.organizationId,

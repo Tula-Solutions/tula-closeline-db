@@ -4063,6 +4063,7 @@ var outboundSchema2 = pgSchema3("outbound");
 import { sql as sql36 } from "drizzle-orm";
 import {
   check as check31,
+  doublePrecision as doublePrecision3,
   foreignKey as foreignKey18,
   index as index41,
   integer as integer28,
@@ -6296,7 +6297,9 @@ var outboundVariants2 = outboundSchema2.table("variants", {
   weight: smallint10("weight").notNull(),
   promotedSource: text49("promoted_source", { enum: PROMOTION_SOURCES2 }),
   promotedByMembershipId: text49("promoted_by_membership_id"),
-  promotedAt: ts15("promoted_at")
+  promotedAt: ts15("promoted_at"),
+  promotionMinSample: integer28("promotion_min_sample"),
+  promotionMarginPoints: doublePrecision3("promotion_margin_points")
 }, (t) => [
   primaryKey20({
     name: "variants_pkey",
@@ -6315,6 +6318,9 @@ var outboundVariants2 = outboundSchema2.table("variants", {
   check31("variants_promotion_matches", sql36`(${t.promotedSource} is null) = (${t.promotedAt} is null)
         and (${t.promotedSource} is null or ${t.promotedSource} in (${list17(PROMOTION_SOURCES2)}))
         and ((${t.promotedSource} = 'manual') = (${t.promotedByMembershipId} is not null))`),
+  check31("variants_promotion_policy", sql36`(${t.promotionMinSample} is null) = (${t.promotionMarginPoints} is null)
+        and (${t.promotionMinSample} is null or ${t.promotionMinSample} between 100 and 100000)
+        and (${t.promotionMarginPoints} is null or ${t.promotionMarginPoints} between 1 and 50)`),
   uniqueIndex18("variants_position_key").on(t.organizationId, t.campaignId, t.version, t.stepKey, t.position),
   uniqueIndex18("variants_promoted_key").on(t.organizationId, t.campaignId, t.version, t.stepKey).where(sql36`${t.promotedSource} is not null`),
   foreignKey18({

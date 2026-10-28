@@ -526,6 +526,13 @@
       "when": 1793215905306,
       "tag": "0074_playbook_live_call_waits",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793220096231,
+      "tag": "0075_unusual_hellfire_club",
+      "breakpoints": true
     }
   ]
 }
