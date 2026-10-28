@@ -24,8 +24,13 @@ import { voiceSchema } from './voice'
 
 /** The states of a Line. Mirrors the contract's `LINE_STATES`. */
 export const LINE_STATES = ['porting', 'active', 'released'] as const
-/** Who inbound Calls on a Line ring. Mirrors the `kind` of the contract's `lineAssignmentSchema`. */
-export const LINE_ASSIGNMENT_KINDS = ['unassigned', 'team', 'rep'] as const
+/**
+ * Who a Line is assigned to. Mirrors the `kind` of the contract's `lineAssignmentSchema`. `rep`
+ * means one member of any role (the name is kept for stored rows); `role` is a whole role.
+ */
+export const LINE_ASSIGNMENT_KINDS = ['unassigned', 'team', 'rep', 'role'] as const
+/** The roles a Line can be assigned to as a whole. Mirrors the contract's `ROLES`. */
+export const LINE_ASSIGNMENT_ROLES = ['owner', 'admin', 'manager', 'rep'] as const
 /** The default concurrent Agent Calls on a Line (ADR 0030 decision 4). */
 export const DEFAULT_LINE_CONCURRENT_AGENT_CALLS = 3
 /** The default Agent dials on a Line in a rolling 24 hours (ADR 0030 decision 4). */
@@ -111,16 +116,16 @@ const ts = (name: string) => timestamp(name, { withTimezone: true })
 /**
  * A Line: a phone number an Organization uses to place and receive Calls. `number` is E.164 and
  * tenant data (never logged). A number is live in at most one Organization at a time
- * (`lines_number_live_key`, over every state but `released`). Assignment is one of three shapes,
- * tied by a check: nobody (both ids null), a Team (`assignment_team_id`) or a Rep
- * (`assignment_membership_id`); a released Line is unassigned and has its release time.
+ * (`lines_number_live_key`, over every state but `released`). Assignment is one of four shapes,
+ * tied by a check: nobody (all null), a Team (`assignment_team_id`), one member of any role
+ * (`assignment_membership_id`) or a whole role (`assignment_role`); a released Line is unassigned and has its release time.
  * `provider_sid` is the telephony provider's id for the number. `max_concurrent_agent_calls` and
  * `daily_agent_dial_cap` are the Line's caps on Agent Calls (3 at once, 150 dials per rolling 24
  * hours by default); the counts come from `voice.agent_calls`.
  *
  * Lists served (keyset `(created_at, id)` newest first, `LIMIT` a page): all Lines
  * (`lines_list_idx`), one state (`lines_state_list_idx`); the Lines of a Team or a Rep
- * (`lines_team_idx`, `lines_rep_idx`).
+ * (`lines_team_idx`, `lines_rep_idx`, `lines_role_idx`).
  */
 export const voiceLines = voiceSchema.table(
   'lines',
@@ -136,6 +141,7 @@ export const voiceLines = voiceSchema.table(
       .default('unassigned'),
     assignmentTeamId: text('assignment_team_id'),
     assignmentMembershipId: text('assignment_membership_id'),
+    assignmentRole: text('assignment_role', { enum: LINE_ASSIGNMENT_ROLES }),
     providerSid: text('provider_sid'),
     maxConcurrentAgentCalls: smallint('max_concurrent_agent_calls')
       .notNull()
@@ -167,7 +173,12 @@ export const voiceLines = voiceSchema.table(
     check(
       'lines_assignment_matches_kind',
       sql`(${t.assignmentKind} = 'team') = (${t.assignmentTeamId} is not null)
-        and (${t.assignmentKind} = 'rep') = (${t.assignmentMembershipId} is not null)`
+        and (${t.assignmentKind} = 'rep') = (${t.assignmentMembershipId} is not null)
+        and (${t.assignmentKind} = 'role') = (${t.assignmentRole} is not null)`
+    ),
+    check(
+      'lines_assignment_role_known',
+      sql`${t.assignmentRole} is null or ${t.assignmentRole} in (${list(LINE_ASSIGNMENT_ROLES)})`
     ),
     check(
       'lines_provider_sid_shape',
@@ -195,6 +206,9 @@ export const voiceLines = voiceSchema.table(
     index('lines_rep_idx')
       .on(t.organizationId, t.assignmentMembershipId)
       .where(sql`${t.assignmentMembershipId} is not null`),
+    index('lines_role_idx')
+      .on(t.organizationId, t.assignmentRole)
+      .where(sql`${t.assignmentRole} is not null`),
   ]
 )
 

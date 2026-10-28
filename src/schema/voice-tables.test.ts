@@ -5,6 +5,7 @@ import { tenantRlsStatements } from '../tenant'
 import {
   CALL_END_REASONS,
   LINE_ASSIGNMENT_KINDS,
+  LINE_ASSIGNMENT_ROLES,
   LINE_STATES,
   MAX_CALL_DURATION_SECONDS,
   MAX_LINE_LABEL_LENGTH,
@@ -132,7 +133,8 @@ describe('the voice tables', () => {
 
   test('the lists and limits mirror the contract', () => {
     expect(LINE_STATES).toEqual(['porting', 'active', 'released'])
-    expect(LINE_ASSIGNMENT_KINDS).toEqual(['unassigned', 'team', 'rep'])
+    expect(LINE_ASSIGNMENT_KINDS).toEqual(['unassigned', 'team', 'rep', 'role'])
+    expect(LINE_ASSIGNMENT_ROLES).toEqual(['owner', 'admin', 'manager', 'rep'])
     expect(VOICE_CALL_DIRECTIONS).toEqual(['inbound', 'outbound'])
     expect(VOICE_CALL_STATES).toEqual([
       'ringing',
