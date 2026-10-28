@@ -1,5 +1,5 @@
 {
-  "id": "6a1781c1-33fb-4ead-bd00-a46544a5b203",
+  "id": "8d110c2b-2933-4216-a00e-bde066027efa",
   "prevId": "ea25461b-986c-440b-be68-b5736dd2739a",
   "version": "7",
   "dialect": "postgresql",
@@ -15251,166 +15251,6 @@
       },
       "isRLSEnabled": false
     },
-    "core.inquiry_embeds": {
-      "name": "inquiry_embeds",
-      "schema": "core",
-      "columns": {
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "publishable_key": {
-          "name": "publishable_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "publishable_key_hash": {
-          "name": "publishable_key_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "allowed_origins": {
-          "name": "allowed_origins",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "consent_wording_id": {
-          "name": "consent_wording_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consent_wording_version": {
-          "name": "consent_wording_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "consent_wording_text": {
-          "name": "consent_wording_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "inquiry_embeds_key_hash_key": {
-          "name": "inquiry_embeds_key_hash_key",
-          "columns": [
-            {
-              "expression": "publishable_key_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "inquiry_embeds_organization_id_organizations_organization_id_fk": {
-          "name": "inquiry_embeds_organization_id_organizations_organization_id_fk",
-          "tableFrom": "inquiry_embeds",
-          "tableTo": "organizations",
-          "schemaTo": "core",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "organization_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "inquiry_embeds_wording_fk": {
-          "name": "inquiry_embeds_wording_fk",
-          "tableFrom": "inquiry_embeds",
-          "tableTo": "consent_wording",
-          "schemaTo": "core",
-          "columnsFrom": [
-            "organization_id",
-            "consent_wording_id"
-          ],
-          "columnsTo": [
-            "organization_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "inquiry_embeds_pkey": {
-          "name": "inquiry_embeds_pkey",
-          "columns": [
-            "organization_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "inquiry_embeds_organization_id_shape": {
-          "name": "inquiry_embeds_organization_id_shape",
-          "value": "\"organization_id\" ~ '^org_[0-9a-f]{32}$'"
-        },
-        "inquiry_embeds_organization_not_global": {
-          "name": "inquiry_embeds_organization_not_global",
-          "value": "\"organization_id\" <> 'org_00000000000000000000000000000000'"
-        },
-        "inquiry_embeds_key_shape": {
-          "name": "inquiry_embeds_key_shape",
-          "value": "\"core\".\"inquiry_embeds\".\"publishable_key\" ~ '^[A-Za-z0-9_-]{32,64}$'"
-        },
-        "inquiry_embeds_key_hash_shape": {
-          "name": "inquiry_embeds_key_hash_shape",
-          "value": "\"core\".\"inquiry_embeds\".\"publishable_key_hash\" ~ '^[0-9a-f]{64}$'"
-        },
-        "inquiry_embeds_origins_bounds": {
-          "name": "inquiry_embeds_origins_bounds",
-          "value": "cardinality(\"core\".\"inquiry_embeds\".\"allowed_origins\") between 0 and 20"
-        },
-        "inquiry_embeds_wording_all_or_none": {
-          "name": "inquiry_embeds_wording_all_or_none",
-          "value": "(\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null) = (\"core\".\"inquiry_embeds\".\"consent_wording_version\" is null) and (\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null) = (\"core\".\"inquiry_embeds\".\"consent_wording_text\" is null)"
-        },
-        "inquiry_embeds_wording_id_shape": {
-          "name": "inquiry_embeds_wording_id_shape",
-          "value": "\"core\".\"inquiry_embeds\".\"consent_wording_id\" is null or \"core\".\"inquiry_embeds\".\"consent_wording_id\" ~ '^cwd_[0-9a-f]{32}$'"
-        },
-        "inquiry_embeds_wording_version": {
-          "name": "inquiry_embeds_wording_version",
-          "value": "\"core\".\"inquiry_embeds\".\"consent_wording_version\" >= 1"
-        },
-        "inquiry_embeds_wording_text_shape": {
-          "name": "inquiry_embeds_wording_text_shape",
-          "value": "char_length(\"core\".\"inquiry_embeds\".\"consent_wording_text\") between 1 and 5000"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "core.outbox": {
       "name": "outbox",
       "schema": "core",
@@ -25461,9 +25301,49 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "request_key": {
+          "name": "request_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regenerate_keys": {
+          "name": "regenerate_keys",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "variant_key": {
+          "name": "variant_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
+        "drafts_request_key": {
+          "name": "drafts_request_key",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "drafts_list_idx": {
           "name": "drafts_list_idx",
           "columns": [
@@ -25772,6 +25652,18 @@
         "drafts_updated_not_before_created": {
           "name": "drafts_updated_not_before_created",
           "value": "\"outbound\".\"drafts\".\"updated_at\" >= \"outbound\".\"drafts\".\"created_at\""
+        },
+        "drafts_request_key_shape": {
+          "name": "drafts_request_key_shape",
+          "value": "\"outbound\".\"drafts\".\"request_key\" is null or (char_length(\"outbound\".\"drafts\".\"request_key\") between 16 and 128 and \"outbound\".\"drafts\".\"request_key\" ~ '^[A-Za-z0-9_.:-]+$')"
+        },
+        "drafts_regenerate_keys_shape": {
+          "name": "drafts_regenerate_keys_shape",
+          "value": "cardinality(\"outbound\".\"drafts\".\"regenerate_keys\") <= 32\n        and (cardinality(\"outbound\".\"drafts\".\"regenerate_keys\") = 0\n          or array_to_string(\"outbound\".\"drafts\".\"regenerate_keys\", ' ') ~ '^[A-Za-z0-9_.:-]{16,128}( [A-Za-z0-9_.:-]{16,128})*$')"
+        },
+        "drafts_variant_key_shape": {
+          "name": "drafts_variant_key_shape",
+          "value": "\"outbound\".\"drafts\".\"variant_key\" is null or (char_length(\"outbound\".\"drafts\".\"variant_key\") between 1 and 40\n        and \"outbound\".\"drafts\".\"variant_key\" ~ '^[a-z][a-z0-9_-]*$')"
         }
       },
       "isRLSEnabled": false

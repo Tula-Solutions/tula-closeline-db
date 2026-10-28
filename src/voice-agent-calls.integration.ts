@@ -366,4 +366,36 @@ describe('voice.agent_calls', () => {
       expect(await n(`line_id = $2 and state in ('dialing', 'live')`, [line])).toBe(1)
     })
   })
+
+  test('goal and organization name are length checked, and the due scan lists only due queued rows', async () => {
+    const a = newOrg()
+    const b = newOrg()
+    const queued = (retryAt: Date, over: Row = {}): Row => ({
+      state: 'queued',
+      dialed_at: null,
+      number_hash: null,
+      retry_at: retryAt,
+      ...over,
+    })
+    const past = new Date(Date.now() - 60_000)
+    await add(a, queued(past, { goal: 'Book a demo', organization_name: 'Acme' }))
+    await add(b, queued(new Date(Date.now() + 3_600_000)))
+    expect((await refusal(add(a, queued(past, { goal: 'x'.repeat(501) })))).code).toBe(
+      CHECK_VIOLATION
+    )
+    expect((await refusal(add(a, queued(past, { organization_name: '' })))).code).toBe(
+      CHECK_VIOLATION
+    )
+    const due = await voice.query(
+      'select organization_id from voice.orgs_with_due_agent_calls(now(), null, 500)'
+    )
+    const ids = due.rows.map((r) => r.organization_id)
+    expect(ids).toContain(a)
+    expect(ids).not.toContain(b)
+    const paged = await voice.query(
+      'select organization_id from voice.orgs_with_due_agent_calls(now(), $1, 500)',
+      [a]
+    )
+    expect(paged.rows.map((r) => r.organization_id)).not.toContain(a)
+  })
 })

@@ -681,6 +681,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
     )
     expect(tables.rows.filter((r) => r.writes || r.whole_table)).toEqual([])
     expect(tables.rows.filter((r) => r.some_columns).map((r) => r.name)).toEqual([
+      'voice.agent_calls',
       'voice.calls',
       'voice.inquiries',
       'voice.recordings',
@@ -692,6 +693,7 @@ describe('closeline_voice_purge_scan, the role that owns the expired-Organizatio
         where p.proowner = 'closeline_voice_purge_scan'::regrole order by 1`
     )
     expect(owned.rows.map((r) => r.name)).toEqual([
+      'voice.orgs_with_due_agent_calls(timestamp with time zone,text,integer)',
       'voice.orgs_with_due_callbacks(text,integer)',
       'voice.orgs_with_due_recordings(timestamp with time zone,text,integer)',
       'voice.orgs_with_stale_outbound(timestamp with time zone,text,integer)',
