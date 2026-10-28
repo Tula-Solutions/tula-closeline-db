@@ -18,6 +18,7 @@ import {
   outboundSendDecisions,
   outboundSequences,
   outboundSteps,
+  outboundVariantStats,
   outboundVariants,
   outboundWorkHints,
   PLAY_CITATION_KINDS,
@@ -128,5 +129,34 @@ describe('the outbound campaign tables', () => {
     expect(PLAY_STATUSES).toEqual(['proposed', 'accepted', 'discarded'])
     expect(PLAY_CITATION_KINDS).toEqual(['moment', 'document'])
     expect(OUTBOUND_WORK_KINDS).toEqual(['step_due'])
+  })
+})
+
+describe('the variant tally table', () => {
+  const file = readdirSync(new URL('../../migrations/', import.meta.url)).find((f) =>
+    f.includes('_variant_stats')
+  )
+  const sqlText = readFileSync(
+    new URL(`../../migrations/${file ?? 'missing'}`, import.meta.url),
+    'utf8'
+  )
+
+  test('is tenant-scoped and keyed by Campaign, version, Step and variant', () => {
+    const config = getTableConfig(outboundVariantStats)
+    expect(config.name).toBe('variant_stats')
+    expect(config.schema).toBe('outbound')
+    expect(config.primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
+      'organization_id',
+      'campaign_id',
+      'version',
+      'step_key',
+      'variant_key',
+    ])
+  })
+
+  test('the migration runs the canonical row-level-security statements', () => {
+    for (const statement of tenantRlsStatements('outbound', 'variant_stats')) {
+      expect(sqlText).toContain(statement)
+    }
   })
 })

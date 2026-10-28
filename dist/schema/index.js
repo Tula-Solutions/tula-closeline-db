@@ -534,6 +534,7 @@ import {
   outboundSteps2,
   outboundVariants2,
   outboundEnrollments2,
+  outboundVariantStats2,
   outboundEnrollmentEvents2,
   outboundSendDecisions2,
   outboundWorkHints2,
@@ -668,7 +669,7 @@ import {
   voiceTwilioRecordings2,
   voiceTwilioPlacements2,
   voiceTwilioDirectory2
-} from "../shared/chunk-9m7adzwf.js";
+} from "../shared/chunk-f4jxrj44.js";
 export {
   ABANDON_CASE_MAX_ATTEMPTS2 as ABANDON_CASE_MAX_ATTEMPTS,
   ABANDON_CASE_OUTCOMES2 as ABANDON_CASE_OUTCOMES,
@@ -1264,6 +1265,7 @@ export {
   outboundSendDecisions2 as outboundSendDecisions,
   outboundSequences2 as outboundSequences,
   outboundSteps2 as outboundSteps,
+  outboundVariantStats2 as outboundVariantStats,
   outboundVariants2 as outboundVariants,
   outboundWorkHints2 as outboundWorkHints,
   outbox2 as outbox,
