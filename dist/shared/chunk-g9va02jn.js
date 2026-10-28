@@ -4625,7 +4625,8 @@ var outboundBriefs2 = outboundSchema2.table("briefs", {
   language: text43("language", { enum: OUTBOUND_LANGUAGES2 }).notNull(),
   model: text43("model").notNull(),
   createdAt: ts9("created_at").notNull().defaultNow(),
-  expiresAt: ts9("expires_at").notNull()
+  expiresAt: ts9("expires_at").notNull(),
+  requestKey: text43("request_key")
 }, (t) => [
   primaryKey14({ name: "briefs_pkey", columns: [t.organizationId, t.id] }),
   check25("briefs_id_shape", idShape10("id", "brf")),
@@ -4638,6 +4639,8 @@ var outboundBriefs2 = outboundSchema2.table("briefs", {
   check25("briefs_language_known", sql30`${t.language} in (${list11(OUTBOUND_LANGUAGES2)})`),
   check25("briefs_model_shape", sql30`char_length(${t.model}) between 1 and ${num4(MAX_MODEL_NAME_LENGTH2)}`),
   check25("briefs_expires_after_created", sql30`${t.expiresAt} > ${t.createdAt}`),
+  check25("briefs_request_key_shape", sql30`${t.requestKey} is null or (char_length(${t.requestKey}) between 16 and 128 and ${t.requestKey} ~ '^[A-Za-z0-9_.:-]+$')`),
+  uniqueIndex12("briefs_request_key").on(t.organizationId, t.requestKey),
   unique26("briefs_id_prospect_key").on(t.organizationId, t.id, t.prospectId),
   index35("briefs_prospect_idx").on(t.organizationId, t.prospectId, t.createdAt.desc(), t.id.desc()),
   index35("briefs_list_idx").on(t.organizationId, t.createdAt.desc(), t.id.desc()),

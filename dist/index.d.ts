@@ -26162,6 +26162,9 @@ declare const outboundBrandVoices: PgTableWithColumns_a5zn0g49<{
 * proposed that had no resolvable source. The angle text is model output: tenant data, never
 * logged or put in an error report.
 *
+* `request_key` is the `Idempotency-Key` of the request that built the Brief (null when none): a retry
+* under the key finds the Brief, and two concurrent builds cannot both insert (`briefs_request_key`).
+*
 * Lookups served: the newest Brief of a Prospect, for the cache (`briefs_prospect_idx`); all
 * Briefs, keyset `(created_at, id)` newest first (`briefs_list_idx`).
 */
@@ -26352,6 +26355,23 @@ declare const outboundBriefs: PgTableWithColumns_a5zn0g49<{
 			isAutoincrement: false;
 			hasRuntimeDefault: false;
 			enumValues: undefined;
+			baseColumn: never;
+			identity: undefined;
+			generated: undefined;
+		}, {}, {}>;
+		requestKey: PgColumn_ffrhhp49<{
+			name: "request_key";
+			tableName: "briefs";
+			dataType: "string";
+			columnType: "PgText";
+			data: string;
+			driverParam: string;
+			notNull: false;
+			hasDefault: false;
+			isPrimaryKey: false;
+			isAutoincrement: false;
+			hasRuntimeDefault: false;
+			enumValues: [string, ...string[]];
 			baseColumn: never;
 			identity: undefined;
 			generated: undefined;

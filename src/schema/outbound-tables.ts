@@ -280,6 +280,9 @@ export const outboundBrandVoices = outboundSchema.table(
  * proposed that had no resolvable source. The angle text is model output: tenant data, never
  * logged or put in an error report.
  *
+ * `request_key` is the `Idempotency-Key` of the request that built the Brief (null when none): a retry
+ * under the key finds the Brief, and two concurrent builds cannot both insert (`briefs_request_key`).
+ *
  * Lookups served: the newest Brief of a Prospect, for the cache (`briefs_prospect_idx`); all
  * Briefs, keyset `(created_at, id)` newest first (`briefs_list_idx`).
  */
@@ -297,6 +300,7 @@ export const outboundBriefs = outboundSchema.table(
     model: text('model').notNull(),
     createdAt: ts('created_at').notNull().defaultNow(),
     expiresAt: ts('expires_at').notNull(),
+    requestKey: text('request_key'),
   },
   (t) => [
     primaryKey({ name: 'briefs_pkey', columns: [t.organizationId, t.id] }),
@@ -319,6 +323,11 @@ export const outboundBriefs = outboundSchema.table(
       sql`char_length(${t.model}) between 1 and ${num(MAX_MODEL_NAME_LENGTH)}`
     ),
     check('briefs_expires_after_created', sql`${t.expiresAt} > ${t.createdAt}`),
+    check(
+      'briefs_request_key_shape',
+      sql`${t.requestKey} is null or (char_length(${t.requestKey}) between 16 and 128 and ${t.requestKey} ~ '^[A-Za-z0-9_.:-]+$')`
+    ),
+    uniqueIndex('briefs_request_key').on(t.organizationId, t.requestKey),
     unique('briefs_id_prospect_key').on(t.organizationId, t.id, t.prospectId),
     index('briefs_prospect_idx').on(
       t.organizationId,
